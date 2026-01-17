@@ -97,8 +97,9 @@ export function SalesOrdersPage() {
             <Search className="w-4 h-4 absolute right-2 top-2 text-[var(--sapContent_IconColor)]" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[var(--sapContent_LabelColor)] text-xs font-['72:Regular',sans-serif]">Status</label>
+            <label htmlFor="so-status-filter" className="text-[var(--sapContent_LabelColor)] text-xs font-['72:Regular',sans-serif]">Status</label>
             <select
+              id="so-status-filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"

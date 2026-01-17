@@ -193,7 +193,7 @@ export function PnlPageIntegrated() {
         render: (value: unknown) => {
           const v = Number(value ?? 0);
           return (
-            <span style={{ color: v >= 0 ? 'var(--sapPositiveTextColor)' : 'var(--sapNegativeTextColor)' }}>
+            <span className={v >= 0 ? 'text-[var(--sapPositiveTextColor)]' : 'text-[var(--sapNegativeTextColor)]'}>
               {formatUsd(v)}
             </span>
           );
@@ -206,7 +206,7 @@ export function PnlPageIntegrated() {
         render: (value: unknown) => {
           const v = Number(value ?? 0);
           return (
-            <span style={{ color: v >= 0 ? 'var(--sapPositiveTextColor)' : 'var(--sapNegativeTextColor)' }}>
+            <span className={v >= 0 ? 'text-[var(--sapPositiveTextColor)]' : 'text-[var(--sapNegativeTextColor)]'}>
               {formatUsd(v)}
             </span>
           );
@@ -219,7 +219,7 @@ export function PnlPageIntegrated() {
         render: (value: unknown) => {
           const v = Number(value ?? 0);
           return (
-            <span className="font-bold" style={{ color: v >= 0 ? 'var(--sapPositiveTextColor)' : 'var(--sapNegativeTextColor)' }}>
+            <span className={`font-bold ${v >= 0 ? 'text-[var(--sapPositiveTextColor)]' : 'text-[var(--sapNegativeTextColor)]'}`}>
               {formatUsd(v)}
             </span>
           );
@@ -282,8 +282,9 @@ export function PnlPageIntegrated() {
       <div className="bg-white border border-[var(--sapList_BorderColor)] rounded-lg p-4 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div>
-            <label className="block text-xs text-[var(--sapContent_LabelColor)] mb-1">Data-base</label>
+            <label htmlFor="pnl-asof-date" className="block text-xs text-[var(--sapContent_LabelColor)] mb-1">Data-base</label>
             <input
+              id="pnl-asof-date"
               type="date"
               value={asOfDate}
               onChange={(e) => setAsOfDate(e.target.value)}

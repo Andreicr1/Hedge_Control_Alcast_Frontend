@@ -1439,6 +1439,8 @@ export function RFQFormPage() {
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => {}}
+                      aria-label={`Selecionar contraparte ${cp.name}`}
+                      title={`Selecionar contraparte ${cp.name}`}
                       className="w-4 h-4 accent-[var(--sapSelectedColor,#0a6ed1)]"
                     />
                     <div className="flex-1 min-w-0">
@@ -1571,9 +1573,10 @@ export function RFQFormPage() {
                   <span>{sendProgress.sent}/{sendProgress.total}</span>
                 </div>
                 <div className="w-full h-2 bg-[var(--sapField_BorderColor,#89919a)] bg-opacity-20 rounded overflow-hidden">
-                  <div 
-                    className="h-full bg-[var(--sapPositiveColor,#0f7d0f)] transition-all duration-300"
-                    style={{ width: `${(sendProgress.sent / sendProgress.total) * 100}%` }}
+                  <progress
+                    className="w-full h-2 [&::-webkit-progress-bar]:bg-transparent [&::-webkit-progress-value]:bg-[var(--sapPositiveColor,#0f7d0f)] [&::-moz-progress-bar]:bg-[var(--sapPositiveColor,#0f7d0f)]"
+                    value={sendProgress.total > 0 ? sendProgress.sent : 0}
+                    max={sendProgress.total > 0 ? sendProgress.total : 1}
                   />
                 </div>
               </div>
@@ -1581,7 +1584,7 @@ export function RFQFormPage() {
 
             {/* Error Messages */}
             {sendProgress.errors.length > 0 && (
-              <div className="p-3 bg-[var(--sapErrorBackground,#ffebeb)] rounded text-sm text-[var(--sapNegativeColor,#bb0000)]" style={{ whiteSpace: 'pre-line' }}>
+              <div className="p-3 bg-[var(--sapErrorBackground,#ffebeb)] rounded text-sm text-[var(--sapNegativeColor,#bb0000)] whitespace-pre-line">
                 {UX_COPY.errors.message}
               </div>
             )}

@@ -141,21 +141,33 @@ function MenuButton() {
 
   return (
     <div ref={menuRef} className="relative" data-name="Menu Button">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="bg-[rgba(0,0,0,0)] content-stretch flex gap-[6px] items-center justify-center px-[12px] py-[6px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0 h-[36px]"
-        aria-expanded={isOpen}
-        aria-haspopup="true"
-      >
-        <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
-        <span className="font-['72:Regular',sans-serif] text-[14px] text-[#131e29] text-nowrap">{displayName}</span>
-        <ChevronDownIcon />
-      </button>
+      {isOpen ? (
+        <button
+          onClick={() => setIsOpen(false)}
+          className="bg-[rgba(0,0,0,0)] content-stretch flex gap-[6px] items-center justify-center px-[12px] py-[6px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0 h-[36px]"
+          aria-expanded="true"
+          aria-haspopup="true"
+        >
+          <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
+          <span className="font-['72:Regular',sans-serif] text-[14px] text-[#131e29] text-nowrap">{displayName}</span>
+          <ChevronDownIcon />
+        </button>
+      ) : (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="bg-[rgba(0,0,0,0)] content-stretch flex gap-[6px] items-center justify-center px-[12px] py-[6px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0 h-[36px]"
+          aria-expanded="false"
+          aria-haspopup="true"
+        >
+          <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
+          <span className="font-['72:Regular',sans-serif] text-[14px] text-[#131e29] text-nowrap">{displayName}</span>
+          <ChevronDownIcon />
+        </button>
+      )}
 
       {isOpen && (
         <div 
-          className="absolute top-[calc(100%+4px)] left-0 bg-white rounded-[8px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] min-w-[240px] z-[1100] overflow-hidden"
-          style={{ border: '1px solid #d9d9d9' }}
+          className="absolute top-[calc(100%+4px)] left-0 bg-white rounded-[8px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] min-w-[240px] z-[1100] overflow-hidden border border-[#d9d9d9]"
         >
           {menuItems.map((item, index) => {
             const isActive = location.pathname === item.path;
@@ -213,7 +225,13 @@ function SearchIcon() {
 
 function ShellButton() {
   return (
-    <button className="bg-[rgba(0,0,0,0)] content-stretch flex gap-[6px] items-center justify-center min-h-[26px] px-[8px] py-[5px] relative rounded-[17px] shrink-0 w-[28px] hover:bg-[#d9d9d9] transition-colors cursor-pointer border-0" data-name="Shell Button">
+    <button
+      className="bg-[rgba(0,0,0,0)] content-stretch flex gap-[6px] items-center justify-center min-h-[26px] px-[8px] py-[5px] relative rounded-[17px] shrink-0 w-[28px] hover:bg-[#d9d9d9] transition-colors cursor-pointer border-0"
+      data-name="Shell Button"
+      aria-label="Buscar"
+      title="Buscar"
+      type="button"
+    >
       <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[17px]" />
       <SearchIcon />
     </button>
@@ -333,6 +351,8 @@ function ShellSearch() {
         <input
           type="text"
           placeholder="Search"
+            aria-label="Busca"
+            title="Busca"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
@@ -375,8 +395,7 @@ function ShellSearch() {
         </button>
         <div className="absolute bottom-0 h-0 left-0 right-0" data-name="Underline">
           <div
-            className="absolute inset-[-1px_0_0_0]"
-            style={{ '--stroke-0': 'rgba(85, 107, 129, 1)' } as React.CSSProperties}
+            className="absolute inset-[-1px_0_0_0] sap-stroke-underline"
           >
             <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 400 1">
               <line id="Underline" stroke="var(--stroke-0, #556B81)" x2="400" y1="0.5" y2="0.5" />
@@ -388,9 +407,10 @@ function ShellSearch() {
 
       {open && (
         <div
-          className="absolute top-[calc(100%+6px)] left-0 w-[400px] bg-white rounded-[10px] shadow-[0_8px_24px_rgba(0,0,0,0.16)] z-[1200] overflow-hidden"
-          style={{ border: '1px solid #d9d9d9' }}
+          className="absolute top-[calc(100%+6px)] left-0 w-[400px] bg-white rounded-[10px] shadow-[0_8px_24px_rgba(0,0,0,0.16)] z-[1200] overflow-hidden border border-[#d9d9d9]"
           role="listbox"
+          aria-label="Resultados de busca"
+          title="Resultados de busca"
         >
           {!eligible ? (
             <div className="px-4 py-3 text-[13px] text-[#556b82] font-['72:Regular',sans-serif]">
@@ -530,7 +550,13 @@ function NotificationIcon() {
 
 function NotificationButton() {
   return (
-    <button className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0" data-name="Notification Button">
+    <button
+      className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0"
+      data-name="Notification Button"
+      type="button"
+      aria-label="Notificações"
+      title="Notificações"
+    >
       <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
       <NotificationIcon />
     </button>
@@ -556,7 +582,13 @@ function HelpIcon() {
 
 function HelpButton() {
   return (
-    <button className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0" data-name="Help Button">
+    <button
+      className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0"
+      data-name="Help Button"
+      type="button"
+      aria-label="Ajuda"
+      title="Ajuda"
+    >
       <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
       <HelpIcon />
     </button>
@@ -577,7 +609,13 @@ function OverflowIcon() {
 
 function OverflowButton() {
   return (
-    <button className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0" data-name="Overflow Button">
+    <button
+      className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0"
+      data-name="Overflow Button"
+      type="button"
+      aria-label="Mais opções"
+      title="Mais opções"
+    >
       <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
       <OverflowIcon />
     </button>

@@ -512,7 +512,7 @@ export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationPro
         <div className="overflow-clip rounded-[inherit] size-full">
           <div className="content-stretch flex flex-col gap-[4px] items-start pb-[8px] pt-[4px] px-[8px] relative w-full">
             <div className="h-0 relative shrink-0 w-full" data-name="Separator">
-              <div className="absolute inset-[-1px_0_0_0]" style={{ '--stroke-0': 'rgba(217, 217, 217, 1)' } as CSSProperties}>
+              <div className="absolute inset-[-1px_0_0_0] sap-stroke-separator">
                 <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 240 1">
                   <line id="Separator" stroke="var(--stroke-0, #D9D9D9)" x2="240" y1="0.5" y2="0.5" />
                 </svg>

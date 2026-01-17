@@ -22,58 +22,53 @@ export function FioriObjectStatus({
   inverted = false,
   icon,
 }: FioriObjectStatusProps) {
-  const getStyles = () => {
-    const styles: Record<StatusType, { bg: string; border: string; text: string }> = {
+  const getClasses = (): { bg: string; border: string; text: string } => {
+    const base = {
       success: {
-        bg: inverted ? 'var(--sapSuccessTextColor)' : 'var(--sapSuccessBackground)',
-        border: 'var(--sapSuccessBorderColor)',
-        text: inverted ? '#fff' : 'var(--sapSuccessTextColor)',
+        bg: inverted ? 'bg-[var(--sapSuccessTextColor)]' : 'bg-[var(--sapSuccessBackground)]',
+        border: 'border-[var(--sapSuccessBorderColor)]',
+        text: inverted ? 'text-white' : 'text-[var(--sapSuccessTextColor)]',
       },
       error: {
-        bg: inverted ? 'var(--sapErrorTextColor)' : 'var(--sapErrorBackground)',
-        border: 'var(--sapErrorBorderColor)',
-        text: inverted ? '#fff' : 'var(--sapErrorTextColor)',
+        bg: inverted ? 'bg-[var(--sapErrorTextColor)]' : 'bg-[var(--sapErrorBackground)]',
+        border: 'border-[var(--sapErrorBorderColor)]',
+        text: inverted ? 'text-white' : 'text-[var(--sapErrorTextColor)]',
       },
       warning: {
-        bg: inverted ? 'var(--sapWarningTextColor)' : 'var(--sapWarningBackground)',
-        border: 'var(--sapWarningBorderColor)',
-        text: inverted ? '#fff' : 'var(--sapWarningTextColor)',
+        bg: inverted ? 'bg-[var(--sapWarningTextColor)]' : 'bg-[var(--sapWarningBackground)]',
+        border: 'border-[var(--sapWarningBorderColor)]',
+        text: inverted ? 'text-white' : 'text-[var(--sapWarningTextColor)]',
       },
       information: {
-        bg: inverted ? 'var(--sapInformationTextColor)' : 'var(--sapInformationBackground)',
-        border: 'var(--sapInformationBorderColor)',
-        text: inverted ? '#fff' : 'var(--sapInformationTextColor)',
+        bg: inverted ? 'bg-[var(--sapInformationTextColor)]' : 'bg-[var(--sapInformationBackground)]',
+        border: 'border-[var(--sapInformationBorderColor)]',
+        text: inverted ? 'text-white' : 'text-[var(--sapInformationTextColor)]',
       },
       neutral: {
-        bg: inverted ? 'var(--sapNeutralColor)' : '#f2f2f2',
-        border: 'var(--sapNeutralBorderColor)',
-        text: inverted ? '#fff' : 'var(--sapNeutralTextColor)',
+        bg: inverted ? 'bg-[var(--sapNeutralColor)]' : 'bg-[#f2f2f2]',
+        border: 'border-[var(--sapNeutralBorderColor)]',
+        text: inverted ? 'text-white' : 'text-[var(--sapNeutralTextColor)]',
       },
       positive: {
-        bg: inverted ? 'var(--sapSuccessTextColor)' : 'var(--sapSuccessBackground)',
-        border: 'var(--sapSuccessBorderColor)',
-        text: inverted ? '#fff' : 'var(--sapSuccessTextColor)',
+        bg: inverted ? 'bg-[var(--sapSuccessTextColor)]' : 'bg-[var(--sapSuccessBackground)]',
+        border: 'border-[var(--sapSuccessBorderColor)]',
+        text: inverted ? 'text-white' : 'text-[var(--sapSuccessTextColor)]',
       },
       critical: {
-        bg: inverted ? 'var(--sapWarningTextColor)' : 'var(--sapWarningBackground)',
-        border: 'var(--sapWarningBorderColor)',
-        text: inverted ? '#fff' : 'var(--sapWarningTextColor)',
+        bg: inverted ? 'bg-[var(--sapWarningTextColor)]' : 'bg-[var(--sapWarningBackground)]',
+        border: 'border-[var(--sapWarningBorderColor)]',
+        text: inverted ? 'text-white' : 'text-[var(--sapWarningTextColor)]',
       },
-    };
+    } satisfies Record<StatusType, { bg: string; border: string; text: string }>;
 
-    return styles[status] || styles.neutral;
+    return base[status] || base.neutral;
   };
 
-  const { bg, border, text } = getStyles();
+  const { bg, border, text } = getClasses();
 
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border"
-      style={{
-        backgroundColor: bg,
-        borderColor: border,
-        color: text,
-      }}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border ${bg} ${border} ${text}`}
       role="status"
       aria-label={`Status: ${children}`}
     >

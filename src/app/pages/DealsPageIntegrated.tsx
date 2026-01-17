@@ -273,10 +273,7 @@ export function DealsPageIntegrated() {
         const mtm = value as number;
         return (
           <span
-            className="font-bold"
-            style={{
-              color: mtm >= 0 ? 'var(--sapPositiveTextColor)' : 'var(--sapNegativeTextColor)',
-            }}
+            className={`font-bold ${mtm >= 0 ? 'text-[var(--sapPositiveTextColor)]' : 'text-[var(--sapNegativeTextColor)]'}`}
           >
             US$ {mtm.toLocaleString('pt-BR')}
           </span>
@@ -374,13 +371,7 @@ export function DealsPageIntegrated() {
                     <TrendingDown className="w-4 h-4 text-[var(--sapNegativeTextColor)]" />
                   )}
                   <span
-                    className="text-sm font-['72:Bold',sans-serif]"
-                    style={{
-                      color:
-                        pnlData.net_pnl >= 0
-                          ? 'var(--sapPositiveTextColor)'
-                          : 'var(--sapNegativeTextColor)',
-                    }}
+                    className={`text-sm font-['72:Bold',sans-serif] ${pnlData.net_pnl >= 0 ? 'text-[var(--sapPositiveTextColor)]' : 'text-[var(--sapNegativeTextColor)]'}`}
                   >
                     US$ {pnlData.net_pnl.toLocaleString('pt-BR')}
                   </span>

@@ -43,11 +43,7 @@ export function FioriShell({ children, userName = 'User', userRole, hideChrome, 
         {/* Side Navigation */}
         {sidebarOpen && (
           <aside
-            className="w-64 border-r overflow-y-auto"
-            style={{
-              backgroundColor: 'var(--sapList_Background)',
-              borderColor: 'var(--sapList_BorderColor)',
-            }}
+            className="w-64 border-r overflow-y-auto bg-[var(--sapList_Background)] border-[var(--sapList_BorderColor)]"
             role="navigation"
             aria-label="Main navigation"
           >

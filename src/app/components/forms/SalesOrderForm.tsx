@@ -163,6 +163,9 @@ export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
           <button
             onClick={onClose}
             className="text-[var(--sapContent_IconColor)] hover:text-[#131e29] transition-colors"
+            type="button"
+            aria-label="Fechar"
+            title="Fechar"
           >
             <X className="w-5 h-5" />
           </button>
@@ -431,6 +434,9 @@ export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
                             <button
                               onClick={() => handleRemoveQualitySpec(index)}
                               className="h-8 px-2 text-[var(--sapNegativeColor)] hover:bg-[var(--sapErrorBackground)] rounded transition-colors"
+                              type="button"
+                              aria-label="Remover especificação"
+                              title="Remover especificação"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

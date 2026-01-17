@@ -419,10 +419,15 @@ export function CustomersPageIntegrated() {
           <FioriInput label="Nome fantasia" value={formData.trade_name} onChange={(e) => setFormData((p) => ({ ...p, trade_name: e.target.value }))} fullWidth />
           <FioriInput label="Razão social" value={formData.legal_name} onChange={(e) => setFormData((p) => ({ ...p, legal_name: e.target.value }))} fullWidth />
           <FioriInput label="Tipo de entidade" value={formData.entity_type} onChange={(e) => setFormData((p) => ({ ...p, entity_type: e.target.value }))} fullWidth />
-          <div className="flex items-center gap-2 pt-2">
-            <input type="checkbox" checked={formData.active} onChange={(e) => setFormData((p) => ({ ...p, active: e.target.checked }))} className="w-4 h-4" />
+          <label className="flex items-center gap-2 pt-2">
+            <input
+              type="checkbox"
+              checked={formData.active}
+              onChange={(e) => setFormData((p) => ({ ...p, active: e.target.checked }))}
+              className="w-4 h-4"
+            />
             <span className="text-sm text-[var(--sapField_TextColor)]">Cliente ativo</span>
-          </div>
+          </label>
         </div>
       </div>
 
@@ -457,13 +462,19 @@ export function CustomersPageIntegrated() {
           <FioriInput label="Status de KYC" value={formData.kyc_status} onChange={(e) => setFormData((p) => ({ ...p, kyc_status: e.target.value }))} fullWidth />
           <FioriInput label="Limite de crédito" value={formData.credit_limit} onChange={(e) => setFormData((p) => ({ ...p, credit_limit: e.target.value }))} fullWidth />
           <FioriInput label="Score de crédito" value={formData.credit_score} onChange={(e) => setFormData((p) => ({ ...p, credit_score: e.target.value }))} fullWidth />
-          <div className="flex items-center gap-2 pt-2">
-            <input type="checkbox" checked={formData.sanctions_flag} onChange={(e) => setFormData((p) => ({ ...p, sanctions_flag: e.target.checked }))} className="w-4 h-4" />
+          <label className="flex items-center gap-2 pt-2">
+            <input
+              type="checkbox"
+              checked={formData.sanctions_flag}
+              onChange={(e) => setFormData((p) => ({ ...p, sanctions_flag: e.target.checked }))}
+              className="w-4 h-4"
+            />
             <span className="text-sm text-[var(--sapField_TextColor)]">Sinalização de sanções</span>
-          </div>
+          </label>
           <div className="md:col-span-2">
-            <label className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]">Observações de KYC</label>
+            <label htmlFor="customer-kyc-notes" className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]">Observações de KYC</label>
             <textarea
+              id="customer-kyc-notes"
               value={formData.kyc_notes}
               onChange={(e) => setFormData((p) => ({ ...p, kyc_notes: e.target.value }))}
               rows={3}
@@ -479,8 +490,9 @@ export function CustomersPageIntegrated() {
           <FioriInput label="Moeda base" value={formData.base_currency} onChange={(e) => setFormData((p) => ({ ...p, base_currency: e.target.value }))} fullWidth />
           <FioriInput label="Condição de pagamento" value={formData.payment_terms} onChange={(e) => setFormData((p) => ({ ...p, payment_terms: e.target.value }))} fullWidth />
           <div className="md:col-span-2">
-            <label className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]">Observações internas</label>
+            <label htmlFor="customer-internal-notes" className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]">Observações internas</label>
             <textarea
+              id="customer-internal-notes"
               value={formData.internal_notes}
               onChange={(e) => setFormData((p) => ({ ...p, internal_notes: e.target.value }))}
               rows={3}

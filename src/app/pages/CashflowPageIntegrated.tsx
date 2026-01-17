@@ -51,12 +51,7 @@ function renderFlags(flags: string[]): ReactNode {
       {flags.map((f) => (
         <span
           key={f}
-          className="px-2 py-0.5 rounded-full text-[11px] border"
-          style={{
-            backgroundColor: 'var(--sapNeutralBackground,#f5f6f7)',
-            borderColor: 'var(--sapUiBorderColor,#d9d9d9)',
-            color: 'var(--sapTextColor,#131e29)',
-          }}
+          className="px-2 py-0.5 rounded-full text-[11px] border bg-[var(--sapNeutralBackground,#f5f6f7)] border-[var(--sapUiBorderColor,#d9d9d9)] text-[var(--sapTextColor,#131e29)]"
           title={f}
         >
           {f}

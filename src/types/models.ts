@@ -593,6 +593,20 @@ export interface RfqPreviewResponse {
 // ============================================
 // Contract
 // ============================================
+export interface ContractLeg {
+  side: string;
+  quantity_mt: number;
+  price_type?: string | null;
+  price?: number | null;
+  valid_until?: string | null;
+  notes?: string | null;
+  month_name?: string | null;
+  year?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  fixing_date?: string | null;
+}
+
 export interface Contract {
   contract_id: string;
   contract_number?: string | null;
@@ -607,21 +621,9 @@ export interface Contract {
   trade_snapshot: Record<string, unknown>;
 
   // Parsed legs (when available via detail endpoint)
-  legs?: Array<{
-    side: string;
-    quantity_mt: number;
-    price_type?: string | null;
-    price?: number | null;
-    valid_until?: string | null;
-    notes?: string | null;
-    month_name?: string | null;
-    year?: number | null;
-    start_date?: string | null;
-    end_date?: string | null;
-    fixing_date?: string | null;
-  }>;
-  fixed_leg?: Contract['legs'][number] | null;
-  variable_leg?: Contract['legs'][number] | null;
+  legs?: ContractLeg[];
+  fixed_leg?: ContractLeg | null;
+  variable_leg?: ContractLeg | null;
   fixed_price?: number | null;
   variable_reference_type?: string | null;
   variable_reference_label?: string | null;

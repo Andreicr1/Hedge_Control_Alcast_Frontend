@@ -289,6 +289,8 @@ export function RFQsPageIntegrated() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as RfqStatus | 'all')}
+            aria-label="Filtro de status"
+            title="Filtro de status"
             className="w-full h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"
           >
             <option value="all">Todos os status</option>

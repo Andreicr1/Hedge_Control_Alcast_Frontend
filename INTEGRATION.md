@@ -8,7 +8,7 @@ Este documento descreve a integração completa entre o frontend React e o backe
 
 ## Arquitetura
 
-```
+```text
 src/
 ├── api/
 │   ├── client.ts          # Cliente HTTP com auth, timeout, endpoints
@@ -66,7 +66,7 @@ O frontend opera no modo integrado (API real). O modo mock foi descontinuado par
 
 ## Fluxo de Dados
 
-```
+```text
 Página → Hook → Service → API Client → Backend
                                           ↓
 Página ← Hook ← Service ← API Client ← Backend
@@ -87,7 +87,7 @@ refetch(); // Atualizar lista
 ## Endpoints Suportados
 
 | Domínio | Endpoint | Descrição |
-|---------|----------|-----------|
+| --------- | ---------- | ----------- |
 | RFQs | GET /rfqs | Listar RFQs |
 | RFQs | GET /rfqs/:id | Detalhe RFQ |
 | RFQs | POST /rfqs/:id/send | Enviar RFQ |
@@ -96,12 +96,13 @@ refetch(); // Atualizar lista
 | Deals | GET /deals/:id | Detalhe deal |
 | Deals | GET /deals/:id/pnl | P&L do deal |
 | Dashboard | GET /dashboard/summary | KPIs |
-| Counterparties | CRUD completo | |
+| Counterparties | CRUD completo | Cadastro / manutenção |
 | Exposures | GET /exposures | Listar exposições |
 
 ## Tratamento de Erros
 
 Todos os hooks retornam:
+
 - `isLoading`: boolean
 - `isError`: boolean
 - `error`: ApiError | null

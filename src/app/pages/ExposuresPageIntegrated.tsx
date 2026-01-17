@@ -227,6 +227,8 @@ export function ExposuresPageIntegrated() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Filtro de status"
+              title="Filtro de status"
               className="flex-1 h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"
             >
               <option value="all">Todos os status</option>
@@ -239,6 +241,8 @@ export function ExposuresPageIntegrated() {
             <select
               value={viewMode}
               onChange={(e) => setViewMode(e.target.value as 'list' | 'byMonth' | 'byStatus')}
+              aria-label="Modo de visualização"
+              title="Modo de visualização"
               className="w-28 h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"
             >
               <option value="list">Lista</option>

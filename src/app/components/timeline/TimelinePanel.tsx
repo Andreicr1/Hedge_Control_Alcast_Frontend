@@ -343,6 +343,8 @@ export function TimelinePanel({ title = 'Histórico', subjectType, subjectId, li
               <input
                 type="file"
                 className="text-xs"
+                aria-label="Adicionar anexo"
+                title="Adicionar anexo"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f)
@@ -526,6 +528,8 @@ export function TimelinePanel({ title = 'Histórico', subjectType, subjectId, li
                       className="w-full text-sm border rounded p-2"
                       value={correctionBody}
                       onChange={(e) => setCorrectionBody(e.target.value)}
+                      aria-label="Texto de correção"
+                      title="Texto de correção"
                       rows={3}
                       disabled={isCorrecting}
                     />
@@ -534,6 +538,8 @@ export function TimelinePanel({ title = 'Histórico', subjectType, subjectId, li
                       <input
                         type="file"
                         className="text-xs"
+                        aria-label="Adicionar anexo de correção"
+                        title="Adicionar anexo de correção"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
                           if (f)
