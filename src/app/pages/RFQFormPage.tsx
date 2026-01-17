@@ -1,0 +1,1600 @@
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { FioriCard } from '../components/fiori/FioriCard';
+import { FioriInput } from '../components/fiori/FioriInput';
+import { FioriSelect } from '../components/fiori/FioriSelect';
+import { FioriRadioGroup } from '../components/fiori/FioriRadioGroup';
+import { FioriTextarea } from '../components/fiori/FioriTextarea';
+import { FioriButton } from '../components/fiori/FioriButton';
+import { Plus, Copy, ChevronLeft, Loader2, Send, Users, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
+import {
+  ApiError,
+  KycGateErrorDetail,
+  KycPreflightResponse,
+  Deal,
+  SalesOrder,
+  PurchaseOrder,
+  RfqPriceType,
+  RfqTradeType,
+  RfqSide,
+  RfqStatus,
+  SendStatus,
+  RfqCreate,
+  RfqInvitationCreate,
+} from '../../types';
+import { useRfqPreview, useCreateRfq, useSendRfqWithTracking } from '../../hooks/useRfqs';
+import { useCounterparties } from '../../hooks/useCounterparties';
+import { getCounterpartyKycPreflight } from '../../services/counterparties.service';
+import { listDeals } from '../../services/deals.service';
+import { getSalesOrder, listSalesOrdersQuery } from '../../services/salesOrders.service';
+import { listPurchaseOrdersQuery } from '../../services/purchaseOrders.service';
+import { getLanguageForCounterparty } from '../components/rfq/CounterpartySelector';
+import { UX_COPY } from '../ux/copy';
+
+// ============================================
+// Types
+// ============================================
+interface TradeState {
+  id: string;
+  template: TradeTemplate | null;
+  leg1Operation: 'Compra' | 'Venda';
+  leg1PriceType: RfqPriceType | '';
+  leg1Month: string;
+  leg1Year: string;
+  leg1StartDate: string;
+  leg1EndDate: string;
+  leg2Operation: 'Compra' | 'Venda';
+  leg2PriceType: RfqPriceType | '';
+  leg2FixingDate: string;
+}
+
+type TradeTemplate = 'comprar_media' | 'vender_media' | 'venda_fixo' | 'compra_fixo' | 'media_intermediaria';
+
+// ============================================
+// Constants
+// ============================================
+const TRADE_TEMPLATES: { value: TradeTemplate; label: string; description: string }[] = [
+  { value: 'comprar_media', label: 'Estrutura: comprar a média', description: 'Compra a média e vende a preço fixo.' },
+  { value: 'vender_media', label: 'Estrutura: vender a média', description: 'Vende a média e compra a preço fixo.' },
+  { value: 'venda_fixo', label: 'Estrutura: venda a preço fixo', description: 'Venda a preço fixo com ajuste por referência.' },
+  { value: 'compra_fixo', label: 'Estrutura: compra a preço fixo', description: 'Compra a preço fixo com ajuste por referência.' },
+  { value: 'media_intermediaria', label: 'Estrutura: média entre datas', description: 'Média no período com compra a preço fixo.' },
+];
+
+const PRICE_TYPE_OPTIONS = [
+  { value: 'AVG', label: 'Média mensal' },
+  { value: 'AVGInter', label: 'Média entre datas' },
+  { value: 'Fix', label: 'Preço fixo' },
+  { value: 'C2R', label: 'Fechamento até referência' },
+];
+
+const COMPANY_HEADER_OPTIONS = [
+  { value: 'Alcast Brasil', label: 'Alcast Brasil' },
+  { value: 'Alcast Trading', label: 'Alcast Trading' },
+];
+
+const MONTH_OPTIONS = [
+  { value: 'January', label: 'Janeiro' },
+  { value: 'February', label: 'Fevereiro' },
+  { value: 'March', label: 'Março' },
+  { value: 'April', label: 'Abril' },
+  { value: 'May', label: 'Maio' },
+  { value: 'June', label: 'Junho' },
+  { value: 'July', label: 'Julho' },
+  { value: 'August', label: 'Agosto' },
+  { value: 'September', label: 'Setembro' },
+  { value: 'October', label: 'Outubro' },
+  { value: 'November', label: 'Novembro' },
+  { value: 'December', label: 'Dezembro' },
+];
+
+function counterpartyTypeLabel(value: string | null | undefined): string {
+  if (!value) return '—';
+  const k = String(value).toLowerCase();
+  if (k === 'bank') return 'Instituição';
+  if (k === 'broker') return 'Corretora';
+  return 'Contraparte';
+}
+
+function channelLabel(value: string | null | undefined): string {
+  if (!value) return '—';
+  const k = String(value).toLowerCase();
+  if (k === 'email') return 'E-mail';
+  if (k === 'whatsapp') return 'WhatsApp';
+  return '—';
+}
+
+const MONTH_TO_NUMBER: Record<string, number> = {
+  January: 1, February: 2, March: 3, April: 4, May: 5, June: 6,
+  July: 7, August: 8, September: 9, October: 10, November: 11, December: 12,
+};
+
+// Generate year options (current year + 2 years)
+const currentYear = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: 3 }, (_, i) => ({
+  value: String(currentYear + i),
+  label: String(currentYear + i),
+}));
+
+// ============================================
+// Utility Functions
+// ============================================
+
+/**
+ * Calculate the last business day of a given month/year
+ * This is used to sync the Fix leg's fixing date with the AVG leg
+ */
+function getLastBusinessDayOfMonth(year: number, month: number): string {
+  // month is 1-indexed (January = 1)
+  // Create a date for the last day of the month
+  const lastDay = new Date(year, month, 0); // Day 0 of next month = last day of current month
+  
+  // Move back to Friday if it falls on weekend
+  const dayOfWeek = lastDay.getDay();
+  if (dayOfWeek === 0) { // Sunday
+    lastDay.setDate(lastDay.getDate() - 2);
+  } else if (dayOfWeek === 6) { // Saturday
+    lastDay.setDate(lastDay.getDate() - 1);
+  }
+  
+  return lastDay.toISOString().split('T')[0];
+}
+
+/**
+ * Calculate the last business day of an AVGInter period
+ */
+function getLastBusinessDayFromEndDate(endDate: string): string {
+  const date = new Date(endDate);
+  const dayOfWeek = date.getDay();
+  if (dayOfWeek === 0) { // Sunday
+    date.setDate(date.getDate() - 2);
+  } else if (dayOfWeek === 6) { // Saturday
+    date.setDate(date.getDate() - 1);
+  }
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Apply template configuration to a trade
+ */
+function applyTemplate(template: TradeTemplate): Partial<TradeState> {
+  switch (template) {
+    case 'comprar_media':
+      // Comprar Média: Leg1=Sell AVG, Leg2=Buy Fix
+      return {
+        template,
+        leg1Operation: 'Venda',
+        leg1PriceType: RfqPriceType.AVG,
+        leg2Operation: 'Compra',
+        leg2PriceType: RfqPriceType.FIX,
+      };
+    case 'vender_media':
+      // Vender Média: Leg1=Buy AVG, Leg2=Sell Fix
+      return {
+        template,
+        leg1Operation: 'Compra',
+        leg1PriceType: RfqPriceType.AVG,
+        leg2Operation: 'Venda',
+        leg2PriceType: RfqPriceType.FIX,
+      };
+    case 'venda_fixo':
+      // Venda Fixo: Leg1=Buy C2R, Leg2=Sell Fix
+      return {
+        template,
+        leg1Operation: 'Compra',
+        leg1PriceType: RfqPriceType.C2R,
+        leg2Operation: 'Venda',
+        leg2PriceType: RfqPriceType.FIX,
+      };
+    case 'compra_fixo':
+      // Compra Fixo: Leg1=Sell C2R, Leg2=Buy Fix
+      return {
+        template,
+        leg1Operation: 'Venda',
+        leg1PriceType: RfqPriceType.C2R,
+        leg2Operation: 'Compra',
+        leg2PriceType: RfqPriceType.FIX,
+      };
+    case 'media_intermediaria':
+      // Média Intermediária: Leg1=Sell AVGInter, Leg2=Buy Fix
+      return {
+        template,
+        leg1Operation: 'Venda',
+        leg1PriceType: RfqPriceType.AVG_INTER,
+        leg2Operation: 'Compra',
+        leg2PriceType: RfqPriceType.FIX,
+      };
+    default:
+      return {};
+  }
+}
+
+/**
+ * Create a new empty trade state
+ */
+function createEmptyTrade(): TradeState {
+  return {
+    id: crypto.randomUUID(),
+    template: null,
+    leg1Operation: 'Venda',
+    leg1PriceType: '',
+    leg1Month: '',
+    leg1Year: String(currentYear),
+    leg1StartDate: '',
+    leg1EndDate: '',
+    leg2Operation: 'Compra',
+    leg2PriceType: '',
+    leg2FixingDate: '',
+  };
+}
+
+// ============================================
+// Main Component
+// ============================================
+export function RFQFormPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const soIdParam = searchParams.get('so_id');
+  const dealIdParam = searchParams.get('deal_id');
+  const quantityMtParam = searchParams.get('quantity_mt');
+  const sourceExposureIdParam = searchParams.get('source_exposure_id');
+
+  const initialSoId = soIdParam ? Number.parseInt(soIdParam, 10) : null;
+  const initialDealId = dealIdParam ? Number.parseInt(dealIdParam, 10) : null;
+  
+  // ============================================
+  // Form State
+  // ============================================
+  const [companyHeader, setCompanyHeader] = useState<'Alcast Brasil' | 'Alcast Trading'>('Alcast Brasil');
+  const [quantity, setQuantity] = useState('');
+  const [handoffSourceExposureId, setHandoffSourceExposureId] = useState<string | null>(null);
+
+  // Deal + SO selection (Deal-first)
+  const [selectedDealId, setSelectedDealId] = useState<number | null>(Number.isFinite(initialDealId as any) ? initialDealId : null);
+  const [selectedSoId, setSelectedSoId] = useState<number | null>(Number.isFinite(initialSoId as any) ? initialSoId : null);
+  const [formValidationMessage, setFormValidationMessage] = useState<string | null>(null);
+
+  // Lookup data for selection
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [isLookupLoading, setIsLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  
+  // Multi-trade state
+  const [trades, setTrades] = useState<TradeState[]>([createEmptyTrade()]);
+  
+  // Counterparty Selection
+  const [selectedCounterpartyIds, setSelectedCounterpartyIds] = useState<number[]>([]);
+  const [counterpartyFilter, setCounterpartyFilter] = useState<'all' | 'banks' | 'brokers'>('all');
+  const [counterpartySearch, setCounterpartySearch] = useState('');
+  
+  // Preview Texts
+  const [brokerPreviewText, setBrokerPreviewText] = useState('');
+  const [bankPreviewText, setBankPreviewText] = useState('');
+
+  // KYC Preflight (read-only)
+  const [kycPreflightByCounterpartyId, setKycPreflightByCounterpartyId] = useState<Record<number, KycPreflightResponse>>({});
+  const [isKycPreflightLoading, setIsKycPreflightLoading] = useState(false);
+  const [kycPreflightMessage, setKycPreflightMessage] = useState<string | null>(null);
+  
+  // RFQ Creation State
+  const [sendingStatus, setSendingStatus] = useState<'idle' | 'creating' | 'sending' | 'done' | 'error'>('idle');
+  const [sendProgress, setSendProgress] = useState<{ sent: number; total: number; errors: string[] }>({
+    sent: 0,
+    total: 0,
+    errors: [],
+  });
+  
+  // Hooks
+  const { isLoading: isPreviewLoading, error: previewError, generatePreview } = useRfqPreview();
+  const { counterparties, isLoading: isCounterpartiesLoading } = useCounterparties();
+  const { mutate: createRfq, error: createRfqError } = useCreateRfq();
+  const { mutate: sendWithTracking } = useSendRfqWithTracking();
+
+  // ============================================
+  // Lookup data (Deals + Orders)
+  // ============================================
+
+  useEffect(() => {
+    let isActive = true;
+    setLookupError(null);
+    setIsLookupLoading(true);
+
+    listDeals()
+      .then((rows) => {
+        if (!isActive) return;
+        setDeals(rows);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setLookupError('Não foi possível carregar Deals.');
+      })
+      .finally(() => {
+        if (isActive) setIsLookupLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  // Load SO/PO lists for the chosen deal (authoritative backend filter)
+  useEffect(() => {
+    let isActive = true;
+
+    if (!selectedDealId) {
+      setSalesOrders([]);
+      setPurchaseOrders([]);
+      return;
+    }
+
+    setLookupError(null);
+    setIsLookupLoading(true);
+
+    Promise.allSettled([
+      listSalesOrdersQuery({ deal_id: selectedDealId }),
+      listPurchaseOrdersQuery({ deal_id: selectedDealId }),
+    ])
+      .then((results) => {
+        if (!isActive) return;
+        const [soRes, poRes] = results;
+        if (soRes.status === 'fulfilled') setSalesOrders(soRes.value);
+        if (poRes.status === 'fulfilled') setPurchaseOrders(poRes.value);
+
+        if (soRes.status === 'rejected' || poRes.status === 'rejected') {
+          setLookupError('Não foi possível carregar SO/PO do Deal selecionado.');
+        }
+      })
+      .finally(() => {
+        if (isActive) setIsLookupLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedDealId]);
+
+  // If user came from a SO context, infer deal_id when possible
+  useEffect(() => {
+    if (!selectedSoId) return;
+
+    let isActive = true;
+    (async () => {
+      try {
+        const so = await getSalesOrder(selectedSoId);
+        if (!isActive) return;
+        if (typeof so.deal_id === 'number') {
+          setSelectedDealId(so.deal_id);
+        }
+      } catch {
+        // Ignore - selection UI will still allow manual deal selection
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedSoId]);
+
+  const selectedDeal = useMemo(() => {
+    if (!selectedDealId) return null;
+    return deals.find((d) => d.id === selectedDealId) || null;
+  }, [deals, selectedDealId]);
+
+  const salesOrdersForSelectedDeal = useMemo(() => {
+    return salesOrders.slice().sort((a, b) => (a.so_number || '').localeCompare(b.so_number || ''));
+  }, [salesOrders]);
+
+  const purchaseOrdersInSelectedDeal = useMemo(() => {
+    return purchaseOrders.slice().sort((a, b) => (a.po_number || '').localeCompare(b.po_number || ''));
+  }, [purchaseOrders]);
+
+  // Keep SO selection consistent when deal changes; auto-select when only one SO exists
+  useEffect(() => {
+    if (!selectedDealId) return;
+
+    if (selectedSoId && !salesOrdersForSelectedDeal.some((so) => so.id === selectedSoId)) {
+      setSelectedSoId(null);
+    }
+
+    if (!selectedSoId && salesOrdersForSelectedDeal.length === 1) {
+      setSelectedSoId(salesOrdersForSelectedDeal[0].id);
+    }
+  }, [selectedDealId, selectedSoId, salesOrdersForSelectedDeal]);
+
+  // ============================================
+  // KYC helpers
+  // ============================================
+
+  const getCounterpartyNameById = useCallback((id: number): string => {
+    const cp = counterparties.find(c => c.id === id);
+    return cp?.name || `ID ${id}`;
+  }, [counterparties]);
+
+  const parseKycGateError = useCallback((err: ApiError | null): KycGateErrorDetail | null => {
+    const obj = err?.detail_obj;
+    if (obj && typeof obj === 'object' && typeof (obj as any).code === 'string') {
+      return obj as KycGateErrorDetail;
+    }
+
+    const body = err?.response_body as any;
+    const detail = body?.detail;
+    if (detail && typeof detail === 'object' && typeof detail.code === 'string') {
+      return detail as KycGateErrorDetail;
+    }
+
+    return null;
+  }, []);
+
+  const formatPreflightReason = useCallback((preflight: KycPreflightResponse): string => {
+    const missingCount = preflight.missing_items?.length || 0;
+    const expiredCount = preflight.expired_items?.length || 0;
+    if (missingCount || expiredCount) {
+      const parts: string[] = [];
+      if (missingCount) parts.push(`missing=${missingCount}`);
+      if (expiredCount) parts.push(`expired=${expiredCount}`);
+      return `${preflight.reason_code} (${parts.join(', ')})`;
+    }
+    return preflight.reason_code;
+  }, []);
+
+  // ============================================
+  // Handoff prefill (Inbox -> RFQ)
+  // ============================================
+  useEffect(() => {
+    if (handoffSourceExposureId === null && sourceExposureIdParam) {
+      setHandoffSourceExposureId(sourceExposureIdParam);
+    }
+    if (!quantity && quantityMtParam) {
+      const parsed = Number(quantityMtParam);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        setQuantity(String(parsed));
+      }
+    }
+  }, [handoffSourceExposureId, sourceExposureIdParam, quantity, quantityMtParam]);
+
+  // ============================================
+  // KYC preflight fetch (selected counterparties)
+  // ============================================
+
+  useEffect(() => {
+    let isActive = true;
+    setKycPreflightMessage(null);
+
+    if (selectedCounterpartyIds.length === 0) {
+      setKycPreflightByCounterpartyId({});
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setIsKycPreflightLoading(true);
+      try {
+        const results = await Promise.allSettled(
+          selectedCounterpartyIds.map(async (id) => ({
+            id,
+            preflight: await getCounterpartyKycPreflight(id),
+          }))
+        );
+
+        if (!isActive) return;
+
+        const nextMap: Record<number, KycPreflightResponse> = {};
+        let hadErrors = false;
+
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            nextMap[r.value.id] = r.value.preflight;
+          } else {
+            hadErrors = true;
+          }
+        }
+
+        setKycPreflightByCounterpartyId(nextMap);
+
+        if (hadErrors) {
+          setKycPreflightMessage('Não foi possível checar KYC de todas as contrapartes selecionadas.');
+        }
+      } finally {
+        if (isActive) setIsKycPreflightLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      isActive = false;
+      clearTimeout(timeoutId);
+    };
+  }, [selectedCounterpartyIds]);
+
+  // ============================================
+  // Auto-sync Leg 2 fixing date based on Leg 1 period
+  // ============================================
+  const syncLeg2FixingDate = useCallback((tradeIndex: number) => {
+    setTrades(prev => {
+      const trade = prev[tradeIndex];
+      if (!trade) return prev;
+      
+      let newFixingDate = trade.leg2FixingDate;
+      
+      if (trade.leg1PriceType === RfqPriceType.AVG && trade.leg1Month && trade.leg1Year) {
+        // AVG: Last business day of the reference month
+        const monthNum = MONTH_TO_NUMBER[trade.leg1Month];
+        if (monthNum) {
+          newFixingDate = getLastBusinessDayOfMonth(parseInt(trade.leg1Year), monthNum);
+        }
+      } else if (trade.leg1PriceType === RfqPriceType.AVG_INTER && trade.leg1EndDate) {
+        // AVGInter: Last business day based on end date
+        newFixingDate = getLastBusinessDayFromEndDate(trade.leg1EndDate);
+      } else if (trade.leg1PriceType === RfqPriceType.C2R && trade.leg1EndDate) {
+        // C2R: Use the same end date concept
+        newFixingDate = getLastBusinessDayFromEndDate(trade.leg1EndDate);
+      }
+      
+      if (newFixingDate !== trade.leg2FixingDate) {
+        const updated = [...prev];
+        updated[tradeIndex] = { ...trade, leg2FixingDate: newFixingDate };
+        return updated;
+      }
+      return prev;
+    });
+  }, []);
+
+  // Auto-sync when leg1 period changes
+  useEffect(() => {
+    trades.forEach((trade, index) => {
+      if (trade.leg2PriceType === RfqPriceType.FIX) {
+        syncLeg2FixingDate(index);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades.map(t => `${t.leg1Month}-${t.leg1Year}-${t.leg1EndDate}-${t.leg1PriceType}`).join(','), syncLeg2FixingDate]);
+  
+  // ============================================
+  // Computed Values
+  // ============================================
+  const filteredCounterparties = useMemo(() => {
+    let result = counterparties.filter(cp => cp.active !== false);
+    
+    // Apply type filter
+    if (counterpartyFilter === 'banks') {
+      result = result.filter(cp => 
+        cp.type?.toLowerCase().includes('banco') ||
+        cp.name?.toLowerCase().includes('banco')
+      );
+    } else if (counterpartyFilter === 'brokers') {
+      result = result.filter(cp => 
+        cp.type?.toLowerCase().includes('broker') ||
+        cp.name?.toLowerCase().includes('lme')
+      );
+    }
+    
+    // Apply search filter
+    if (counterpartySearch) {
+      const search = counterpartySearch.toLowerCase();
+      result = result.filter(cp => 
+        cp.name?.toLowerCase().includes(search) ||
+        cp.type?.toLowerCase().includes(search)
+      );
+    }
+    
+    return result;
+  }, [counterparties, counterpartyFilter, counterpartySearch]);
+
+  const selectedCounterparties = useMemo(() => {
+    return counterparties
+      .filter(cp => selectedCounterpartyIds.includes(cp.id))
+      .map(cp => ({
+        ...cp,
+        language: getLanguageForCounterparty(cp),
+      }));
+  }, [counterparties, selectedCounterpartyIds]);
+
+  const blockedKycCounterpartyIds = useMemo(() => {
+    return selectedCounterpartyIds.filter((id) => {
+      const preflight = kycPreflightByCounterpartyId[id];
+      return preflight ? !preflight.allowed : false;
+    });
+  }, [selectedCounterpartyIds, kycPreflightByCounterpartyId]);
+
+  const isKycBlocked = blockedKycCounterpartyIds.length > 0;
+
+  const hasBrokers = selectedCounterparties.some(cp => cp.language === 'en');
+  const hasBanks = selectedCounterparties.some(cp => cp.language === 'pt');
+
+  // ============================================
+  // Trade Management
+  // ============================================
+  const updateTrade = (index: number, updates: Partial<TradeState>) => {
+    setTrades(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], ...updates };
+      return updated;
+    });
+  };
+
+  const handleTemplateChange = (index: number, template: TradeTemplate) => {
+    const templateConfig = applyTemplate(template);
+    updateTrade(index, templateConfig);
+  };
+
+  const addTrade = () => {
+    setTrades(prev => [...prev, createEmptyTrade()]);
+  };
+
+  const removeTrade = (index: number) => {
+    if (trades.length > 1) {
+      setTrades(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  // ============================================
+  // Counterparty Selection
+  // ============================================
+  const toggleCounterparty = (id: number) => {
+    setSelectedCounterpartyIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const selectAllFiltered = () => {
+    const filteredIds = filteredCounterparties.map(cp => cp.id);
+    setSelectedCounterpartyIds(prev => {
+      const newIds = new Set([...prev, ...filteredIds]);
+      return Array.from(newIds);
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedCounterpartyIds([]);
+  };
+
+  // ============================================
+  // Build Preview Request
+  // ============================================
+  const buildPreviewRequest = (language: 'en' | 'pt') => {
+    const qty = parseFloat(quantity) || 0;
+    const trade = trades[0]; // For now, build from first trade
+    
+    const leg1Side = trade.leg1Operation === 'Compra' ? RfqSide.BUY : RfqSide.SELL;
+    const leg2Side = trade.leg2Operation === 'Compra' ? RfqSide.BUY : RfqSide.SELL;
+    
+    return {
+      trade_type: RfqTradeType.SWAP,
+      leg1: {
+        side: leg1Side,
+        price_type: trade.leg1PriceType as RfqPriceType,
+        quantity_mt: qty,
+        month_name: trade.leg1PriceType === RfqPriceType.AVG ? trade.leg1Month : undefined,
+        year: trade.leg1PriceType === RfqPriceType.AVG ? parseInt(trade.leg1Year) : undefined,
+        start_date: trade.leg1PriceType === RfqPriceType.AVG_INTER ? trade.leg1StartDate : undefined,
+        end_date: trade.leg1PriceType === RfqPriceType.AVG_INTER ? trade.leg1EndDate : undefined,
+        fixing_date: undefined,
+      },
+      leg2: {
+        side: leg2Side,
+        price_type: trade.leg2PriceType as RfqPriceType,
+        quantity_mt: qty,
+        fixing_date: trade.leg2FixingDate || undefined,
+      },
+      sync_ppt: true,
+      company_header: companyHeader,
+      company_label_for_payoff: 'Alcast',
+      language,
+    };
+  };
+  
+  // ============================================
+  // Handle Generate Preview
+  // ============================================
+  const handleGeneratePreview = async () => {
+    const firstTrade = trades[0];
+    if (!firstTrade.leg1PriceType || !firstTrade.leg2PriceType || !quantity) {
+      return;
+    }
+    
+    try {
+      // Always generate BOTH previews (EN for Brokers, PT for Banks)
+      const [brokerResult, bankResult] = await Promise.all([
+        generatePreview(buildPreviewRequest('en')),
+        generatePreview(buildPreviewRequest('pt')),
+      ]);
+      
+      if (brokerResult) {
+        setBrokerPreviewText(brokerResult.text);
+      }
+      if (bankResult) {
+        setBankPreviewText(bankResult.text);
+      }
+    } catch (err) {
+      console.error('Preview error:', err);
+    }
+  };
+  
+  // ============================================
+  // Compute Period String
+  // ============================================
+  const computePeriodString = (): string => {
+    const trade = trades[0];
+    if (trade.leg1PriceType === RfqPriceType.AVG && trade.leg1Month && trade.leg1Year) {
+      return `${trade.leg1Month} ${trade.leg1Year}`;
+    }
+    if (trade.leg1PriceType === RfqPriceType.AVG_INTER && trade.leg1StartDate && trade.leg1EndDate) {
+      return `${trade.leg1StartDate} - ${trade.leg1EndDate}`;
+    }
+    return `${new Date().toISOString().slice(0, 7)}`;
+  };
+  
+  // ============================================
+  // Handle Create and Send RFQ
+  // ============================================
+  const handleCreateAndSendRfq = async () => {
+    setFormValidationMessage(null);
+
+    if (!selectedDealId) {
+      setFormValidationMessage('Selecione o Deal para registrar a RFQ.');
+      return;
+    }
+
+    if (!selectedSoId) {
+      setFormValidationMessage('Selecione o Pedido de Venda (SO) para registrar a RFQ.');
+      return;
+    }
+
+    if ((!brokerPreviewText && !bankPreviewText) || selectedCounterpartyIds.length === 0) {
+      return;
+    }
+
+    setKycPreflightMessage(null);
+
+    // Deterministic, read-only preflight (authoritative backend)
+    try {
+      setIsKycPreflightLoading(true);
+      const results = await Promise.allSettled(
+        selectedCounterpartyIds.map(async (id) => ({
+          id,
+          preflight: await getCounterpartyKycPreflight(id),
+        }))
+      );
+
+      const nextMap: Record<number, KycPreflightResponse> = { ...kycPreflightByCounterpartyId };
+      const blocked: Array<{ id: number; preflight: KycPreflightResponse }> = [];
+      let hadErrors = false;
+
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          nextMap[r.value.id] = r.value.preflight;
+          if (!r.value.preflight.allowed) {
+            blocked.push({ id: r.value.id, preflight: r.value.preflight });
+          }
+        } else {
+          hadErrors = true;
+        }
+      }
+
+      setKycPreflightByCounterpartyId(nextMap);
+
+      if (blocked.length > 0) {
+        const first = blocked[0];
+        setKycPreflightMessage(
+          `KYC bloqueado: ${getCounterpartyNameById(first.id)} — ${formatPreflightReason(first.preflight)}`
+        );
+        return;
+      }
+
+      if (hadErrors) {
+        setKycPreflightMessage('Não foi possível checar KYC de todas as contrapartes selecionadas.');
+        return;
+      }
+    } finally {
+      setIsKycPreflightLoading(false);
+    }
+    
+    setSendingStatus('creating');
+    setSendProgress({ sent: 0, total: selectedCounterpartyIds.length, errors: [] });
+    
+    try {
+      // Build invitations from selected counterparties
+      const invitations: RfqInvitationCreate[] = selectedCounterparties.map(cp => ({
+        counterparty_id: cp.id,
+        counterparty_name: cp.name,
+        message_text: cp.language === 'en' ? brokerPreviewText : bankPreviewText,
+        status: 'pending',
+      }));
+      
+      // Build trade specs for storage
+      const tradeSpecs = trades.map(trade => ({
+        trade_type: 'Swap',
+        leg1: {
+          side: trade.leg1Operation === 'Compra' ? 'buy' : 'sell',
+          price_type: trade.leg1PriceType,
+          quantity_mt: parseFloat(quantity) || 0,
+          month_name: trade.leg1Month || undefined,
+          year: trade.leg1Year ? parseInt(trade.leg1Year) : undefined,
+          start_date: trade.leg1StartDate || undefined,
+          end_date: trade.leg1EndDate || undefined,
+        },
+        leg2: {
+          side: trade.leg2Operation === 'Compra' ? 'buy' : 'sell',
+          price_type: trade.leg2PriceType,
+          quantity_mt: parseFloat(quantity) || 0,
+          fixing_date: trade.leg2FixingDate || undefined,
+        },
+        company_header: companyHeader,
+        sync_ppt: true,
+      }));
+      
+      // Create RFQ data
+      const rfqData: RfqCreate = {
+        // rfq_number intentionally omitted: backend generates monthly number
+        deal_id: selectedDealId,
+        so_id: selectedSoId,
+        quantity_mt: parseFloat(quantity) || 0,
+        period: computePeriodString(),
+        status: RfqStatus.DRAFT,
+        message_text: brokerPreviewText || bankPreviewText,
+        invitations,
+        trade_specs: tradeSpecs,
+      };
+      
+      // Create RFQ
+      const createdRfq = await createRfq(rfqData);
+      
+      if (!createdRfq) {
+        const gate = parseKycGateError(createRfqError);
+        if (gate) {
+          const cpId = typeof gate.counterparty_id === 'number' ? gate.counterparty_id : null;
+          const cpName = cpId !== null ? getCounterpartyNameById(cpId) : 'Contraparte';
+          setKycPreflightMessage(`Não foi possível validar a contraparte selecionada: ${cpName}.`);
+          return;
+        }
+        throw new Error(UX_COPY.errors.title);
+      }
+      
+      setSendingStatus('sending');
+      
+      // Send to each counterparty with tracking
+      const errors: string[] = [];
+      let sentCount = 0;
+      
+      for (const cp of selectedCounterparties) {
+        try {
+          await sendWithTracking(createdRfq.id, {
+            channel: cp.rfq_channel_type || 'email',
+            status: SendStatus.QUEUED,
+            metadata: {
+              counterparty_id: cp.id,
+              counterparty_name: cp.name,
+              language: cp.language,
+            },
+          });
+          sentCount++;
+          setSendProgress(prev => ({ ...prev, sent: sentCount }));
+        } catch (err) {
+          errors.push(UX_COPY.errors.title);
+          console.error('Erro ao enviar mensagem para contraparte', err);
+        }
+      }
+      
+      setSendProgress(prev => ({ ...prev, errors }));
+      setSendingStatus('done');
+      
+      // Navigate to RFQ detail after short delay
+      setTimeout(() => {
+        navigate(`/financeiro/rfqs/${createdRfq.id}`);
+      }, 2000);
+      
+    } catch (err) {
+      console.error('Error creating/sending RFQ:', err);
+      setSendingStatus('error');
+      setSendProgress(prev => ({
+        ...prev,
+        errors: [...prev.errors, UX_COPY.errors.title],
+      }));
+    }
+  };
+
+  // ============================================
+  // Render Leg 1 Conditional Fields
+  // ============================================
+  const renderLeg1Fields = (trade: TradeState, index: number) => {
+    switch (trade.leg1PriceType) {
+      case RfqPriceType.AVG:
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <FioriSelect
+              label="Mês"
+              value={trade.leg1Month}
+              onChange={(e) => updateTrade(index, { leg1Month: e.target.value })}
+              fullWidth
+            >
+              <option value="">Selecione...</option>
+              {MONTH_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </FioriSelect>
+            <FioriSelect
+              label="Ano"
+              value={trade.leg1Year}
+              onChange={(e) => updateTrade(index, { leg1Year: e.target.value })}
+              fullWidth
+            >
+              {YEAR_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </FioriSelect>
+          </div>
+        );
+      case RfqPriceType.AVG_INTER:
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <FioriInput
+              label="Data Início"
+              type="date"
+              value={trade.leg1StartDate}
+              onChange={(e) => updateTrade(index, { leg1StartDate: e.target.value })}
+              fullWidth
+            />
+            <FioriInput
+              label="Data Fim"
+              type="date"
+              value={trade.leg1EndDate}
+              onChange={(e) => updateTrade(index, { leg1EndDate: e.target.value })}
+              fullWidth
+            />
+          </div>
+        );
+      case RfqPriceType.C2R:
+        return (
+          <FioriInput
+            label="Data de Referência"
+            type="date"
+            value={trade.leg1EndDate}
+            onChange={(e) => updateTrade(index, { leg1EndDate: e.target.value })}
+            fullWidth
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  // ============================================
+  // Render Trade Card
+  // ============================================
+  const renderTradeCard = (trade: TradeState, index: number) => {
+    return (
+      <FioriCard key={trade.id} className="mb-4">
+        {/* Trade Header with Templates */}
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--sapTile_BorderColor,#e5e5e5)]">
+          <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] m-0">
+            Estrutura {index + 1}
+          </h3>
+          {trades.length > 1 && (
+            <FioriButton
+              variant="ghost"
+              icon={<Trash2 className="w-4 h-4" />}
+              onClick={() => removeTrade(index)}
+              className="text-[var(--sapNegativeColor,#bb0000)]"
+            >
+              Remover
+            </FioriButton>
+          )}
+        </div>
+
+        {/* Template Buttons */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {TRADE_TEMPLATES.map(tmpl => (
+            <button
+              key={tmpl.value}
+              type="button"
+              onClick={() => handleTemplateChange(index, tmpl.value)}
+              className={`px-3 py-1.5 rounded text-[12px] font-medium transition-colors border ${
+                trade.template === tmpl.value
+                  ? 'bg-[var(--sapSelectedColor,#0a6ed1)] text-white border-[var(--sapSelectedColor,#0a6ed1)]'
+                  : 'bg-[var(--sapButton_Background,#fff)] text-[var(--sapButton_TextColor,#0854a0)] border-[var(--sapButton_BorderColor,#0854a0)] hover:bg-[var(--sapButton_Hover_Background,#ebf5fe)]'
+              }`}
+              title={tmpl.description}
+            >
+              {tmpl.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Legs Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Leg 1 - Floating */}
+          <div className="p-4 bg-[var(--sapList_Background,#fff)] border border-[var(--sapTile_BorderColor,#e5e5e5)] rounded">
+            <h4 className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapTile_TitleTextColor,#131e29)] mb-3">
+              Parte 1 <span className="font-normal text-[var(--sapContent_LabelColor)]">(Flutuante)</span>
+            </h4>
+            <div className="space-y-3">
+              <FioriRadioGroup
+                label="Operação"
+                name={`leg1Op-${trade.id}`}
+                value={trade.leg1Operation}
+                onChange={(v) => updateTrade(index, { leg1Operation: v as 'Compra' | 'Venda' })}
+                options={[
+                  { value: 'Compra', label: 'Compra' },
+                  { value: 'Venda', label: 'Venda' },
+                ]}
+                horizontal
+              />
+              <FioriSelect
+                label="Tipo de Preço"
+                value={trade.leg1PriceType}
+                onChange={(e) => updateTrade(index, { leg1PriceType: e.target.value as RfqPriceType })}
+                fullWidth
+              >
+                <option value="">Selecione...</option>
+                {PRICE_TYPE_OPTIONS.filter(opt => opt.value !== 'Fix').map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </FioriSelect>
+              {renderLeg1Fields(trade, index)}
+            </div>
+          </div>
+
+          {/* Leg 2 - Fix */}
+          <div className="p-4 bg-[var(--sapList_Background,#fff)] border border-[var(--sapTile_BorderColor,#e5e5e5)] rounded">
+            <h4 className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapTile_TitleTextColor,#131e29)] mb-3">
+              Parte 2 <span className="font-normal text-[var(--sapContent_LabelColor)]">(Fixo)</span>
+            </h4>
+            <div className="space-y-3">
+              <FioriRadioGroup
+                label="Operação"
+                name={`leg2Op-${trade.id}`}
+                value={trade.leg2Operation}
+                onChange={(v) => updateTrade(index, { leg2Operation: v as 'Compra' | 'Venda' })}
+                options={[
+                  { value: 'Compra', label: 'Compra' },
+                  { value: 'Venda', label: 'Venda' },
+                ]}
+                horizontal
+              />
+              <FioriSelect
+                label="Tipo de Preço"
+                value={trade.leg2PriceType}
+                onChange={(e) => updateTrade(index, { leg2PriceType: e.target.value as RfqPriceType })}
+                fullWidth
+                disabled
+              >
+                <option value="">Selecione...</option>
+                <option value="Fix">Preço fixo</option>
+              </FioriSelect>
+              <FioriInput
+                label="Data de referência (sincronizada)"
+                type="date"
+                value={trade.leg2FixingDate}
+                onChange={(e) => updateTrade(index, { leg2FixingDate: e.target.value })}
+                fullWidth
+                disabled
+              />
+              {trade.leg2FixingDate && (
+                <div className="text-[11px] text-[var(--sapContent_LabelColor,#6a6d70)] italic">
+                  Data sincronizada: {new Date(trade.leg2FixingDate).toLocaleDateString('pt-BR')}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </FioriCard>
+    );
+  };
+
+  // ============================================
+  // Render
+  // ============================================
+  return (
+    <div className="bg-[var(--sapBackgroundColor,#f7f7f7)] min-h-screen p-4">
+      <div className="max-w-[1200px] mx-auto">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-4">
+          <FioriButton 
+            variant="ghost" 
+            icon={<ChevronLeft className="w-4 h-4" />}
+            onClick={() => navigate('/financeiro/rfqs')}
+          >
+            Voltar
+          </FioriButton>
+          <h1 className="font-['72:Regular',sans-serif] text-[24px] text-[var(--sapPageHeader_TextColor,#131e29)] leading-[normal] m-0 flex-1">
+            Nova cotação
+          </h1>
+          
+          {/* Company Header Selector */}
+          <FioriSelect
+            value={companyHeader}
+            onChange={(e) => setCompanyHeader(e.target.value as 'Alcast Brasil' | 'Alcast Trading')}
+          >
+            {COMPANY_HEADER_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </FioriSelect>
+        </div>
+
+        {/* Contexto de origem (quando aplicável) */}
+        {handoffSourceExposureId && (
+          <div className="mb-4 p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapTile_Background)]">
+            <div className="text-sm font-['72:Bold',sans-serif]">Origem: Pendências</div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)]">
+              Exposição nº {handoffSourceExposureId}
+              {soIdParam ? ` (Pedido de Venda nº ${soIdParam})` : ''}
+            </div>
+          </div>
+        )}
+
+        {/* Deal + SO selection */}
+        <FioriCard className="mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)] mb-1">
+                Deal (obrigatório)
+              </div>
+              <FioriSelect
+                value={selectedDealId ?? ''}
+                onChange={(e) => {
+                  const next = e.target.value ? Number.parseInt(e.target.value, 10) : null;
+                  setSelectedDealId(next);
+                }}
+                disabled={isLookupLoading}
+              >
+                <option value="" disabled>
+                  {isLookupLoading ? 'Carregando...' : 'Selecione um Deal'}
+                </option>
+                {deals
+                  .slice()
+                  .sort((a, b) => (a.reference_name || '').localeCompare(b.reference_name || ''))
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.reference_name ? d.reference_name : `Deal #${d.id}`}
+                    </option>
+                  ))}
+              </FioriSelect>
+            </div>
+
+            <div>
+              <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)] mb-1">
+                Pedido de Venda (SO) (obrigatório)
+              </div>
+              <FioriSelect
+                value={selectedSoId ?? ''}
+                onChange={(e) => {
+                  const next = e.target.value ? Number.parseInt(e.target.value, 10) : null;
+                  setSelectedSoId(next);
+                }}
+                disabled={!selectedDealId || isLookupLoading}
+              >
+                <option value="" disabled>
+                  {!selectedDealId ? 'Selecione o Deal primeiro' : isLookupLoading ? 'Carregando...' : 'Selecione um SO'}
+                </option>
+                {salesOrdersForSelectedDeal.map((so) => {
+                  return (
+                    <option key={so.id} value={so.id}>
+                      {so.so_number}
+                    </option>
+                  );
+                })}
+              </FioriSelect>
+            </div>
+          </div>
+
+          {lookupError && (
+            <div className="mt-2 text-[12px] text-[var(--sapNegativeColor,#bb0000)]">
+              {lookupError}
+            </div>
+          )}
+
+          {formValidationMessage && (
+            <div className="mt-2 text-[12px] text-[var(--sapNegativeColor,#bb0000)]">
+              {formValidationMessage}
+            </div>
+          )}
+
+          {selectedDealId && (
+            <div className="mt-2 text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)]">
+              <span className="mr-3">Deal: {selectedDeal?.reference_name ? selectedDeal.reference_name : `#${selectedDealId}`}</span>
+              <span className="mr-3">SOs: {salesOrdersForSelectedDeal.length}</span>
+              <span>POs: {purchaseOrdersInSelectedDeal.length}</span>
+            </div>
+          )}
+
+          {selectedDealId && (
+            <div className="mt-3">
+              <div className="text-[12px] font-['72:Bold',sans-serif] text-[var(--sapTile_TitleTextColor,#131e29)] mb-1">
+                POs vinculadas ao Deal
+              </div>
+              {purchaseOrdersInSelectedDeal.length === 0 ? (
+                <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)]">
+                  Nenhuma PO encontrada para este Deal.
+                </div>
+              ) : (
+                <div className="max-h-[140px] overflow-auto border border-[var(--sapTile_BorderColor,#e5e5e5)] rounded bg-[var(--sapList_Background,#fff)]">
+                  {purchaseOrdersInSelectedDeal.slice(0, 25).map((po) => (
+                    <div
+                      key={po.id}
+                      className="px-3 py-2 flex items-center justify-between border-b last:border-b-0 border-[var(--sapTile_BorderColor,#e5e5e5)]"
+                    >
+                      <div className="text-[12px] text-[var(--sapTile_TitleTextColor,#131e29)]">
+                        <span className="font-['72:Semibold_Duplex',sans-serif]">{po.po_number}</span>
+                        {po.supplier?.name ? (
+                          <span className="ml-2 text-[var(--sapContent_LabelColor,#6a6d70)]">{po.supplier.name}</span>
+                        ) : null}
+                      </div>
+                      <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)]">
+                        {po.total_quantity_mt} {po.unit || 'MT'}
+                      </div>
+                    </div>
+                  ))}
+                  {purchaseOrdersInSelectedDeal.length > 25 ? (
+                    <div className="px-3 py-2 text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)]">
+                      Mostrando 25 de {purchaseOrdersInSelectedDeal.length} POs.
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
+        </FioriCard>
+
+        {/* Quantity */}
+        <FioriCard className="mb-4">
+          <FioriInput
+            label="Quantidade (t)"
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            placeholder=""
+            fullWidth
+          />
+        </FioriCard>
+
+        {/* Trade Cards */}
+        {trades.map((trade, index) => renderTradeCard(trade, index))}
+
+        {/* Add Trade Button */}
+        <div className="mb-4">
+          <FioriButton 
+            variant="default" 
+            icon={<Plus className="w-4 h-4" />}
+            onClick={addTrade}
+          >
+            Adicionar estrutura
+          </FioriButton>
+        </div>
+
+        {/* Texto para envio */}
+        <FioriCard className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] leading-[normal] m-0">
+              Texto para envio
+            </h3>
+            <div className="flex gap-2">
+              <FioriButton 
+                variant="default" 
+                onClick={handleGeneratePreview}
+                disabled={isPreviewLoading || !trades[0]?.leg1PriceType || !trades[0]?.leg2PriceType || !quantity}
+                icon={isPreviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+              >
+                {isPreviewLoading ? 'Gerando...' : 'Gerar texto'}
+              </FioriButton>
+            </div>
+          </div>
+          
+          {previewError && (
+            <div className="mb-3 p-3 bg-[var(--sapErrorBackground,#ffebeb)] text-[var(--sapNegativeColor,#bb0000)] rounded text-sm">
+              {UX_COPY.errors.title}
+            </div>
+          )}
+          
+          {/* Dual Preview - Side by Side */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Brokers Preview (English) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapTile_TitleTextColor,#131e29)]">
+                    Texto em inglês (quando aplicável)
+                </h4>
+                <FioriButton 
+                  variant="ghost" 
+                  icon={<Copy className="w-3 h-3" />}
+                  onClick={() => brokerPreviewText && navigator.clipboard.writeText(brokerPreviewText)}
+                  disabled={!brokerPreviewText}
+                >
+                  Copiar
+                </FioriButton>
+              </div>
+              <FioriTextarea
+                value={brokerPreviewText || '(Clique em "Gerar texto")'}
+                readOnly
+                rows={12}
+                fullWidth
+                className="font-['Courier_New',monospace] text-[11px] bg-[var(--sapField_ReadOnly_Background,#f7f7f7)]"
+              />
+            </div>
+
+            {/* Banks Preview (Portuguese) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapTile_TitleTextColor,#131e29)]">
+                  Texto em português
+                </h4>
+                <FioriButton 
+                  variant="ghost" 
+                  icon={<Copy className="w-3 h-3" />}
+                  onClick={() => bankPreviewText && navigator.clipboard.writeText(bankPreviewText)}
+                  disabled={!bankPreviewText}
+                >
+                  Copiar
+                </FioriButton>
+              </div>
+              <FioriTextarea
+                value={bankPreviewText || '(Clique em "Gerar texto")'}
+                readOnly
+                rows={12}
+                fullWidth
+                className="font-['Courier_New',monospace] text-[11px] bg-[var(--sapField_ReadOnly_Background,#f7f7f7)]"
+              />
+            </div>
+          </div>
+        </FioriCard>
+
+        {/* Counterparty Selection Section */}
+        <FioriCard>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-[var(--sapContent_IconColor,#0854a0)]" />
+              <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] leading-[normal] m-0">
+                Contrapartes
+              </h3>
+            </div>
+            <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)]">
+              {selectedCounterpartyIds.length} selecionado(s) de {filteredCounterparties.length} disponíveis
+            </div>
+          </div>
+
+          {/* Search and Filters */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <FioriInput
+              placeholder="Buscar contraparte..."
+              value={counterpartySearch}
+              onChange={(e) => setCounterpartySearch(e.target.value)}
+              className="flex-1 min-w-[200px]"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCounterpartyFilter('all')}
+                className={`px-3 py-1.5 rounded text-[12px] font-medium border transition-colors ${
+                  counterpartyFilter === 'all'
+                    ? 'bg-[var(--sapSelectedColor,#0a6ed1)] text-white border-[var(--sapSelectedColor,#0a6ed1)]'
+                    : 'bg-white border-[var(--sapButton_BorderColor,#0854a0)] text-[var(--sapButton_TextColor,#0854a0)]'
+                }`}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setCounterpartyFilter('banks')}
+                className={`px-3 py-1.5 rounded text-[12px] font-medium border transition-colors ${
+                  counterpartyFilter === 'banks'
+                    ? 'bg-[var(--sapSelectedColor,#0a6ed1)] text-white border-[var(--sapSelectedColor,#0a6ed1)]'
+                    : 'bg-white border-[var(--sapButton_BorderColor,#0854a0)] text-[var(--sapButton_TextColor,#0854a0)]'
+                }`}
+              >
+                Instituições
+              </button>
+              <button
+                type="button"
+                onClick={() => setCounterpartyFilter('brokers')}
+                className={`px-3 py-1.5 rounded text-[12px] font-medium border transition-colors ${
+                  counterpartyFilter === 'brokers'
+                    ? 'bg-[var(--sapSelectedColor,#0a6ed1)] text-white border-[var(--sapSelectedColor,#0a6ed1)]'
+                    : 'bg-white border-[var(--sapButton_BorderColor,#0854a0)] text-[var(--sapButton_TextColor,#0854a0)]'
+                }`}
+              >
+                Corretoras
+              </button>
+              <button
+                type="button"
+                onClick={selectAllFiltered}
+                className="px-3 py-1.5 rounded text-[12px] font-medium text-[var(--sapLink_Color,#0854a0)] hover:underline"
+              >
+                ✓ Todos
+              </button>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="px-3 py-1.5 rounded text-[12px] font-medium text-[var(--sapNegativeColor,#bb0000)] hover:underline"
+              >
+                × Limpar
+              </button>
+            </div>
+          </div>
+
+          {/* Counterparty List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2">
+            {isCounterpartiesLoading ? (
+              <div className="col-span-2 flex items-center justify-center p-8 text-[var(--sapContent_LabelColor,#6a6d70)]">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando contrapartes...
+              </div>
+            ) : filteredCounterparties.length === 0 ? (
+              <div className="col-span-2 text-center p-8 text-[var(--sapContent_LabelColor,#6a6d70)]">
+                Nenhuma contraparte encontrada.
+              </div>
+            ) : (
+              filteredCounterparties.map(cp => {
+                const isSelected = selectedCounterpartyIds.includes(cp.id);
+                const lang = getLanguageForCounterparty(cp);
+                const preflight = isSelected ? kycPreflightByCounterpartyId[cp.id] : undefined;
+                return (
+                  <div
+                    key={cp.id}
+                    onClick={() => toggleCounterparty(cp.id)}
+                    className={`flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-[var(--sapSelectedColor,#0a6ed1)] bg-opacity-10 border-[var(--sapSelectedColor,#0a6ed1)]'
+                        : 'bg-white border-[var(--sapTile_BorderColor,#e5e5e5)] hover:border-[var(--sapContent_ForegroundColor,#6a6d70)]'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {}}
+                      className="w-4 h-4 accent-[var(--sapSelectedColor,#0a6ed1)]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-[14px] text-[var(--sapTextColor,#32363a)] truncate">
+                        {cp.name}
+                      </div>
+                      <div className="text-[11px] text-[var(--sapContent_LabelColor,#6a6d70)] truncate">
+                        {counterpartyTypeLabel(cp.type)} • {channelLabel(cp.rfq_channel_type)}
+                      </div>
+                    </div>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                      lang === 'en' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                    }`}>
+                      {lang === 'en' ? 'EN' : 'PT'}
+                    </span>
+                    {isSelected && (
+                      preflight ? (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          preflight.allowed ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {preflight.allowed ? 'Validada' : 'Restrita'}
+                        </span>
+                      ) : isKycPreflightLoading ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">
+                          Validando...
+                        </span>
+                      ) : null
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* KYC Preflight Summary */}
+          {selectedCounterpartyIds.length > 0 && (
+            <div className="mt-3 rounded border border-[var(--sapTile_BorderColor,#e5e5e5)] bg-[var(--sapGroup_ContentBackground,#ffffff)] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[12px] text-[var(--sapTextColor,#32363a)] font-medium">
+                  KYC Preflight
+                </div>
+                <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)]">
+                  {isKycPreflightLoading ? (
+                    <span className="inline-flex items-center">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> checando...
+                    </span>
+                  ) : isKycBlocked ? (
+                    <span className="text-[var(--sapNegativeColor,#bb0000)]">
+                      {blockedKycCounterpartyIds.length} bloqueada(s)
+                    </span>
+                  ) : (
+                    <span className="text-[var(--sapPositiveColor,#0f7d0f)]">OK</span>
+                  )}
+                </div>
+              </div>
+
+              {isKycBlocked && (
+                <div className="mt-2 text-[12px] text-[var(--sapNegativeColor,#bb0000)]">
+                  {blockedKycCounterpartyIds.slice(0, 3).map((id) => {
+                    const preflight = kycPreflightByCounterpartyId[id];
+                    return (
+                      <div key={id}>
+                        - {getCounterpartyNameById(id)}: {preflight ? formatPreflightReason(preflight) : 'bloqueado'}
+                      </div>
+                    );
+                  })}
+                  {blockedKycCounterpartyIds.length > 3 && (
+                    <div>+ {blockedKycCounterpartyIds.length - 3} outra(s)</div>
+                  )}
+                </div>
+              )}
+
+              {kycPreflightMessage && (
+                <div className="mt-2 text-[12px] text-[var(--sapNegativeColor,#bb0000)]">
+                  {kycPreflightMessage}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Send Button inside Card */}
+          <div className="mt-4 pt-4 border-t border-[var(--sapTile_BorderColor,#e5e5e5)] flex justify-end">
+            <FioriButton 
+              variant="emphasized" 
+              icon={sendingStatus === 'creating' || sendingStatus === 'sending' 
+                ? <Loader2 className="w-4 h-4 animate-spin" /> 
+                : sendingStatus === 'done'
+                ? <CheckCircle className="w-4 h-4" />
+                : sendingStatus === 'error'
+                ? <AlertCircle className="w-4 h-4" />
+                : <Send className="w-4 h-4" />
+              }
+              disabled={!selectedDealId || !selectedSoId || (!brokerPreviewText && !bankPreviewText) || selectedCounterpartyIds.length === 0 || sendingStatus !== 'idle' || isKycPreflightLoading || isKycBlocked}
+              onClick={handleCreateAndSendRfq}
+              className="min-w-[180px]"
+            >
+              {sendingStatus === 'creating' ? 'Registrando cotação...' :
+               sendingStatus === 'sending' ? `Enviando (${sendProgress.sent}/${sendProgress.total})...` :
+               sendingStatus === 'done' ? 'Cotação enviada!' :
+               sendingStatus === 'error' ? UX_COPY.errors.title :
+               `Enviar cotação (${selectedCounterpartyIds.length})`}
+            </FioriButton>
+          </div>
+        </FioriCard>
+
+        {/* Send Progress Feedback */}
+        {sendingStatus !== 'idle' && (
+          <FioriCard className="mt-4">
+            <div className="flex items-center gap-3 mb-3">
+              {sendingStatus === 'done' ? (
+                <CheckCircle className="w-5 h-5 text-[var(--sapPositiveColor,#0f7d0f)]" />
+              ) : sendingStatus === 'error' ? (
+                <AlertCircle className="w-5 h-5 text-[var(--sapNegativeColor,#bb0000)]" />
+              ) : (
+                <Loader2 className="w-5 h-5 text-[var(--sapContent_IconColor,#0854a0)] animate-spin" />
+              )}
+              <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] leading-[normal] m-0">
+                {sendingStatus === 'creating' ? 'Registrando cotação...' :
+                 sendingStatus === 'sending' ? 'Enviando para Contrapartes...' :
+                 sendingStatus === 'done' ? 'Cotação registrada e enviada!' :
+                 UX_COPY.errors.title}
+              </h3>
+            </div>
+
+            {/* Progress Bar */}
+            {(sendingStatus === 'sending' || sendingStatus === 'done') && (
+              <div className="mb-3">
+                <div className="flex justify-between text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)] mb-1">
+                  <span>Progresso</span>
+                  <span>{sendProgress.sent}/{sendProgress.total}</span>
+                </div>
+                <div className="w-full h-2 bg-[var(--sapField_BorderColor,#89919a)] bg-opacity-20 rounded overflow-hidden">
+                  <div 
+                    className="h-full bg-[var(--sapPositiveColor,#0f7d0f)] transition-all duration-300"
+                    style={{ width: `${(sendProgress.sent / sendProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Error Messages */}
+            {sendProgress.errors.length > 0 && (
+              <div className="p-3 bg-[var(--sapErrorBackground,#ffebeb)] rounded text-sm text-[var(--sapNegativeColor,#bb0000)]" style={{ whiteSpace: 'pre-line' }}>
+                {UX_COPY.errors.message}
+              </div>
+            )}
+
+            {/* Success Message */}
+            {sendingStatus === 'done' && sendProgress.errors.length === 0 && (
+              <div className="p-3 bg-[var(--sapSuccessBackground,#f1fdf1)] rounded text-sm text-[var(--sapPositiveColor,#0f7d0f)]">
+                Cotação registrada com sucesso. Abrindo detalhes...
+              </div>
+            )}
+          </FioriCard>
+        )}
+      </div>
+    </div>
+  );
+}

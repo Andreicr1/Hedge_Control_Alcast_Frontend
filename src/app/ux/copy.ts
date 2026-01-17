@@ -1,0 +1,115 @@
+export const UX_COPY = {
+  errors: {
+    title: 'Não foi possível concluir a operação',
+    message:
+      'O sistema não conseguiu processar esta solicitação agora.\nTente novamente ou entre em contato com o administrador.',
+    retry: 'Tentar novamente',
+  },
+
+  common: {
+    comingSoon: 'Esta funcionalidade será disponibilizada em breve.',
+  },
+
+  nav: {
+    dashboard: 'Visão Geral',
+    sales: 'Vendas',
+    salesOrders: 'Pedidos de Venda',
+    customers: 'Clientes',
+    purchases: 'Compras',
+    purchaseOrders: 'Pedidos de Compra',
+    suppliers: 'Fornecedores',
+    finance: 'Financeiro',
+    pending: 'Pendências',
+    approvals: 'Aprovações',
+    riskExposure: 'Exposição de Risco',
+    rfqs: 'Cotações',
+    contracts: 'Contratos',
+    pnl: 'Resultado (P&L)',
+    cashflow: 'Fluxo de Caixa',
+    reports: 'Relatórios',
+    counterparties: 'Contrapartes',
+    deals: 'Operações',
+    settings: 'Configurações do Sistema',
+  },
+
+  pages: {
+    reports: {
+      title: 'Relatórios',
+      subtitle: 'Geração e acesso a relatórios oficiais para auditoria, compliance e controle interno.',
+      sections: {
+        configuration: 'Configuração do relatório',
+        tracking: 'Acompanhar relatório',
+      },
+      buttons: {
+        generate: 'Gerar relatório',
+        viewScope: 'Visualizar escopo',
+        viewStatus: 'Ver status',
+        download: 'Baixar relatório',
+      },
+    },
+
+    pending: {
+      title: 'Pendências',
+      subtitle: 'Itens que exigem atenção, validação ou decisão institucional.',
+      empty: 'Não há pendências no momento.',
+    },
+
+    approvals: {
+      title: 'Aprovações',
+      subtitle: 'Solicitações institucionais sujeitas a governança e alçada de decisão.',
+      empty: 'Não há solicitações pendentes de aprovação.',
+    },
+
+    riskExposure: {
+      title: 'Exposição de Risco',
+      subtitle: 'Visão consolidada das exposições geradas por operações comerciais e financeiras.',
+      emptyTitle: 'Nenhuma exposição ativa no momento.',
+      emptyDescription: 'As exposições são geradas automaticamente a partir de pedidos e contratos.',
+    },
+
+    rfqs: {
+      title: 'Cotações',
+      subtitle: 'Processos de solicitação, recebimento e decisão de preços junto a contrapartes.',
+    },
+
+    contracts: {
+      title: 'Contratos',
+      subtitle: 'Contratos financeiros ativos e históricos, com seus termos e exposições associadas.',
+    },
+
+    pnl: {
+      title: 'Resultado (P&L)',
+      subtitle: 'Resultado financeiro consolidado, com valores realizados e a mercado.',
+    },
+
+    cashflow: {
+      title: 'Fluxo de Caixa',
+      subtitle: 'Entradas e saídas financeiras previstas e realizadas.',
+      comingSoon: 'Esta funcionalidade será disponibilizada em breve.',
+    },
+
+    settings: {
+      title: 'Configurações do Sistema',
+      subtitle: 'Parâmetros institucionais e regras operacionais do sistema.',
+      empty: 'Nenhuma configuração disponível para este perfil.',
+    },
+  },
+} as const;
+
+export type UxRole = 'admin' | 'financeiro' | 'auditoria' | 'compras' | 'vendas' | string;
+
+export function formatRoleLabel(role: UxRole | null | undefined): string {
+  const key = String(role || '').toLowerCase();
+  if (key === 'admin') return 'Administrador';
+  if (key === 'financeiro') return 'Financeiro';
+  if (key === 'auditoria') return 'Auditoria';
+  if (key === 'compras') return 'Compras';
+  if (key === 'vendas') return 'Vendas';
+  return role ? String(role) : '—';
+}
+
+export function formatRequiredProfiles(allowedRoles: string[]): string {
+  const unique = Array.from(new Set((allowedRoles || []).map((r) => String(r).toLowerCase())));
+  const labels = unique.map((r) => formatRoleLabel(r));
+  return labels.join(' ou ');
+}

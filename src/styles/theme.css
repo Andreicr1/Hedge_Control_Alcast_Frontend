@@ -1,0 +1,318 @@
+@custom-variant dark (&:is(.dark *));
+
+/* SAP Fiori 3 Design System - Exact Tokens */
+:root {
+  /* ===== TYPOGRAPHY ===== */
+  /* SAP uses 72 font family - fallback to system sans-serif */
+  --sapFontFamily: '72', '72full', Arial, Helvetica, sans-serif;
+  --sapFontSize: 0.875rem; /* 14px base */
+  --sapFontSmallSize: 0.75rem; /* 12px */
+  --sapFontLargeSize: 1rem; /* 16px */
+  --sapFontHeaderSize: 1.125rem; /* 18px */
+  --sapFontHeader1Size: 1.5rem; /* 24px */
+  --sapFontHeader2Size: 1.25rem; /* 20px */
+  
+  /* ===== COLORS - SAP Fiori 3 Palette ===== */
+  /* Base Colors */
+  --sapBaseColor: #fff;
+  --sapShellColor: #354a5f;
+  --sapBackgroundColor: #fafafa;
+  --sapBrandColor: #0a6ed1;
+  
+  /* Content Colors */
+  --sapContent_ForegroundColor: #32363a;
+  --sapContent_LabelColor: #6a6d70;
+  --sapContent_DisabledTextColor: rgba(50, 54, 58, 0.5);
+  --sapContent_IconColor: #0854a0;
+  --sapContent_ContrastIconColor: #fff;
+  --sapContent_FocusColor: #000;
+  --sapContent_ShadowColor: rgba(0, 0, 0, 0.15);
+  --sapContent_SearchHighlightColor: #d4f6ff;
+  --sapContent_HelpColor: #0064d9;
+  --sapContent_ForegroundBorderColor: #a0a0a0;
+  --sapContent_BadgeBackground: #d04343;
+  
+  /* Shell Colors */
+  --sapShell_Background: #354a5f;
+  --sapShell_BorderColor: #1d2d3e;
+  --sapShell_TextColor: #fff;
+  --sapShell_InteractiveTextColor: #d1e8ff;
+  --sapShell_Hover_Background: #283848;
+  
+  /* Button Colors */
+  --sapButton_Background: #fff;
+  --sapButton_BorderColor: #0854a0;
+  --sapButton_TextColor: #0854a0;
+  --sapButton_Hover_Background: #ebf5fe;
+  --sapButton_Hover_BorderColor: #0854a0;
+  --sapButton_Emphasized_Background: #0a6ed1;
+  --sapButton_Emphasized_BorderColor: #0a6ed1;
+  --sapButton_Emphasized_TextColor: #fff;
+  --sapButton_Emphasized_Hover_Background: #085caf;
+  --sapButton_Reject_Background: #fff;
+  --sapButton_Reject_BorderColor: #b00;
+  --sapButton_Reject_TextColor: #b00;
+  --sapButton_Reject_Hover_Background: #ffebeb;
+  --sapButton_Accept_Background: #fff;
+  --sapButton_Accept_BorderColor: #107e3e;
+  --sapButton_Accept_TextColor: #107e3e;
+  --sapButton_Accept_Hover_Background: #f1fdf6;
+  
+  /* Field Colors */
+  --sapField_Background: #fff;
+  --sapField_BorderColor: #89919a;
+  --sapField_Hover_Background: #fff;
+  --sapField_Hover_BorderColor: #0854a0;
+  --sapField_Focus_BorderColor: #0854a0;
+  --sapField_InvalidColor: #b00;
+  --sapField_WarningColor: #e9730c;
+  --sapField_SuccessColor: #107e3e;
+  --sapField_InformationColor: #0a6ed1;
+  
+  /* Group Colors */
+  --sapGroup_TitleBackground: transparent;
+  --sapGroup_TitleBorderColor: #d9d9d9;
+  --sapGroup_ContentBackground: #fff;
+  --sapGroup_ContentBorderColor: #d9d9d9;
+  --sapGroup_BorderWidth: 1px;
+  
+  /* List Colors */
+  --sapList_Background: #fff;
+  --sapList_BorderColor: #e5e5e5;
+  --sapList_HighlightColor: #0854a0;
+  --sapList_HoverBackground: #f5f5f5;
+  --sapList_SelectionBackgroundColor: #e5f0fa;
+  --sapList_SelectionBorderColor: #0854a0;
+  --sapList_HeaderBackground: #fafafa;
+  --sapList_HeaderBorderColor: #e5e5e5;
+  --sapList_HeaderTextColor: #32363a;
+  --sapList_FooterBackground: #fafafa;
+  
+  /* Semantic Colors */
+  --sapPositiveColor: #107e3e;
+  --sapPositiveTextColor: #107e3e;
+  --sapPositiveBorderColor: #107e3e;
+  --sapPositiveElementColor: #0a6ed1;
+  --sapNegativeColor: #b00;
+  --sapNegativeTextColor: #b00;
+  --sapNegativeBorderColor: #b00;
+  --sapNegativeElementColor: #b00;
+  --sapCriticalColor: #e9730c;
+  --sapCriticalTextColor: #e9730c;
+  --sapCriticalBorderColor: #e9730c;
+  --sapCriticalElementColor: #e9730c;
+  --sapNeutralColor: #6a6d70;
+  --sapNeutralTextColor: #6a6d70;
+  --sapNeutralBorderColor: #6a6d70;
+  --sapInformativeColor: #0a6ed1;
+  --sapInformativeTextColor: #0a6ed1;
+  --sapInformativeBorderColor: #0a6ed1;
+  
+  /* Object Status Colors */
+  --sapSuccessBackground: #f1fdf6;
+  --sapSuccessBorderColor: #107e3e;
+  --sapSuccessTextColor: #107e3e;
+  --sapErrorBackground: #ffebeb;
+  --sapErrorBorderColor: #b00;
+  --sapErrorTextColor: #b00;
+  --sapWarningBackground: #fef7f1;
+  --sapWarningBorderColor: #e9730c;
+  --sapWarningTextColor: #e9730c;
+  --sapInformationBackground: #f5faff;
+  --sapInformationBorderColor: #0a6ed1;
+  --sapInformationTextColor: #0a6ed1;
+  
+  /* ===== SPACING ===== */
+  --sapUiTinyMarginBottom: 0.5rem;
+  --sapUiTinyMarginTop: 0.5rem;
+  --sapUiTinyMarginEnd: 0.5rem;
+  --sapUiTinyMarginBegin: 0.5rem;
+  --sapUiSmallMarginBottom: 1rem;
+  --sapUiSmallMarginTop: 1rem;
+  --sapUiSmallMarginEnd: 1rem;
+  --sapUiSmallMarginBegin: 1rem;
+  --sapUiMediumMarginBottom: 2rem;
+  --sapUiMediumMarginTop: 2rem;
+  --sapUiMediumMarginEnd: 2rem;
+  --sapUiMediumMarginBegin: 2rem;
+  --sapUiLargeMarginBottom: 3rem;
+  --sapUiLargeMarginTop: 3rem;
+  --sapUiLargeMarginEnd: 3rem;
+  --sapUiLargeMarginBegin: 3rem;
+  
+  /* ===== BORDERS ===== */
+  --sapUiElementBorderWidth: 1px;
+  --sapUiElementBorderCornerRadius: 0.25rem;
+  
+  /* ===== SHADOWS ===== */
+  --sapContent_Shadow0: 0 0 0 1px rgba(0, 0, 0, 0.1);
+  --sapContent_Shadow1: 0 0.125rem 0.5rem 0 rgba(0, 0, 0, 0.1);
+  --sapContent_Shadow2: 0 0.625rem 1.875rem 0 rgba(0, 0, 0, 0.15);
+  --sapContent_Shadow3: 0 1.25rem 5rem 0 rgba(0, 0, 0, 0.3);
+  
+  /* ===== HEADER & TITLE ===== */
+  --sapPageHeader_Background: #fff;
+  --sapPageHeader_BorderColor: #d9d9d9;
+  --sapPageHeader_TextColor: #32363a;
+  --sapPageFooter_Background: #fff;
+  --sapPageFooter_BorderColor: #d9d9d9;
+  
+  /* ===== TOOLBAR ===== */
+  --sapToolbar_Background: #fafafa;
+  --sapToolbar_SeparatorColor: #d9d9d9;
+  
+  /* ===== TILE ===== */
+  --sapTile_Background: #fff;
+  --sapTile_BorderColor: #d9d9d9;
+  --sapTile_TitleTextColor: #32363a;
+  --sapTile_TextColor: #6a6d70;
+  
+  /* ===== LINK ===== */
+  --sapLink_TextColor: #0a6ed1;
+  --sapLink_Hover_TextColor: #0854a0;
+  --sapLink_Active_TextColor: #0a6ed1;
+  --sapLink_Visited_TextColor: #0a6ed1;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--sapFontFamily);
+    font-size: var(--sapFontSize);
+    line-height: 1.4;
+    color: var(--sapContent_ForegroundColor);
+    background-color: var(--sapBackgroundColor);
+  }
+
+  /* SAP Fiori Typography */
+  h1 {
+    font-size: var(--sapFontHeader1Size);
+    font-weight: 400;
+    line-height: 1.334;
+    margin: 0;
+    color: var(--sapContent_ForegroundColor);
+  }
+
+  h2 {
+    font-size: var(--sapFontHeader2Size);
+    font-weight: 400;
+    line-height: 1.334;
+    margin: 0;
+    color: var(--sapContent_ForegroundColor);
+  }
+
+  h3 {
+    font-size: var(--sapFontHeaderSize);
+    font-weight: 400;
+    line-height: 1.334;
+    margin: 0;
+    color: var(--sapContent_ForegroundColor);
+  }
+
+  h4 {
+    font-size: var(--sapFontSize);
+    font-weight: 700;
+    line-height: 1.4;
+    margin: 0;
+    color: var(--sapContent_ForegroundColor);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--sapFontSize);
+    line-height: 1.4;
+  }
+
+  label {
+    font-size: var(--sapFontSize);
+    color: var(--sapContent_LabelColor);
+    line-height: 1.4;
+  }
+
+  /* Links */
+  a {
+    color: var(--sapLink_TextColor);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  a:hover {
+    color: var(--sapLink_Hover_TextColor);
+    text-decoration: underline;
+  }
+
+  a:active {
+    color: var(--sapLink_Active_TextColor);
+  }
+
+  /* Focus Styles */
+  *:focus-visible {
+    outline: 1px dotted var(--sapContent_FocusColor);
+    outline-offset: 1px;
+  }
+
+  /* Remove default button styles */
+  button {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+  }
+
+  /* Input defaults */
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+}
+
+/* SAP Fiori Utility Classes */
+.sap-fiori-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--sapBackgroundColor);
+}
+
+.sap-fiori-page {
+  flex: 1;
+  overflow: auto;
+  padding: var(--sapUiSmallMarginTop) var(--sapUiSmallMarginEnd) var(--sapUiSmallMarginBottom) var(--sapUiSmallMarginBegin);
+}
+
+.sap-fiori-section {
+  background-color: var(--sapGroup_ContentBackground);
+  border: var(--sapGroup_BorderWidth) solid var(--sapGroup_ContentBorderColor);
+  border-radius: var(--sapUiElementBorderCornerRadius);
+  margin-bottom: var(--sapUiSmallMarginBottom);
+}
+
+.sap-fiori-section-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--sapGroup_TitleBorderColor);
+  font-size: var(--sapFontHeaderSize);
+  font-weight: 400;
+  color: var(--sapContent_ForegroundColor);
+}
+
+.sap-fiori-section-content {
+  padding: 1rem;
+}
