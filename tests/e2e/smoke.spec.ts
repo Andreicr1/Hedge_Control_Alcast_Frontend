@@ -6,6 +6,27 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Authentication', () => {
+  const ignoredUrlPatterns: RegExp[] = [
+    /\/favicon\.ico(\?|$)/i,
+    /\/robots\.txt(\?|$)/i,
+    /\/manifest\.webmanifest(\?|$)/i,
+    /\/site\.webmanifest(\?|$)/i,
+  ];
+
+  const isIgnoredUrl = (url: string) => ignoredUrlPatterns.some((re) => re.test(url));
+
+  const collectBadResponses = async (page: any) => {
+    const bad: Array<{ status: number; url: string }> = [];
+    page.on('response', (response: any) => {
+      const status = response.status();
+      if (status < 400) return;
+      const url = response.url();
+      if (isIgnoredUrl(url)) return;
+      bad.push({ status, url });
+    });
+    return bad;
+  };
+
   test('login page loads with all expected elements', async ({ page }) => {
     await page.goto('/login');
 
@@ -57,6 +78,19 @@ test.describe('Authentication', () => {
     await emailInput.fill('test@example.com');
 
     await expect(emailInput).toHaveValue('test@example.com');
+  });
+
+  test('login page does not trigger unexpected 404/500 requests', async ({ page }) => {
+    const bad = await collectBadResponses(page);
+
+    await page.goto('/login', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(750);
+
+    const unexpected = bad.filter((r) => r.status === 404 || r.status >= 500);
+    expect(
+      unexpected,
+      `Unexpected network errors:\n${unexpected.map((r) => `${r.status} ${r.url}`).join('\n')}`,
+    ).toEqual([]);
   });
 });
 

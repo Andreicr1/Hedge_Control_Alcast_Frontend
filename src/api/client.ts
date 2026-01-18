@@ -24,14 +24,15 @@ export function getApiBaseUrl(): string {
     if (import.meta.env.DEV && (normalized === 'http://localhost:8000' || normalized === 'http://127.0.0.1:8000')) {
       return '/api';
     }
-    return configured;
+    return normalized;
   }
 
   // Default (dev): use Vite proxy to avoid CORS.
   if (import.meta.env.DEV) return '/api';
 
   // Default (prod-like fallback)
-  return 'http://localhost:8000';
+  // Prefer failing clearly (relative URL) over silently calling localhost in production.
+  return '';
 }
 
 const API_TIMEOUT = 30000; // 30 segundos
