@@ -7,8 +7,7 @@
  * Frontend ONLY aggregates/sums amounts; it does not infer valuation.
  */
 
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { useCashflowAnalytic } from '../../hooks';
 import type { CashFlowConfidence, CashFlowLine, CashFlowType, CashflowAnalyticQueryParams } from '../../types';
 import { ErrorState, LoadingState, EmptyState } from '../components/ui';
@@ -16,10 +15,14 @@ import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriInput } from '../components/fiori/FioriInput';
 import { Checkbox } from '../components/ui/checkbox';
 import { formatCurrency, formatDate } from '../../services/dashboard.service';
-import { ChevronDown, ChevronRight, ExternalLink, RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 import { useAuthContext } from '../components/AuthProvider';
 import { normalizeRoleName } from '../../utils/role';
 import { UX_COPY } from '../ux/copy';
+import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
+import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
+import { useAnalyticScope } from '../analytics/ScopeProvider';
+import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 
 function Badge({ children }: { children: string }) {
   return (
@@ -219,7 +222,10 @@ function formatTotals(t: SignedTotals): string {
 }
 
 export function CashflowPageIntegrated() {
-  const navigate = useNavigate();
+  useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
+  const { scope } = useAnalyticScope();
+
+  const scopedDealId = scope.kind === 'all' ? undefined : scope.dealId;
   const { user } = useAuthContext();
   const role = normalizeRoleName(user?.role);
 
@@ -228,8 +234,6 @@ export function CashflowPageIntegrated() {
   const [startDate, setStartDate] = useState<string>(() => toIsoDateOnly(today));
   const [endDate, setEndDate] = useState<string>(() => toIsoDateOnly(addDays(today, 90)));
   const [asOf, setAsOf] = useState<string>(() => toIsoDateOnly(today));
-
-  const [dealId, setDealId] = useState<string>('');
   const [granularity, setGranularity] = useState<Granularity>('month');
   const [showRawLines, setShowRawLines] = useState<boolean>(false);
   const [rawLimit, setRawLimit] = useState<number>(200);
@@ -249,7 +253,12 @@ export function CashflowPageIntegrated() {
     start_date: toIsoDateOnly(today),
     end_date: toIsoDateOnly(addDays(today, 90)),
     as_of: toIsoDateOnly(today),
+    deal_id: undefined,
   }));
+
+  useEffect(() => {
+    setApplied((prev) => ({ ...prev, deal_id: scopedDealId }));
+  }, [scopedDealId]);
 
   const cashflow = useCashflowAnalytic(applied);
 
@@ -258,17 +267,17 @@ export function CashflowPageIntegrated() {
     return lines.filter((l) => typeFilter[l.cashflow_type] && confidenceFilter[l.confidence]);
   }, [cashflow.data, typeFilter, confidenceFilter]);
 
-  const tree = useMemo(() => buildTree(filteredLines), [filteredLines]);
-  const [openDeals, setOpenDeals] = useState<Record<string, boolean>>({});
-  const [selectedNode, setSelectedNode] = useState<{ kind: 'root' } | { kind: 'deal'; dealId: string } | { kind: 'entity'; id: string }>(
-    { kind: 'root' }
-  );
-
   const selectedLines = useMemo(() => {
-    if (selectedNode.kind === 'root') return filteredLines;
-    if (selectedNode.kind === 'deal') return filteredLines.filter((l) => String(l.parent_id || '—') === selectedNode.dealId);
-    return filteredLines.filter((l) => `${l.entity_type}:${l.entity_id}` === selectedNode.id);
-  }, [filteredLines, selectedNode]);
+    if (scope.kind === 'all') return filteredLines;
+    if (scope.kind === 'deal') return filteredLines.filter((l) => String(l.parent_id || '—') === String(scope.dealId));
+    if (scope.kind === 'so') {
+      return filteredLines.filter((l) => l.entity_type === 'so' && String(l.entity_id) === String(scope.soId));
+    }
+    if (scope.kind === 'po') {
+      return filteredLines.filter((l) => l.entity_type === 'po' && String(l.entity_id) === String(scope.poId));
+    }
+    return filteredLines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === String(scope.contractId));
+  }, [filteredLines, scope]);
 
   const rawLines = useMemo(() => {
     const sorted = [...selectedLines].sort((a, b) => {
@@ -305,21 +314,17 @@ export function CashflowPageIntegrated() {
       start_date: startDate || undefined,
       end_date: endDate || undefined,
       as_of: asOf || undefined,
-      deal_id: dealId.trim() ? Number(dealId) : undefined,
+      deal_id: scopedDealId,
     };
 
     setApplied(next);
   };
 
-  if (cashflow.isLoading && !cashflow.data) {
-    return <LoadingState message="Carregando fluxo de caixa..." fullPage />;
-  }
-
-  if (cashflow.isError) {
-    return <ErrorState error={cashflow.error} onRetry={cashflow.refetch} fullPage />;
-  }
-
-  return (
+  const right = cashflow.isError ? (
+    <ErrorState error={cashflow.error} onRetry={cashflow.refetch} fullPage />
+  ) : cashflow.isLoading && !cashflow.data ? (
+    <LoadingState message="Carregando fluxo de caixa..." fullPage />
+  ) : (
     <div className="sap-fiori-page p-4">
       {/* Header */}
       <div className="bg-[var(--sapPageHeader_Background)] border-b border-[var(--sapPageHeader_BorderColor)] -mx-4 -mt-4 px-4 py-4 mb-4">
@@ -349,12 +354,10 @@ export function CashflowPageIntegrated() {
           <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">Filtros</div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <FioriInput label="Início" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} fullWidth />
           <FioriInput label="Fim" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} fullWidth />
           <FioriInput label="Data-base" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} fullWidth />
-
-          <FioriInput label="Operação (Deal)" value={dealId} onChange={(e) => setDealId(e.target.value)} fullWidth />
 
           <div className="flex flex-col">
             <label
@@ -419,7 +422,7 @@ export function CashflowPageIntegrated() {
 
       </div>
 
-      {/* Tree + Details */}
+      {/* Details */}
       {filteredLines.length === 0 ? (
         <EmptyState
           title="Sem itens"
@@ -428,86 +431,7 @@ export function CashflowPageIntegrated() {
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <div className="lg:col-span-5 bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">Árvore</div>
-                <div className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{tree.label}</div>
-              </div>
-              <div className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{formatTotals(tree.totals)}</div>
-            </div>
-
-            <button
-              type="button"
-              className="w-full text-left px-2 py-2 rounded hover:bg-[var(--sapList_Hover_Background,#f5f6f7)]"
-              onClick={() => setSelectedNode({ kind: 'root' })}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-[var(--sapTextColor,#131e29)] font-['72:Bold',sans-serif]">Consolidado</span>
-                </div>
-                <span className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{formatTotals(tree.totals)}</span>
-              </div>
-            </button>
-
-            <div className="mt-2">
-              {tree.children.map((deal) => {
-                const isOpen = openDeals[deal.dealId] ?? true;
-                return (
-                  <div key={deal.id} className="border-t border-[var(--sapList_BorderColor,#e5e5e5)] pt-2 mt-2">
-                    <div className="flex items-center justify-between">
-                      <button
-                        type="button"
-                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[var(--sapList_Hover_Background,#f5f6f7)]"
-                        onClick={() => setOpenDeals((p) => ({ ...p, [deal.dealId]: !isOpen }))}
-                        aria-label={isOpen ? 'Recolher' : 'Expandir'}
-                      >
-                        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        <span className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">{deal.label}</span>
-                      </button>
-                      <div className="flex items-center gap-2">
-                        {deal.dealId !== '—' && (
-                          <button
-                            type="button"
-                            className="text-[var(--sapContent_LabelColor)] hover:text-[#0064d9]"
-                            onClick={() => navigate(`/financeiro/deals/${deal.dealId}`)}
-                            aria-label="Abrir operação"
-                            title="Abrir operação"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </button>
-                        )}
-                        <span className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{formatTotals(deal.totals)}</span>
-                      </div>
-                    </div>
-
-                    {isOpen && (
-                      <div className="mt-1">
-                        {deal.children.map((ent) => (
-                          <button
-                            key={ent.id}
-                            type="button"
-                            className="w-full text-left px-2 py-2 rounded hover:bg-[var(--sapList_Hover_Background,#f5f6f7)]"
-                            onClick={() => setSelectedNode({ kind: 'entity', id: ent.id })}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{ent.entity_type.toUpperCase()}</span>
-                                <span className="text-sm text-[var(--sapTextColor,#131e29)]">{ent.label}</span>
-                              </div>
-                              <span className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{formatTotals(ent.totals)}</span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="lg:col-span-7 bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4">
+          <div className="lg:col-span-12 bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">Resumo</div>
@@ -645,6 +569,8 @@ export function CashflowPageIntegrated() {
       </div>
     </div>
   );
+
+  return <AnalyticTwoPaneLayout left={<AnalyticScopeTree />} right={right} />;
 }
 
 export default CashflowPageIntegrated;

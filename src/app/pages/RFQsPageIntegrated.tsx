@@ -80,6 +80,10 @@ function legSideLabel(value: string | null | undefined): string {
 
 export function RFQsPageIntegrated() {
   const navigate = useNavigate();
+
+  // Counterparty KYC is not enforced at this phase.
+  // Kept behind a feature flag for future rollout.
+  const ENABLE_COUNTERPARTY_KYC = import.meta.env.VITE_ENABLE_COUNTERPARTY_KYC === 'true';
   
   // API State via hooks
   const { rfqs, isLoading, isError, error, refetch } = useRfqs();
@@ -211,21 +215,24 @@ export function RFQsPageIntegrated() {
 
     setAwardKycMessage(null);
 
-    // Read-only KYC preflight (authoritative backend)
-    const cpId = selectedQuoteForAward.counterparty_id;
-    if (typeof cpId === 'number') {
-      setIsAwardKycLoading(true);
-      try {
-        const preflight = await getCounterpartyKycPreflight(cpId);
-        if (!preflight.allowed) {
-          setAwardKycMessage(formatCounterpartyKycBlockMessage(preflight.reason_code));
+    // Counterparty KYC is not enforced at this phase.
+    // If enabled in the future, we can re-enable the authoritative preflight check.
+    if (ENABLE_COUNTERPARTY_KYC) {
+      const cpId = selectedQuoteForAward.counterparty_id;
+      if (typeof cpId === 'number') {
+        setIsAwardKycLoading(true);
+        try {
+          const preflight = await getCounterpartyKycPreflight(cpId);
+          if (!preflight.allowed) {
+            setAwardKycMessage(formatCounterpartyKycBlockMessage(preflight.reason_code));
+            return;
+          }
+        } catch {
+          setAwardKycMessage('Não foi possível checar KYC da contraparte antes de premiar.');
           return;
+        } finally {
+          setIsAwardKycLoading(false);
         }
-      } catch {
-        setAwardKycMessage('Não foi possível checar KYC da contraparte antes de premiar.');
-        return;
-      } finally {
-        setIsAwardKycLoading(false);
       }
     }
     
@@ -687,7 +694,7 @@ export function RFQsPageIntegrated() {
                   if (gate) {
                     return (
                       <p className="text-sm text-[var(--sapNegativeColor)]">
-                        Não foi possível validar a contraparte selecionada para esta decisão.
+                        Não foi possível validar o cliente do SO (KYC pendente ou restrito).
                       </p>
                     );
                   }

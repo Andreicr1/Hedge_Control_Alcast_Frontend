@@ -11,6 +11,10 @@ import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColu
 import { FioriTile } from '../components/fiori/FioriTile';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { UX_COPY } from '../ux/copy';
+import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
+import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
+import { useAnalyticScope } from '../analytics/ScopeProvider';
+import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 import { 
   Search, 
   FileText, 
@@ -73,9 +77,15 @@ function computeDisplayStatus(contract: Contract): {
 export function ContractsPageIntegrated() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
+  const { scope, setScope } = useAnalyticScope();
+
+  const scopedDealId = scope.kind === 'all' ? undefined : scope.dealId;
   
   // API State via hooks
-  const { contracts, isLoading, isError, error, refetch } = useContracts();
+  const contractFilters = useMemo(() => ({ deal_id: scopedDealId }), [scopedDealId]);
+  const { contracts, isLoading, isError, error, refetch } = useContracts(contractFilters);
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,6 +103,14 @@ export function ContractsPageIntegrated() {
     const idParam = searchParams.get('id');
     if (idParam) setSelectedContractId(idParam);
   }, [searchParams]);
+
+  // If scope points to a contract, open it in the detail pane.
+  useEffect(() => {
+    if (scope.kind !== 'contract') return;
+    const cid = (scope.contractId || '').trim();
+    if (!cid) return;
+    setSelectedContractId(cid);
+  }, [scope]);
   
   // Selected contract detail
   const {
@@ -122,17 +140,24 @@ export function ContractsPageIntegrated() {
   // Handlers
   // ============================================
 
-  const handleContractSelect = useCallback((contractId: string) => {
-    setSelectedContractId(contractId);
-  }, []);
+  const handleContractSelect = useCallback(
+    (contract: Contract) => {
+      setSelectedContractId(contract.contract_id);
+      if (contract.deal_id) {
+        setScope({ kind: 'contract', dealId: contract.deal_id, contractId: contract.contract_id });
+      }
+    },
+    [setScope]
+  );
 
   const handleNavigateToRfq = useCallback((rfqId: number) => {
     navigate(`/financeiro/rfqs?selected=${rfqId}`);
   }, [navigate]);
 
   const handleNavigateToDeal = useCallback((dealId: number) => {
-    navigate(`/financeiro/pnl?deal_id=${encodeURIComponent(String(dealId))}`);
-  }, [navigate]);
+    setScope({ kind: 'deal', dealId });
+    navigate('/financeiro/pnl');
+  }, [navigate, setScope]);
 
   const handleNavigateToSource = useCallback(
     (link: ContractExposureLink) => {
@@ -207,7 +232,7 @@ export function ContractsPageIntegrated() {
             return (
               <button
                 key={contract.contract_id}
-                onClick={() => handleContractSelect(contract.contract_id)}
+                onClick={() => handleContractSelect(contract)}
                 className={`w-full p-4 border-b border-[var(--sapList_BorderColor)] text-left hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
                   selectedContractId === contract.contract_id
                     ? 'bg-[var(--sapList_SelectionBackgroundColor)] border-l-2 border-l-[var(--sapList_SelectionBorderColor)]'
@@ -725,11 +750,16 @@ export function ContractsPageIntegrated() {
   );
 
   return (
-    <FioriFlexibleColumnLayout
-      masterTitle={UX_COPY.pages.contracts.title}
-      masterContent={masterContent}
-      masterWidth={340}
-      detailContent={detailContent}
+    <AnalyticTwoPaneLayout
+      left={<AnalyticScopeTree />}
+      right={
+        <FioriFlexibleColumnLayout
+          masterTitle={UX_COPY.pages.contracts.title}
+          masterContent={masterContent}
+          masterWidth={340}
+          detailContent={detailContent}
+        />
+      }
     />
   );
 }

@@ -233,6 +233,10 @@ function createEmptyTrade(): TradeState {
 // ============================================
 export function RFQFormPage() {
   const navigate = useNavigate();
+
+  // Counterparty KYC is not enforced at this phase.
+  // Kept behind a feature flag for future rollout.
+  const ENABLE_COUNTERPARTY_KYC = import.meta.env.VITE_ENABLE_COUNTERPARTY_KYC === 'true';
   const [searchParams] = useSearchParams();
   const soIdParam = searchParams.get('so_id');
   const dealIdParam = searchParams.get('deal_id');
@@ -462,6 +466,16 @@ export function RFQFormPage() {
     let isActive = true;
     setKycPreflightMessage(null);
 
+    if (!ENABLE_COUNTERPARTY_KYC) {
+      if (isActive) {
+        setKycPreflightByCounterpartyId({});
+        setIsKycPreflightLoading(false);
+      }
+      return () => {
+        isActive = false;
+      };
+    }
+
     if (selectedCounterpartyIds.length === 0) {
       setKycPreflightByCounterpartyId({});
       return;
@@ -590,13 +604,14 @@ export function RFQFormPage() {
   }, [counterparties, selectedCounterpartyIds]);
 
   const blockedKycCounterpartyIds = useMemo(() => {
+    if (!ENABLE_COUNTERPARTY_KYC) return [];
     return selectedCounterpartyIds.filter((id) => {
       const preflight = kycPreflightByCounterpartyId[id];
       return preflight ? !preflight.allowed : false;
     });
-  }, [selectedCounterpartyIds, kycPreflightByCounterpartyId]);
+  }, [ENABLE_COUNTERPARTY_KYC, selectedCounterpartyIds, kycPreflightByCounterpartyId]);
 
-  const isKycBlocked = blockedKycCounterpartyIds.length > 0;
+  const isKycBlocked = ENABLE_COUNTERPARTY_KYC && blockedKycCounterpartyIds.length > 0;
 
   const hasBrokers = selectedCounterparties.some(cp => cp.language === 'en');
   const hasBanks = selectedCounterparties.some(cp => cp.language === 'pt');
@@ -746,47 +761,50 @@ export function RFQFormPage() {
 
     setKycPreflightMessage(null);
 
-    // Deterministic, read-only preflight (authoritative backend)
-    try {
-      setIsKycPreflightLoading(true);
-      const results = await Promise.allSettled(
-        selectedCounterpartyIds.map(async (id) => ({
-          id,
-          preflight: await getCounterpartyKycPreflight(id),
-        }))
-      );
-
-      const nextMap: Record<number, KycPreflightResponse> = { ...kycPreflightByCounterpartyId };
-      const blocked: Array<{ id: number; preflight: KycPreflightResponse }> = [];
-      let hadErrors = false;
-
-      for (const r of results) {
-        if (r.status === 'fulfilled') {
-          nextMap[r.value.id] = r.value.preflight;
-          if (!r.value.preflight.allowed) {
-            blocked.push({ id: r.value.id, preflight: r.value.preflight });
-          }
-        } else {
-          hadErrors = true;
-        }
-      }
-
-      setKycPreflightByCounterpartyId(nextMap);
-
-      if (blocked.length > 0) {
-        const first = blocked[0];
-        setKycPreflightMessage(
-          `KYC bloqueado: ${getCounterpartyNameById(first.id)} — ${formatPreflightReason(first.preflight)}`
+    // Counterparty KYC is not enforced at this phase.
+    if (ENABLE_COUNTERPARTY_KYC) {
+      // Deterministic, read-only preflight (authoritative backend)
+      try {
+        setIsKycPreflightLoading(true);
+        const results = await Promise.allSettled(
+          selectedCounterpartyIds.map(async (id) => ({
+            id,
+            preflight: await getCounterpartyKycPreflight(id),
+          }))
         );
-        return;
-      }
 
-      if (hadErrors) {
-        setKycPreflightMessage('Não foi possível checar KYC de todas as contrapartes selecionadas.');
-        return;
+        const nextMap: Record<number, KycPreflightResponse> = { ...kycPreflightByCounterpartyId };
+        const blocked: Array<{ id: number; preflight: KycPreflightResponse }> = [];
+        let hadErrors = false;
+
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            nextMap[r.value.id] = r.value.preflight;
+            if (!r.value.preflight.allowed) {
+              blocked.push({ id: r.value.id, preflight: r.value.preflight });
+            }
+          } else {
+            hadErrors = true;
+          }
+        }
+
+        setKycPreflightByCounterpartyId(nextMap);
+
+        if (blocked.length > 0) {
+          const first = blocked[0];
+          setKycPreflightMessage(
+            `KYC bloqueado: ${getCounterpartyNameById(first.id)} — ${formatPreflightReason(first.preflight)}`
+          );
+          return;
+        }
+
+        if (hadErrors) {
+          setKycPreflightMessage('Não foi possível checar KYC de todas as contrapartes selecionadas.');
+          return;
+        }
+      } finally {
+        setIsKycPreflightLoading(false);
       }
-    } finally {
-      setIsKycPreflightLoading(false);
     }
     
     setSendingStatus('creating');
@@ -842,9 +860,7 @@ export function RFQFormPage() {
       if (!createdRfq) {
         const gate = parseKycGateError(createRfqError);
         if (gate) {
-          const cpId = typeof gate.counterparty_id === 'number' ? gate.counterparty_id : null;
-          const cpName = cpId !== null ? getCounterpartyNameById(cpId) : 'Contraparte';
-          setKycPreflightMessage(`Não foi possível validar a contraparte selecionada: ${cpName}.`);
+          setKycPreflightMessage('Não foi possível validar o cliente do SO (KYC pendente ou restrito).');
           return;
         }
         throw new Error(UX_COPY.errors.title);
@@ -1424,7 +1440,7 @@ export function RFQFormPage() {
               filteredCounterparties.map(cp => {
                 const isSelected = selectedCounterpartyIds.includes(cp.id);
                 const lang = getLanguageForCounterparty(cp);
-                const preflight = isSelected ? kycPreflightByCounterpartyId[cp.id] : undefined;
+                const preflight = (ENABLE_COUNTERPARTY_KYC && isSelected) ? kycPreflightByCounterpartyId[cp.id] : undefined;
                 return (
                   <div
                     key={cp.id}
@@ -1456,7 +1472,7 @@ export function RFQFormPage() {
                     }`}>
                       {lang === 'en' ? 'EN' : 'PT'}
                     </span>
-                    {isSelected && (
+                    {isSelected && ENABLE_COUNTERPARTY_KYC && (
                       preflight ? (
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                           preflight.allowed ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
@@ -1476,7 +1492,7 @@ export function RFQFormPage() {
           </div>
 
           {/* KYC Preflight Summary */}
-          {selectedCounterpartyIds.length > 0 && (
+          {ENABLE_COUNTERPARTY_KYC && selectedCounterpartyIds.length > 0 && (
             <div className="mt-3 rounded border border-[var(--sapTile_BorderColor,#e5e5e5)] bg-[var(--sapGroup_ContentBackground,#ffffff)] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[12px] text-[var(--sapTextColor,#32363a)] font-medium">
@@ -1533,7 +1549,7 @@ export function RFQFormPage() {
                 ? <AlertCircle className="w-4 h-4" />
                 : <Send className="w-4 h-4" />
               }
-              disabled={!selectedDealId || !selectedSoId || (!brokerPreviewText && !bankPreviewText) || selectedCounterpartyIds.length === 0 || sendingStatus !== 'idle' || isKycPreflightLoading || isKycBlocked}
+                disabled={!selectedDealId || !selectedSoId || (!brokerPreviewText && !bankPreviewText) || selectedCounterpartyIds.length === 0 || sendingStatus !== 'idle' || (ENABLE_COUNTERPARTY_KYC && (isKycPreflightLoading || isKycBlocked))}
               onClick={handleCreateAndSendRfq}
               className="min-w-[180px]"
             >

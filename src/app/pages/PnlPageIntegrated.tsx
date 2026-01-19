@@ -6,7 +6,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FioriKPIPrimary } from '../components/fiori/FioriKPIPrimary';
 import { FioriKPISecondary } from '../components/fiori/FioriKPISecondary';
 import { SAPGridTable } from '../components/fiori/SAPGridTable';
@@ -19,6 +18,10 @@ import type { PnlAggregateResponse, PnlDealAggregateRow } from '../../types';
 import { useAuthContext } from '../components/AuthProvider';
 import { normalizeRoleName } from '../../utils/role';
 import { UX_COPY } from '../ux/copy';
+import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
+import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
+import { useAnalyticScope } from '../analytics/ScopeProvider';
+import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 
 function Badge({ children }: { children: string }) {
   return (
@@ -45,17 +48,17 @@ function valueColorForPnl(v: number): 'positive' | 'critical' | 'neutral' {
 const UNNAMED_DEAL_LABEL = 'Sem referência';
 
 export function PnlPageIntegrated() {
-  const navigate = useNavigate();
+  useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
+
+  const { scope, setScope } = useAnalyticScope();
+
+  const scopedDealId = scope.kind === 'all' ? null : scope.dealId;
+  const scopedContractId = scope.kind === 'contract' ? scope.contractId : null;
 
   const { user } = useAuthContext();
   const role = normalizeRoleName(user?.role);
 
-  const [searchParams] = useSearchParams();
-
-  const dealIdParam = searchParams.get('deal_id') || '';
-
   const [asOfDate, setAsOfDate] = useState<string>(todayIso());
-  const [dealId, setDealId] = useState<string>(() => dealIdParam);
   const [dealLabelById, setDealLabelById] = useState<Record<number, string>>({});
 
   const [data, setData] = useState<PnlAggregateResponse | null>(null);
@@ -67,16 +70,10 @@ export function PnlPageIntegrated() {
     setError(null);
 
     try {
-      const did = dealId.trim() ? Number(dealId.trim()) : undefined;
-      if (dealId.trim() && Number.isNaN(did)) {
-        setError('Deal ID inválido');
-        setData(null);
-        return;
-      }
-
       const res = await getPnlAggregated({
         as_of_date: asOfDate,
-        deal_id: did,
+        deal_id: scopedDealId ?? undefined,
+        contract_id: scopedContractId ?? undefined,
       });
       setData(res);
     } catch (e) {
@@ -86,15 +83,11 @@ export function PnlPageIntegrated() {
     } finally {
       setIsLoading(false);
     }
-  }, [asOfDate, dealId]);
+  }, [asOfDate, scopedDealId, scopedContractId]);
 
   useEffect(() => {
-    setDealId(dealIdParam);
-  }, [dealIdParam]);
-
-  useEffect(() => {
-    const did = dealId.trim() ? Number(dealId.trim()) : undefined;
-    if (!did || Number.isNaN(did)) return;
+    const did = scopedDealId ?? undefined;
+    if (!did) return;
     if (dealLabelById[did]) return;
 
     let cancelled = false;
@@ -116,7 +109,8 @@ export function PnlPageIntegrated() {
     return () => {
       cancelled = true;
     };
-  }, [dealId, dealLabelById]);
+  }, [scopedDealId, dealLabelById]);
+
 
   useEffect(() => {
     fetchData();
@@ -176,7 +170,10 @@ export function PnlPageIntegrated() {
           const label = typeof did === 'number' ? dealLabelById[did] : undefined;
           return (
             <button
-              onClick={() => navigate(`/financeiro/pnl?deal_id=${encodeURIComponent(String(did))}`)}
+              onClick={() => {
+                if (typeof did !== 'number') return;
+                setScope({ kind: 'deal', dealId: did });
+              }}
               className="text-[var(--sapLink_TextColor)] hover:underline font-normal flex items-center gap-1"
               type="button"
             >
@@ -226,26 +223,21 @@ export function PnlPageIntegrated() {
         },
       },
     ];
-  }, [dealLabelById, navigate]);
+  }, [dealLabelById, setScope]);
 
-  if (isLoading && !data) {
-    return <LoadingState message="Carregando resultado..." />;
-  }
+  const scopedDealLabel = scopedDealId ? dealLabelById[scopedDealId] || UNNAMED_DEAL_LABEL : null;
+  const contractSuffix = scopedContractId ? ` — Contrato ${String(scopedContractId).slice(0, 8)}…` : '';
 
-  if (error) {
-    return <ErrorState error={{ detail: error }} onRetry={fetchData} />;
-  }
-
-  return (
+  const right = (
     <div className="p-6">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="font-['72:Black',sans-serif] text-2xl text-[#131e29] mb-1 flex items-center gap-2">
             <Receipt className="w-6 h-6" />
             {UX_COPY.pages.pnl.title}
-            {dealId.trim() && !Number.isNaN(Number(dealId.trim())) ? (
+            {scopedDealLabel ? (
               <span className="text-base font-normal text-[var(--sapContent_LabelColor)]">
-                — {dealLabelById[Number(dealId.trim())] || UNNAMED_DEAL_LABEL}
+                — {scopedDealLabel}{contractSuffix}
               </span>
             ) : null}
           </h1>
@@ -293,14 +285,13 @@ export function PnlPageIntegrated() {
           </div>
           <div className="flex flex-col justify-end">
             <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Operação</div>
-            {dealId.trim() && !Number.isNaN(Number(dealId.trim())) ? (
+            {scopedDealId ? (
               <div className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--sapField_BorderColor)] rounded-md text-sm">
-                <div className="truncate">{dealLabelById[Number(dealId.trim())] || UNNAMED_DEAL_LABEL}</div>
+                <div className="truncate">{scopedDealLabel || UNNAMED_DEAL_LABEL}</div>
                 <FioriButton
                   variant="ghost"
                   onClick={() => {
-                    setDealId('');
-                    navigate('/financeiro/pnl');
+                    setScope({ kind: 'all' });
                   }}
                 >
                   Limpar
@@ -320,21 +311,19 @@ export function PnlPageIntegrated() {
         </div>
       </div>
 
-      {isLoading ? (
+      {error ? (
+        <ErrorState error={{ detail: error }} onRetry={fetchData} />
+      ) : isLoading && !data ? (
+        <LoadingState message="Carregando resultado..." />
+      ) : isLoading ? (
         <LoadingState message="Atualizando..." />
       ) : rows.length === 0 ? (
-        <EmptyState
-          title="Nenhum resultado disponível no momento."
-          description="Tente ajustar a data-base ou os filtros."
-        />
+        <EmptyState title="Nenhum resultado disponível no momento." description="Tente ajustar a data-base ou os filtros." />
       ) : (
-        <SAPGridTable
-          title={`Resultado por operação (${rows.length})`}
-          columns={columns}
-          data={tableRows}
-          idField="deal_id"
-        />
+        <SAPGridTable title={`Resultado por operação (${rows.length})`} columns={columns} data={tableRows} idField="deal_id" />
       )}
     </div>
   );
+
+  return <AnalyticTwoPaneLayout left={<AnalyticScopeTree />} right={right} />;
 }

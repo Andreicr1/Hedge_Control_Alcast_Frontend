@@ -17,3 +17,4 @@ export * from './useCashflow';
 export * from './useCashflowAnalytic';
 export * from './useExports';
 export * from './useWorkflows';
+export * from './useAnalyticsEntityTree';

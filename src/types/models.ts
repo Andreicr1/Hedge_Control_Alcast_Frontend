@@ -246,6 +246,8 @@ export interface CounterpartyUpdate extends Partial<CounterpartyCreate> {}
 export interface KycGateErrorDetail {
   code: string;
   counterparty_id?: number | null;
+  customer_id?: number | null;
+  so_id?: number | null;
   details?: unknown;
 }
 
@@ -930,4 +932,23 @@ export interface ExportJobRead {
 
   created_at: string;
   updated_at: string;
+}
+
+// ============================================
+// Analytics (shared scope/tree)
+// ============================================
+
+export type EntityTreeKind = 'root' | 'deal' | 'so' | 'po' | 'contract';
+
+export interface EntityTreeNode {
+  id: string;
+  kind: EntityTreeKind;
+  label: string;
+  deal_id?: number | null;
+  entity_id?: string | null;
+  children: EntityTreeNode[];
+}
+
+export interface EntityTreeResponse {
+  root: EntityTreeNode;
 }

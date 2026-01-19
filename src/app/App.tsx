@@ -25,12 +25,14 @@ import { SettingsPageIntegrated } from './pages/SettingsPageIntegrated';
 import { LoginPageIntegrated } from './pages/LoginPageIntegrated';
 import { CustomersPageIntegrated } from './pages/CustomersPageIntegrated';
 import { SuppliersPageIntegrated } from './pages/SuppliersPageIntegrated';
+import { AnalyticScopeProvider } from './analytics/ScopeProvider';
 
 export default function App() {
   const content = (
     <BrowserRouter>
       <AppShell>
-        <Routes>
+        <AnalyticScopeProvider>
+          <Routes>
           <Route path="/login" element={<LoginPageIntegrated />} />
           <Route path="/" element={<HomeRedirect />} />
           
@@ -206,7 +208,8 @@ export default function App() {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </AnalyticScopeProvider>
       </AppShell>
     </BrowserRouter>
   );

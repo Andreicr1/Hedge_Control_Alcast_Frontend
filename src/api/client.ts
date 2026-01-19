@@ -335,6 +335,11 @@ export const endpoints = {
     // Note: /auth/refresh not implemented in backend - tokens are short-lived
   },
 
+  // Analytics (shared selection/tree)
+  analytics: {
+    entityTree: '/analytics/entity-tree',
+  },
+
   // Dashboard
   dashboard: {
     summary: '/dashboard/summary',
