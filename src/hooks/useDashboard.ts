@@ -46,15 +46,24 @@ export function useAluminumQuote() {
 
   const suspendAutoRefreshRef = useRef(false);
 
-  const fetchQuote = useCallback(async () => {
-    setState(prev => ({ ...prev, isLoading: true, isError: false, error: null }));
+  const fetchQuoteInternal = useCallback(async (showLoading: boolean) => {
+    if (showLoading) {
+      setState(prev => ({ ...prev, isLoading: true, isError: false, error: null }));
+    } else {
+      setState(prev => ({ ...prev, isError: false, error: null }));
+    }
+
     try {
       const data = await getAluminumQuote();
-      suspendAutoRefreshRef.current = false;
+
+      const isUnavailable =
+        (data?.cash?.price ?? null) === null && (data?.three_month?.price ?? null) === null;
+      suspendAutoRefreshRef.current = isUnavailable;
+
       setState({ data, isLoading: false, isError: false, error: null });
     } catch (err) {
       const apiErr = err as ApiError;
-      // Backend returns 404 when market data isn't available yet.
+      // Backend may return 404 when market data isn't available yet.
       // Treat as empty state (institutional UX) and avoid hammering the endpoint.
       if (apiErr?.status_code === 404) {
         suspendAutoRefreshRef.current = true;
@@ -70,6 +79,10 @@ export function useAluminumQuote() {
     }
   }, []);
 
+  const fetchQuote = useCallback(async () => {
+    await fetchQuoteInternal(true);
+  }, [fetchQuoteInternal]);
+
   useEffect(() => {
     fetchQuote();
   }, [fetchQuote]);
@@ -78,10 +91,10 @@ export function useAluminumQuote() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (suspendAutoRefreshRef.current) return;
-      fetchQuote();
+      void fetchQuoteInternal(false);
     }, 30 * 1000);
     return () => clearInterval(interval);
-  }, [fetchQuote]);
+  }, [fetchQuoteInternal]);
 
   return { ...state, refetch: fetchQuote };
 }
