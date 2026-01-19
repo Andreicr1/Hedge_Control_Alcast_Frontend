@@ -3,7 +3,7 @@ interface StatusBadgeProps {
   type?: 'default' | 'positive' | 'negative' | 'critical' | 'neutral';
 }
 
-const statusColorMap: Record<string, string> = {
+const statusColorMap: Record<string, NonNullable<StatusBadgeProps['type']>> = {
   Active: 'positive',
   Draft: 'neutral',
   Closed: 'neutral',
@@ -17,7 +17,7 @@ const statusColorMap: Record<string, string> = {
 };
 
 export function StatusBadge({ status, type }: StatusBadgeProps) {
-  const colorType = type || statusColorMap[status] || 'neutral';
+  const colorType: NonNullable<StatusBadgeProps['type']> = type || statusColorMap[status] || 'neutral';
 
   const colorClasses = {
     positive: 'bg-[var(--sapPositiveColor)] text-white',

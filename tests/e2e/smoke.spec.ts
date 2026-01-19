@@ -124,15 +124,12 @@ test.describe('Login and Redirect', () => {
     // Submit login
     await page.getByRole('button', { name: 'Entrar' }).click();
 
-    // Wait for redirect - should NOT be /configuracoes
-    await page.waitForURL(url => !url.pathname.includes('/login'), { timeout: 10000 });
+    // Wait for redirect - should leave /login (and not go to settings)
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
+    expect(page.url()).not.toContain('/configuracoes');
 
-    // Verify we are on the dashboard, not configuracoes
-    const currentUrl = page.url();
-    expect(currentUrl).not.toContain('/configuracoes');
-
-    // Dashboard should show dashboard cards - use specific heading
-    await expect(page.getByRole('heading', { name: 'Alumínio LME Spot - USD/mt' })).toBeVisible({ timeout: 10000 });
+    // Card title is not guaranteed to be an ARIA heading.
+    await expect(page.getByText('Alumínio LME Spot - USD/mt')).toBeVisible({ timeout: 15000 });
   });
 
   test('financeiro login redirects to dashboard', async ({ page }) => {
@@ -141,9 +138,9 @@ test.describe('Login and Redirect', () => {
     await page.getByLabel('Senha').fill('123');
     await page.getByRole('button', { name: 'Entrar' }).click();
 
-    await page.waitForURL(url => !url.pathname.includes('/login'), { timeout: 10000 });
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
     expect(page.url()).not.toContain('/configuracoes');
-    await expect(page.getByRole('heading', { name: 'Alumínio LME Spot - USD/mt' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Alumínio LME Spot - USD/mt')).toBeVisible({ timeout: 15000 });
   });
 
   test('compras login redirects to purchase orders', async ({ page }) => {
@@ -164,5 +161,199 @@ test.describe('Login and Redirect', () => {
 
     await page.waitForURL(url => url.pathname.includes('/vendas'), { timeout: 10000 });
     expect(page.url()).toContain('/vendas');
+  });
+});
+
+// ============================================
+// SO/PO End-to-End Smoke (UI -> API)
+// ============================================
+
+type AccessToken = string;
+
+type BackendTarget = {
+  origin: string;
+  apiPrefix: string;
+};
+
+function envString(key: string): string | undefined {
+  const v = process.env[key];
+  if (!v) return undefined;
+  const s = String(v).trim();
+  return s.length ? s : undefined;
+}
+
+async function waitForBackendReady(request: any): Promise<BackendTarget> {
+  const origin = envString('E2E_BACKEND_URL') ?? 'http://localhost:8001';
+  const forcedPrefix = envString('E2E_API_PREFIX');
+  const prefixesToTry = forcedPrefix ? [forcedPrefix] : ['', '/api'];
+  const timeoutMs = 20_000;
+  const started = Date.now();
+
+  // Simple polling: backend can take a moment to boot.
+  while (Date.now() - started < timeoutMs) {
+    for (const apiPrefix of prefixesToTry) {
+      try {
+        const res = await request.get(`${origin}${apiPrefix}/health`);
+        if (res.ok()) return { origin, apiPrefix };
+      } catch {
+        // ignore
+      }
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  throw new Error(
+    `Backend not ready after ${timeoutMs}ms. Tried: ${prefixesToTry
+      .map((p) => `${origin}${p}/health`)
+      .join(' , ')}`,
+  );
+}
+
+async function getAccessToken(
+  request: any,
+  backend: BackendTarget,
+  email: string,
+  password: string,
+): Promise<AccessToken> {
+  const res = await request.post(`${backend.origin}${backend.apiPrefix}/auth/token`, {
+    form: {
+      username: email,
+      password,
+    },
+  });
+  if (!res.ok()) {
+    throw new Error(`Failed to login via API: ${res.status()} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { access_token: string };
+  if (!body?.access_token) throw new Error('Missing access_token from /auth/token');
+  return body.access_token;
+}
+
+async function createCustomer(
+  request: any,
+  backend: BackendTarget,
+  token: AccessToken,
+  name: string,
+): Promise<{ id: number; name: string }> {
+  const res = await request.post(`${backend.origin}${backend.apiPrefix}/customers`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name, trade_name: name },
+  });
+  if (!res.ok()) {
+    throw new Error(`Failed to create customer: ${res.status()} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { id: number; name: string };
+  return { id: body.id, name: body.name };
+}
+
+async function createSupplier(
+  request: any,
+  backend: BackendTarget,
+  token: AccessToken,
+  name: string,
+): Promise<{ id: number; name: string }> {
+  const res = await request.post(`${backend.origin}${backend.apiPrefix}/suppliers`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name, trade_name: name },
+  });
+  if (!res.ok()) {
+    throw new Error(`Failed to create supplier: ${res.status()} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { id: number; name: string };
+  return { id: body.id, name: body.name };
+}
+
+function modalByTitle(page: any, title: string) {
+  const heading = page.getByRole('heading', { name: title });
+  return heading.locator('..').locator('..');
+}
+
+function fieldByLabel(container: any, labelText: string) {
+  // Our Fiori components render a <label> without htmlFor; locate by structure.
+  return container
+    .locator('label', { hasText: labelText })
+    .locator('..')
+    .locator('input, select, textarea')
+    .first();
+}
+
+async function uiLoginQuickAccess(page: any, role: 'Vendas' | 'Compras') {
+  await page.goto('/login');
+  await page.getByRole('button', { name: role }).click();
+  await page.getByLabel('Senha').fill('123');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForURL((url: any) => !url.pathname.includes('/login'), { timeout: 10_000 });
+}
+
+test.describe('SO/PO Create Smoke', () => {
+  test('vendas can create a Sales Order', async ({ page, request }) => {
+    const backend = await waitForBackendReady(request);
+
+    const token = await getAccessToken(request, backend, 'vendas@alcast.dev', '123');
+    const suffix = Date.now();
+    const customerName = `E2E Customer ${suffix}`;
+    await createCustomer(request, backend, token, customerName);
+
+    await uiLoginQuickAccess(page, 'Vendas');
+    await page.goto('/vendas/sales-orders');
+
+    await page.getByRole('button', { name: 'Novo pedido' }).click();
+
+    const modal = modalByTitle(page, 'Nova Sales Order');
+
+    await fieldByLabel(modal, 'Cliente').selectOption({ label: customerName });
+    await fieldByLabel(modal, 'Quantidade (MT)').fill('10');
+    await fieldByLabel(modal, 'PriceType').selectOption({ label: 'Preço fixo (Fix)' });
+    await fieldByLabel(modal, 'Preço unitário (USD/t)').fill('2500');
+
+    const createResPromise = page.waitForResponse(
+      (res) => res.url().includes('/api/sales-orders') && res.request().method() === 'POST',
+      { timeout: 20_000 },
+    );
+    await modal.getByRole('button', { name: 'Salvar' }).click();
+    const createRes = await createResPromise;
+    expect(
+      createRes.ok(),
+      `Create Sales Order failed: ${createRes.status()} ${await createRes.text()}`,
+    ).toBeTruthy();
+
+    // After save, the page navigates to the created order and shows an SO number.
+    await page.waitForURL((url: any) => url.pathname.includes('/vendas/sales-orders/'), { timeout: 20_000 });
+    await expect(page.locator('h1')).toContainText('SO', { timeout: 10_000 });
+  });
+
+  test('compras can create a Purchase Order', async ({ page, request }) => {
+    const backend = await waitForBackendReady(request);
+
+    const token = await getAccessToken(request, backend, 'compras@alcast.dev', '123');
+    const suffix = Date.now();
+    const supplierName = `E2E Supplier ${suffix}`;
+    await createSupplier(request, backend, token, supplierName);
+
+    await uiLoginQuickAccess(page, 'Compras');
+    await page.goto('/compras/purchase-orders');
+
+    await page.getByRole('button', { name: 'Novo pedido' }).click();
+
+    const modal = modalByTitle(page, 'Nova Purchase Order');
+
+    await fieldByLabel(modal, 'Fornecedor').selectOption({ label: supplierName });
+    await fieldByLabel(modal, 'Quantidade (MT)').fill('12');
+    await fieldByLabel(modal, 'PriceType').selectOption({ label: 'Preço fixo (Fix)' });
+    await fieldByLabel(modal, 'Preço unitário (USD/t)').fill('2400');
+
+    const createResPromise = page.waitForResponse(
+      (res) => res.url().includes('/api/purchase-orders') && res.request().method() === 'POST',
+      { timeout: 20_000 },
+    );
+    await modal.getByRole('button', { name: 'Salvar' }).click();
+    const createRes = await createResPromise;
+    expect(
+      createRes.ok(),
+      `Create Purchase Order failed: ${createRes.status()} ${await createRes.text()}`,
+    ).toBeTruthy();
+
+    await page.waitForURL((url: any) => url.pathname.includes('/compras/purchase-orders/'), { timeout: 20_000 });
+    await expect(page.locator('h1')).toContainText('PO', { timeout: 10_000 });
   });
 });

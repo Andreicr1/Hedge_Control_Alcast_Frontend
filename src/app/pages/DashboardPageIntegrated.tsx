@@ -3,8 +3,9 @@
  * 
  * Visual IDÊNTICO à DashboardPage original.
  * Consome APIs reais:
- * - /market/aluminum/quote - Alumínio LME Spot
- * - /market/aluminum/history - Histórico
+ * - /market/lme/aluminum/live - Alumínio LME (Cash + 3M)
+ * - /market/lme/aluminum/history/cash - Histórico Cash
+ * - /market/lme/aluminum/history/3m - Histórico 3M
  * - /contracts/settlements/today - Vencimentos do dia
  * - /contracts/settlements/upcoming - Próximos vencimentos
  */
@@ -110,10 +111,10 @@ export function DashboardPageIntegrated() {
     }
     
     return aluminumHistory.data.map((point) => ({
-      date: point.ts,
-      dateLabel: formatChartDate(point.ts, historyRange),
-      cash: point.mid,
-      threeMonths: point.ask || point.mid * 1.02,
+      date: `${point.date}T00:00:00Z`,
+      dateLabel: formatChartDate(`${point.date}T00:00:00Z`, historyRange),
+      cash: point.cash ?? undefined,
+      threeMonths: point.three_month ?? undefined,
     }));
   }, [aluminumHistory.data, historyRange]);
 
@@ -183,14 +184,20 @@ export function DashboardPageIntegrated() {
     }));
   }, [dashboard.data?.timeline]);
 
-  // Cotação atual - SEM valores fallback estáticos
+  // Cotação atual (Cash + 3M) - SEM valores fallback estáticos
   // Se não há dados da API ou mercado fechado, mostra "--"
-  const hasQuoteData = aluminumQuote.data && (aluminumQuote.data.bid || aluminumQuote.data.ask);
-  const spotPrice = hasQuoteData 
-    ? ((aluminumQuote.data!.bid ?? 0) + (aluminumQuote.data!.ask ?? 0)) / 2
-    : null;
-  const bidPrice = hasQuoteData ? aluminumQuote.data!.bid : null;
-  const askPrice = hasQuoteData ? aluminumQuote.data!.ask : null;
+  const cashPrice = aluminumQuote.data?.cash?.price ?? null;
+  const threeMonthPrice = aluminumQuote.data?.three_month?.price ?? null;
+  const hasQuoteData = cashPrice !== null || threeMonthPrice !== null;
+
+  const lastQuoteTs = useMemo(() => {
+    const cashTs = aluminumQuote.data?.cash?.ts ? new Date(aluminumQuote.data.cash.ts) : null;
+    const threeTs = aluminumQuote.data?.three_month?.ts
+      ? new Date(aluminumQuote.data.three_month.ts)
+      : null;
+    const t = Math.max(cashTs?.getTime() || 0, threeTs?.getTime() || 0);
+    return t > 0 ? new Date(t).toISOString() : null;
+  }, [aluminumQuote.data]);
 
   // ============================================
   // Loading / Error states
@@ -224,7 +231,7 @@ export function DashboardPageIntegrated() {
           <FioriCard>
             <FioriCardHeader 
               title="Alumínio LME Spot - USD/mt" 
-              subtitle={aluminumQuote.data?.source || 'LME'}
+              subtitle={'LME'}
             />
             
             {/* Indicador de mercado aberto/fechado */}
@@ -242,29 +249,29 @@ export function DashboardPageIntegrated() {
             {hasQuoteData ? (
               <>
                 <div className="mb-6">
-                  <FioriCardMetric value={formatNumber(spotPrice!, 2)} />
+                  <FioriCardMetric value={cashPrice !== null ? formatNumber(cashPrice, 2) : '--'} />
                 </div>
                 <div className="flex gap-4 text-center mb-4">
                   <div className="flex-1">
                     <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] mb-1">
-                      Compra (Bid)
+                      Cash (P3Y00)
                     </div>
                     <div className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapContent_ForegroundTextColor,#131e29)]">
-                      {bidPrice !== null ? formatNumber(bidPrice, 2) : '--'}
+                      {cashPrice !== null ? formatNumber(cashPrice, 2) : '--'}
                     </div>
                   </div>
                   <div className="flex-1">
                     <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] mb-1">
-                      Venda (Ask)
+                      3M (P4Y00)
                     </div>
                     <div className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapContent_ForegroundTextColor,#131e29)]">
-                      {askPrice !== null ? formatNumber(askPrice, 2) : '--'}
+                      {threeMonthPrice !== null ? formatNumber(threeMonthPrice, 2) : '--'}
                     </div>
                   </div>
                 </div>
-                {aluminumQuote.data?.as_of && (
+                {lastQuoteTs && (
                   <div className="text-[10px] text-[var(--sapContent_LabelColor,#556b82)] text-center">
-                    Última atualização: {new Date(aluminumQuote.data.as_of).toLocaleString('pt-BR')}
+                    Última atualização: {new Date(lastQuoteTs).toLocaleString('pt-BR')}
                   </div>
                 )}
               </>
@@ -467,7 +474,12 @@ export function DashboardPageIntegrated() {
                       fontFamily: '72:Regular,sans-serif',
                       fontSize: '12px'
                     }}
-                    formatter={(value: number) => [formatNumber(value, 2), '']}
+                    formatter={(value: unknown) => {
+                      if (typeof value === 'number' && Number.isFinite(value)) {
+                        return [formatNumber(value, 2), ''];
+                      }
+                      return ['—', ''];
+                    }}
                     labelFormatter={(label) => `Data: ${label}`}
                   />
                   <Legend 
@@ -483,7 +495,7 @@ export function DashboardPageIntegrated() {
                     stroke="var(--sapButton_TextColor,#0064d9)" 
                     strokeWidth={2}
                     dot={historyRange === '7d' ? { fill: 'var(--sapButton_TextColor,#0064d9)', r: 4 } : false}
-                    name="Cash (Mid)"
+                    name="Cash"
                     isAnimationActive={false}
                   />
                   <Line 
@@ -492,7 +504,7 @@ export function DashboardPageIntegrated() {
                     stroke="var(--sapCriticalTextColor,#e76500)" 
                     strokeWidth={2}
                     dot={historyRange === '7d' ? { fill: 'var(--sapCriticalTextColor,#e76500)', r: 4 } : false}
-                    name="Ask"
+                    name="3M"
                     isAnimationActive={false}
                   />
                 </LineChart>

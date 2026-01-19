@@ -14,5 +14,6 @@ export * from './useDashboard';
 export * from './useInbox';
 export * from './useTimeline';
 export * from './useCashflow';
+export * from './useCashflowAnalytic';
 export * from './useExports';
 export * from './useWorkflows';

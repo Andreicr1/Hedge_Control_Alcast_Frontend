@@ -10,7 +10,7 @@
 
 import {
   OrderStatus,
-  PricingType,
+  PriceType,
   CounterpartyType,
   RfqStatus,
   HedgeStatus,
@@ -326,7 +326,7 @@ export interface PurchaseOrder {
   total_quantity_mt: number;
   unit?: string | null;
   unit_price?: number | null;
-  pricing_type: PricingType;
+  pricing_type: PriceType;
   pricing_period?: string | null;
   lme_premium: number;
   premium?: number | null;
@@ -348,9 +348,9 @@ export interface PurchaseOrderCreate {
   total_quantity_mt: number;
   unit?: string | null;
   unit_price?: number | null;
-  pricing_type: PricingType;
+  pricing_type: PriceType;
   pricing_period?: string | null;
-  lme_premium: number;
+  lme_premium?: number | null;
   premium?: number | null;
   reference_price?: string | null;
   fixing_deadline?: string | null;
@@ -376,7 +376,7 @@ export interface SalesOrder {
   total_quantity_mt: number;
   unit?: string | null;
   unit_price?: number | null;
-  pricing_type: PricingType;
+  pricing_type: PriceType;
   pricing_period?: string | null;
   lme_premium: number;
   premium?: number | null;
@@ -396,9 +396,9 @@ export interface SalesOrderCreate {
   total_quantity_mt: number;
   unit?: string | null;
   unit_price?: number | null;
-  pricing_type: PricingType;
+  pricing_type: PriceType;
   pricing_period?: string | null;
-  lme_premium: number;
+  lme_premium?: number | null;
   premium?: number | null;
   reference_price?: string | null;
   fixing_deadline?: string | null;

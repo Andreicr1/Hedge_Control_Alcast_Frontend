@@ -2,8 +2,9 @@
  * Dashboard Service
  * 
  * Consome APIs REAIS do backend:
- * - /market/aluminum/quote - Cotação atual do alumínio
- * - /market/aluminum/history - Histórico de preços
+ * - /market/lme/aluminum/live - Preço live (Cash + 3M)
+ * - /market/lme/aluminum/history/cash - Histórico Cash
+ * - /market/lme/aluminum/history/3m - Histórico 3M
  * - /contracts/settlements/today - Vencimentos do dia
  * - /contracts/settlements/upcoming - Próximos vencimentos
  * 
@@ -23,10 +24,10 @@ import {
 // ============================================
 
 /**
- * Get current aluminum spot quote (bid/ask)
+ * Get current aluminum live prices (Cash + 3M)
  */
 export async function getAluminumQuote(): Promise<AluminumQuote> {
-  return api.get<AluminumQuote>(endpoints.aluminum.quote);
+  return api.get<AluminumQuote>(endpoints.aluminum.live);
 }
 
 /**
@@ -36,7 +37,34 @@ export async function getAluminumQuote(): Promise<AluminumQuote> {
 export async function getAluminumHistory(
   range: '7d' | '30d' | '1y' = '30d'
 ): Promise<AluminumHistoryPoint[]> {
-  return api.get<AluminumHistoryPoint[]>(endpoints.aluminum.history(range));
+  const [cashRows, threeMonthRows] = await Promise.all([
+    api.get<Array<{ date: string; price: number }>>(endpoints.aluminum.historyCash),
+    api.get<Array<{ date: string; price: number }>>(endpoints.aluminum.history3m),
+  ]);
+
+  const byDate = new Map<string, AluminumHistoryPoint>();
+  for (const r of cashRows || []) {
+    const existing = byDate.get(r.date) || { date: r.date };
+    byDate.set(r.date, { ...existing, cash: r.price });
+  }
+  for (const r of threeMonthRows || []) {
+    const existing = byDate.get(r.date) || { date: r.date };
+    byDate.set(r.date, { ...existing, three_month: r.price });
+  }
+
+  const merged = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+  // Apply requested range client-side (backend returns up to ~1y of daily points).
+  const days = range === '7d' ? 7 : range === '30d' ? 30 : 365;
+  const cutoff = new Date();
+  // normalize cutoff to UTC date boundary to avoid timezone surprises
+  cutoff.setUTCHours(0, 0, 0, 0);
+  cutoff.setUTCDate(cutoff.getUTCDate() - (days - 1));
+
+  return merged.filter((p) => {
+    const d = new Date(`${p.date}T00:00:00Z`);
+    return d.getTime() >= cutoff.getTime();
+  });
 }
 
 // ============================================

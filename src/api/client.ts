@@ -327,8 +327,10 @@ export const endpoints = {
 
   // Alumínio LME (APIs reais)
   aluminum: {
-    quote: '/market/aluminum/quote',
-    history: (range: '7d' | '30d' | '1y' = '30d') => `/market/aluminum/history?range=${range}`,
+    live: '/market/lme/aluminum/live',
+    historyCash: '/market/lme/aluminum/history/cash',
+    history3m: '/market/lme/aluminum/history/3m',
+    officialLatest: '/market/lme/aluminum/official/latest',
   },
 
   // Settlements (APIs reais)
@@ -340,6 +342,7 @@ export const endpoints = {
   // Cashflow (read-only v0)
   cashflow: {
     list: '/cashflow',
+    analytic: '/cashflow/analytic',
   },
 
   // Deals

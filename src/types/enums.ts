@@ -18,13 +18,13 @@ export enum OrderStatus {
 }
 
 // ============================================
-// Pricing Type
+// Price Type (institucional)
 // ============================================
-export enum PricingType {
-  FIXED = 'fixed',
-  TBF = 'tbf',
-  MONTHLY_AVERAGE = 'monthly_average',
-  LME_PREMIUM = 'lme_premium',
+export enum PriceType {
+  AVG = 'AVG',
+  AVG_INTER = 'AVGInter',
+  FIX = 'Fix',
+  C2R = 'C2R',
 }
 
 // ============================================

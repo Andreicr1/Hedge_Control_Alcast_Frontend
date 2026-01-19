@@ -333,7 +333,7 @@ export function ExportsPageIntegrated() {
             <FioriButton
               variant="ghost"
               icon={copiedKey === 'report_code' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              onClick={() => handleCopy('report_code', String(manifest.manifest.export_id || ''))}
+              onClick={() => handleCopy('report_code', String(manifest.manifest?.export_id ?? ''))}
             >
               Copiar código
             </FioriButton>
@@ -347,7 +347,7 @@ export function ExportsPageIntegrated() {
                 <FioriButton
                   variant="ghost"
                   icon={copiedKey === 'export_id' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  onClick={() => handleCopy('export_id', String(manifest.manifest.export_id || ''))}
+                  onClick={() => handleCopy('export_id', String(manifest.manifest?.export_id ?? ''))}
                 />
               </div>
             </div>

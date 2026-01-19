@@ -101,5 +101,27 @@ export const mapStatusToType = (status: string): StatusType => {
     Suspended: 'error',
   };
 
-  return statusMap[status] || 'neutral';
+  if (statusMap[status]) return statusMap[status];
+
+  const normalized = String(status)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+  const normalizedMap: Record<string, StatusType> = {
+    // Backend enums
+    active: 'success',
+    completed: 'success',
+    draft: 'information',
+    cancelled: 'error',
+
+    // PT-BR labels
+    ativo: 'success',
+    concluido: 'success',
+    rascunho: 'information',
+    cancelado: 'error',
+  };
+
+  return normalizedMap[normalized] || 'neutral';
 };

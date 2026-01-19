@@ -132,22 +132,27 @@ export interface DashboardSummary {
 }
 
 // ============================================
-// Aluminum Market Data (Backend: /market/aluminum)
+// Aluminum Market Data (Backend: /market/lme/aluminum/*)
 // ============================================
-export interface AluminumQuote {
-  bid: number;
-  ask: number;
-  currency: string;
-  unit: string;
-  as_of: string;
-  source?: string | null;
+
+export interface LmeLiveLeg {
+  symbol: 'P3Y00' | 'P4Y00' | 'Q7Y00';
+  price: number;
+  ts: string; // ISO datetime (UTC)
 }
 
+// Kept name for compatibility with existing hooks/pages.
+export interface AluminumQuote {
+  cash: LmeLiveLeg;
+  three_month: LmeLiveLeg;
+}
+
+// Merged daily history used by the dashboard chart.
+// Backend returns per-series arrays; the frontend merges by date.
 export interface AluminumHistoryPoint {
-  ts: string;
-  mid: number;
-  bid?: number | null;
-  ask?: number | null;
+  date: string; // YYYY-MM-DD
+  cash?: number | null;
+  three_month?: number | null;
 }
 
 // ============================================
@@ -201,4 +206,44 @@ export interface CashflowQueryParams {
   counterparty_id?: number;
   deal_id?: number;
   limit?: number;
+}
+
+// ============================================
+// Cashflow Analytic (Backend: /cashflow/analytic)
+// ============================================
+
+export type CashFlowEntityType = 'deal' | 'so' | 'po' | 'contract' | 'exposure';
+export type CashFlowType = 'physical' | 'financial' | 'risk';
+export type CashFlowValuationMethod = 'fixed' | 'mtm';
+export type CashFlowConfidence = 'deterministic' | 'estimated' | 'risk';
+export type CashFlowDirection = 'inflow' | 'outflow';
+
+export interface CashFlowLine {
+  entity_type: CashFlowEntityType;
+  entity_id: string;
+  parent_id?: string | null;
+
+  cashflow_type: CashFlowType;
+  date: string; // YYYY-MM-DD
+  amount: number; // non-negative magnitude
+
+  price_type?: string | null;
+  valuation_method: CashFlowValuationMethod;
+  valuation_reference_date?: string | null;
+  confidence: CashFlowConfidence;
+  direction: CashFlowDirection;
+
+  quantity_mt?: number | null;
+  unit_price_used?: number | null;
+
+  source_reference?: string | null;
+  explanation?: string | null;
+  as_of: string; // ISO datetime
+}
+
+export interface CashflowAnalyticQueryParams {
+  start_date?: string;
+  end_date?: string;
+  as_of?: string;
+  deal_id?: number;
 }

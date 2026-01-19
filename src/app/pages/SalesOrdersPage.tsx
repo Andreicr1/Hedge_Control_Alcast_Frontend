@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { mockSalesOrders } from '../../data/mockData';
-import { SalesOrder } from '../../data/types';
 import { FioriObjectStatus, mapStatusToType } from '../components/fiori/FioriObjectStatus';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { FioriTile } from '../components/fiori/FioriTile';
-import { SalesOrderForm, SalesOrderFormData } from '../components/forms/SalesOrderForm';
+import { SalesOrderForm } from '../components/forms/SalesOrderForm';
+import type { SalesOrder, SalesOrderCreate } from '../../types';
+import { OrderStatus } from '../../types';
+import { createSalesOrder, getSalesOrder, listSalesOrders } from '../../services/salesOrders.service';
 import { Download, Search, Package, DollarSign, Calendar, User, Plus } from 'lucide-react';
 
 export function SalesOrdersPage() {
@@ -14,9 +15,12 @@ export function SalesOrdersPage() {
   const { soId } = useParams<{ soId?: string }>();
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | OrderStatus>('All');
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [orders, setOrders] = useState<SalesOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const urlSoId = useMemo(() => {
     const fromPath = (soId || '').trim();
@@ -28,44 +32,84 @@ export function SalesOrdersPage() {
 
   const formatStatusLabel = (status: string) => {
     switch (status) {
-      case 'Open':
-        return 'Aberto';
-      case 'In Progress':
-        return 'Em andamento';
-      case 'Completed':
+      case OrderStatus.DRAFT:
+        return 'Rascunho';
+      case OrderStatus.ACTIVE:
+        return 'Ativo';
+      case OrderStatus.COMPLETED:
         return 'Concluído';
-      case 'Cancelled':
+      case OrderStatus.CANCELLED:
         return 'Cancelado';
       default:
         return status;
     }
   };
 
-  const filteredOrders = mockSalesOrders.filter((order) => {
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await listSalesOrders();
+        if (cancelled) return;
+        setOrders(data);
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(e?.message || 'Falha ao carregar pedidos de venda.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredOrders = orders.filter((order) => {
     const matchesSearch =
       order.so_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer_name.toLowerCase().includes(searchTerm.toLowerCase());
+      (order.customer?.name || String(order.customer_id)).toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const handleOrderSelect = (order: SalesOrder) => {
     setSelectedOrder(order);
-    navigate(`/vendas/sales-orders/${order.so_id}`);
+    navigate(`/vendas/sales-orders/${order.id}`);
   };
 
   useEffect(() => {
     if (!urlSoId) return;
-    const order = mockSalesOrders.find((o) => String(o.so_id) === urlSoId) || null;
-    if (!order) return;
-    if (selectedOrder?.so_id === order.so_id) return;
-    setSelectedOrder(order);
-  }, [urlSoId, selectedOrder?.so_id]);
+    const fromList = orders.find((o) => String(o.id) === urlSoId) || null;
+    if (fromList) {
+      if (selectedOrder?.id === fromList.id) return;
+      setSelectedOrder(fromList);
+      return;
+    }
+    let cancelled = false;
+    async function loadOne() {
+      try {
+        const data = await getSalesOrder(Number(urlSoId));
+        if (cancelled) return;
+        setSelectedOrder(data);
+      } catch {
+        // ignore
+      }
+    }
+    loadOne();
+    return () => {
+      cancelled = true;
+    };
+  }, [urlSoId, orders, selectedOrder?.id]);
 
-  const handleSaveOrder = (formData: SalesOrderFormData) => {
-    console.log('Salvando pedido de venda:', formData);
-    // Aqui você implementaria a lógica de salvar no backend
-    // Por enquanto, apenas logamos os dados
+  const handleSaveOrder = async (formData: SalesOrderCreate) => {
+    const created = await createSalesOrder(formData);
+    const refreshed = await listSalesOrders();
+    setOrders(refreshed);
+    setSelectedOrder(created);
+    navigate(`/vendas/sales-orders/${created.id}`);
   };
 
   // Master Column Content
@@ -101,14 +145,14 @@ export function SalesOrdersPage() {
             <select
               id="so-status-filter"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => setStatusFilter(e.target.value as 'All' | OrderStatus)}
               className="h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"
             >
               <option value="All">Todos os status</option>
-              <option value="Open">Aberto</option>
-              <option value="In Progress">Em andamento</option>
-              <option value="Completed">Concluído</option>
-              <option value="Cancelled">Cancelado</option>
+              <option value={OrderStatus.DRAFT}>Rascunho</option>
+              <option value={OrderStatus.ACTIVE}>Ativo</option>
+              <option value={OrderStatus.COMPLETED}>Concluído</option>
+              <option value={OrderStatus.CANCELLED}>Cancelado</option>
             </select>
           </div>
         </div>
@@ -116,11 +160,17 @@ export function SalesOrdersPage() {
 
       {/* Master List */}
       <div className="flex-1 overflow-y-auto">
+        {error && (
+          <div className="p-4 text-sm text-[var(--sapField_InvalidColor,#bb0000)]">{error}</div>
+        )}
+        {loading && !error && orders.length === 0 && (
+          <div className="p-4 text-sm text-[var(--sapContent_LabelColor)]">Carregando...</div>
+        )}
         {filteredOrders.map((order) => {
-          const isSelected = selectedOrder?.so_number === order.so_number;
+          const isSelected = selectedOrder?.id === order.id;
           return (
             <button
-              key={order.so_id}
+              key={order.id}
               onClick={() => handleOrderSelect(order)}
               className={`w-full p-4 border-b border-[var(--sapList_BorderColor)] text-left hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
                 isSelected
@@ -132,12 +182,12 @@ export function SalesOrdersPage() {
                 <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapLink_TextColor,#0a6ed1)]">
                   {order.so_number}
                 </div>
-                <FioriObjectStatus status={mapStatusToType(order.status)}>
+                <FioriObjectStatus status={mapStatusToType(formatStatusLabel(order.status))}>
                   {formatStatusLabel(order.status)}
                 </FioriObjectStatus>
               </div>
               <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1 font-['72:Regular',sans-serif]">
-                {order.customer_name}
+                {order.customer?.name || `Cliente #${order.customer_id}`}
               </div>
               <div className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">
                 {order.product} • {order.total_quantity_mt?.toLocaleString()} t
@@ -147,7 +197,7 @@ export function SalesOrdersPage() {
                   {order.expected_delivery_date}
                 </span>
                 <span className="text-sm font-['72:Bold',sans-serif] text-[var(--sapLink_TextColor,#0a6ed1)]">
-                  US$ {((order.unit_price || 0) * (order.total_quantity_mt || 0) / 1000).toFixed(0)}K
+                  {order.unit_price ? `US$ ${((order.unit_price || 0) * (order.total_quantity_mt || 0) / 1000).toFixed(0)}K` : '—'}
                 </span>
               </div>
             </button>
@@ -167,7 +217,7 @@ export function SalesOrdersPage() {
             <h1 className="font-['72:Black',sans-serif] text-2xl text-[var(--sapLink_TextColor,#0a6ed1)] m-0">
               {selectedOrder.so_number}
             </h1>
-            <FioriObjectStatus status={mapStatusToType(selectedOrder.status)}>
+            <FioriObjectStatus status={mapStatusToType(formatStatusLabel(selectedOrder.status))}>
               {formatStatusLabel(selectedOrder.status)}
             </FioriObjectStatus>
           </div>
@@ -188,18 +238,18 @@ export function SalesOrdersPage() {
           />
           <FioriTile
             title="Preço unitário"
-            value={`US$ ${selectedOrder.unit_price?.toLocaleString() || 0}`}
+            value={selectedOrder.unit_price ? `US$ ${selectedOrder.unit_price.toLocaleString()}` : '—'}
             icon={<DollarSign className="w-4 h-4" />}
           />
           <FioriTile
             title="Valor total"
-            value={`US$ ${((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0) / 1000).toFixed(0)}K`}
+            value={selectedOrder.unit_price ? `US$ ${((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0) / 1000).toFixed(0)}K` : '—'}
             valueColor="positive"
             icon={<DollarSign className="w-4 h-4" />}
           />
           <FioriTile
             title="Data de entrega"
-            value={selectedOrder.expected_delivery_date}
+            value={selectedOrder.expected_delivery_date ?? undefined}
             icon={<Calendar className="w-4 h-4" />}
           />
         </div>
@@ -210,7 +260,7 @@ export function SalesOrdersPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Cliente</label>
-              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{selectedOrder.customer_name}</p>
+              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{selectedOrder.customer?.name || `Cliente #${selectedOrder.customer_id}`}</p>
             </div>
             <div>
               <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Produto</label>
@@ -242,7 +292,7 @@ export function SalesOrdersPage() {
             <div className="flex justify-between items-center pb-2 border-b border-[var(--sapGroup_ContentBorderColor,#e5e5e5)]">
               <span className="text-sm text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Preço unitário</span>
               <span className="text-sm font-['72:Bold',sans-serif] text-[var(--sapTextColor,#32363a)]">
-                US$ {selectedOrder.unit_price?.toLocaleString() || 0} / t
+                {selectedOrder.unit_price ? `US$ ${selectedOrder.unit_price.toLocaleString()} / t` : '—'}
               </span>
             </div>
             <div className="flex justify-between items-center pb-2 border-b border-[var(--sapGroup_ContentBorderColor,#e5e5e5)]">
@@ -254,7 +304,7 @@ export function SalesOrdersPage() {
             <div className="flex justify-between items-center pt-2">
               <span className="text-base font-['72:Bold',sans-serif] text-[var(--sapTextColor,#32363a)]">Valor total</span>
               <span className="text-lg font-['72:Bold',sans-serif] text-[var(--sapLink_TextColor,#0a6ed1)]">
-                US$ {((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0)).toLocaleString()}
+                {selectedOrder.unit_price ? `US$ ${((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0)).toLocaleString()}` : '—'}
               </span>
             </div>
           </div>
