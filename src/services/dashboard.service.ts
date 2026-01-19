@@ -160,6 +160,31 @@ export function formatDateTime(isoDate: string | null | undefined): string {
 }
 
 /**
+ * Formata data/hora em padrão institucional (local): "18 jan 2026, 11:03"
+ */
+export function formatHumanDateTime(isoDate: string | null | undefined): string {
+  if (!isoDate) return '—';
+
+  // Some backends emit RFC3339 with microseconds (JS Date parsing can fail).
+  // Normalize fractional seconds to milliseconds: .ssssss -> .sss
+  const normalized = String(isoDate)
+    .trim()
+    .replace(/\.(\d{3})\d+(?=(Z|[+-]\d{2}:\d{2})$)/, '.$1');
+
+  const d = new Date(normalized);
+  if (!Number.isFinite(d.getTime())) return '—';
+
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] as const;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mon = months[d.getMonth()] ?? '';
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+
+  return `${dd} ${mon} ${yyyy}, ${hh}:${mm}`;
+}
+
+/**
  * Determina cor do status baseado no valor
  */
 export function getStatusColor(value: number): 'positive' | 'negative' | 'neutral' {

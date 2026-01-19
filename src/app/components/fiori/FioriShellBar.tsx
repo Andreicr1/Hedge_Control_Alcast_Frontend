@@ -1,5 +1,6 @@
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { LogOut } from 'lucide-react';
 import svgPaths from '../../../imports/svg-fgw0vx83tp';
 
 import {
@@ -7,6 +8,18 @@ import {
   quickSearchAll,
   type QuickSearchResults,
 } from '../../../services/quickSearch.service';
+
+import { useRecentTimeline } from '../../../hooks/useTimeline';
+import { useAuth } from '../../../hooks/useAuth';
+import { NotificationPanel } from '../notifications/NotificationPanel';
+import { ChatAgentPanel } from '../chat/ChatAgentPanel';
+import {
+  countUnread,
+  listNotificationsFromTimeline,
+  markNotificationRead,
+  type NotificationItem,
+} from '../../../services/notification.service';
+import { clearChatAgentState } from '../../../services/chatAgent.service';
 
 // Placeholder for Figma assets - replace with actual images
 const imgAlcastLogo = '/assets/alcast-logo.png';
@@ -548,9 +561,10 @@ function NotificationIcon() {
   );
 }
 
-function NotificationButton() {
+function NotificationButton({ onClick, unreadCount }: { onClick: () => void; unreadCount: number }) {
   return (
     <button
+      onClick={onClick}
       className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0"
       data-name="Notification Button"
       type="button"
@@ -559,6 +573,15 @@ function NotificationButton() {
     >
       <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
       <NotificationIcon />
+      {unreadCount > 0 ? (
+        <span
+          className="absolute right-[6px] top-[6px] min-w-[16px] h-[16px] px-[4px] rounded-[8px] bg-[#0064d9] text-white text-[11px] font-['72:Bold',sans-serif] leading-[16px] text-center"
+          aria-label={`${unreadCount} não lidas`}
+          title={`${unreadCount} não lidas`}
+        >
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -580,14 +603,15 @@ function HelpIcon() {
   );
 }
 
-function HelpButton() {
+function HelpButton({ onClick }: { onClick: () => void }) {
   return (
     <button
+      onClick={onClick}
       className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0"
       data-name="Help Button"
       type="button"
-      aria-label="Ajuda"
-      title="Ajuda"
+      aria-label="Agente"
+      title="Agente"
     >
       <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
       <HelpIcon />
@@ -607,18 +631,72 @@ function OverflowIcon() {
   );
 }
 
-function OverflowButton() {
+function OverflowButton({
+  open,
+  onToggle,
+  onClose,
+  onLogoff,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  onLogoff: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [open, onClose]);
+
   return (
-    <button
-      className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0"
-      data-name="Overflow Button"
-      type="button"
-      aria-label="Mais opções"
-      title="Mais opções"
-    >
-      <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
-      <OverflowIcon />
-    </button>
+    <div ref={rootRef} className="relative" data-name="Overflow Button">
+      <button
+        onClick={onToggle}
+        className="bg-[rgba(0,0,0,0)] content-stretch flex items-center justify-center min-h-[36px] p-[10px] relative rounded-[8px] shrink-0 hover:bg-[#eff1f2] transition-colors cursor-pointer border-0"
+        type="button"
+        aria-label="Mais opções"
+        title="Mais opções"
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <div aria-hidden="true" className="absolute border border-[rgba(0,0,0,0)] border-solid inset-0 pointer-events-none rounded-[8px]" />
+        <OverflowIcon />
+      </button>
+
+      {open ? (
+        <div
+          className="absolute right-0 top-[calc(100%+6px)] bg-white rounded-[8px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] min-w-[200px] z-[1400] overflow-hidden border border-[#d9d9d9]"
+          role="menu"
+          aria-label="Mais opções"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onLogoff();
+            }}
+            className="w-full px-[12px] py-[10px] text-left font-['72:Regular',sans-serif] text-[14px] text-[#131e29] hover:bg-[#f7f7f7] transition-colors border-0 bg-transparent flex items-center gap-2"
+            role="menuitem"
+            aria-label="Logoff"
+            title="Logoff"
+          >
+            <LogOut className="w-[16px] h-[16px] text-[#131E29]" />
+            <span>Logoff</span>
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -638,26 +716,123 @@ function Avatar({ userName }: { userName?: string }) {
   );
 }
 
-function RightArea({ userName }: { userName?: string }) {
+function RightArea({
+  userName,
+  unreadCount,
+  onOpenNotifications,
+  onOpenChat,
+  overflowOpen,
+  onToggleOverflow,
+  onCloseOverflow,
+  onLogoff,
+}: {
+  userName?: string;
+  unreadCount: number;
+  onOpenNotifications: () => void;
+  onOpenChat: () => void;
+  overflowOpen: boolean;
+  onToggleOverflow: () => void;
+  onCloseOverflow: () => void;
+  onLogoff: () => void;
+}) {
   return (
     <div className="content-stretch flex gap-[8px] items-center justify-end relative shrink-0" data-name="Right Area">
       <ShellSearch />
-      <NotificationButton />
-      <HelpButton />
-      <OverflowButton />
+      <NotificationButton onClick={onOpenNotifications} unreadCount={unreadCount} />
+      <HelpButton onClick={onOpenChat} />
+      <OverflowButton open={overflowOpen} onToggle={onToggleOverflow} onClose={onCloseOverflow} onLogoff={onLogoff} />
       <Avatar userName={userName} />
     </div>
   );
 }
 
 export function FioriShellBar({ onMenuToggle, sidebarOpen, applicationName = 'Hedge Management', userName }: FioriShellBarProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { logout } = useAuth();
+
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [readTick, setReadTick] = useState(0);
+
+  const { events: recentEvents } = useRecentTimeline(60);
+
+  const notificationItems = useMemo(() => {
+    return listNotificationsFromTimeline(recentEvents);
+  }, [recentEvents, readTick]);
+
+  const unreadCount = useMemo(() => countUnread(notificationItems), [notificationItems]);
+
+  const closePanels = useCallback(() => {
+    setNotificationsOpen(false);
+    setChatOpen(false);
+    setOverflowOpen(false);
+  }, []);
+
+  useEffect(() => {
+    closePanels();
+  }, [location.pathname, closePanels]);
+
+  const handleOpenNotifications = useCallback(() => {
+    setChatOpen(false);
+    setOverflowOpen(false);
+    setNotificationsOpen((v) => !v);
+  }, []);
+
+  const handleOpenChat = useCallback(() => {
+    setNotificationsOpen(false);
+    setOverflowOpen(false);
+    setChatOpen((v) => !v);
+  }, []);
+
+  const handleToggleOverflow = useCallback(() => {
+    setNotificationsOpen(false);
+    setChatOpen(false);
+    setOverflowOpen((v) => !v);
+  }, []);
+
+  const handleNotificationClick = useCallback(
+    (item: NotificationItem) => {
+      markNotificationRead(item.id);
+      setReadTick((t) => t + 1);
+      closePanels();
+      navigate(item.href);
+    },
+    [closePanels, navigate]
+  );
+
+  const handleLogoff = useCallback(() => {
+    closePanels();
+    clearChatAgentState();
+    logout();
+    navigate('/login', { replace: true });
+  }, [closePanels, logout, navigate]);
+
   return (
     <div className="bg-white w-full relative shrink-0 z-[1000]" data-name="Shell Bar">
       <div className="content-stretch flex items-center justify-between max-w-[inherit] min-w-[inherit] overflow-visible pl-[14px] pr-[16px] py-0 relative rounded-[inherit] w-full">
         <LeftArea onMenuToggle={onMenuToggle} />
-        <RightArea userName={userName} />
+        <RightArea
+          userName={userName}
+          unreadCount={unreadCount}
+          onOpenNotifications={handleOpenNotifications}
+          onOpenChat={handleOpenChat}
+          overflowOpen={overflowOpen}
+          onToggleOverflow={handleToggleOverflow}
+          onCloseOverflow={() => setOverflowOpen(false)}
+          onLogoff={handleLogoff}
+        />
       </div>
       <div aria-hidden="true" className="absolute border-[#d9d9d9] border-[0px_0px_1px] border-solid inset-0 pointer-events-none" />
+
+      <NotificationPanel
+        open={notificationsOpen}
+        items={notificationItems}
+        onClose={() => setNotificationsOpen(false)}
+        onItemClick={handleNotificationClick}
+      />
+      <ChatAgentPanel open={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

@@ -1,24 +1,26 @@
+import { Link } from 'react-router-dom';
+
 interface FioriTeamCardProps {
-  name: string;
-  role: string;
+  actor: string;
   initials: string;
   timestamp: string;
-  message: string;
-  quote?: string;
+  description: string;
+  object?: string;
+  href?: string;
   backgroundColor?: string;
 }
 
 export function FioriTeamCard({
-  name,
-  role,
+  actor,
   initials,
   timestamp,
-  message,
-  quote,
+  description,
+  object,
+  href,
   backgroundColor = '#0064d9',
 }: FioriTeamCardProps) {
-  return (
-    <div className="flex gap-3 p-3 rounded-[4px] hover:bg-[var(--sapList_HoverBackground,#f7f7f7)] transition-colors">
+  const content = (
+    <>
       {/* Avatar */}
       <div
         className="shrink-0 w-[40px] h-[40px] rounded-full flex items-center justify-center font-['72:Semibold_Duplex',sans-serif] text-white text-[16px]"
@@ -29,26 +31,44 @@ export function FioriTeamCard({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 mb-1">
-          <span className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapContent_ForegroundTextColor,#131e29)] leading-[normal]">
-            {name}
-          </span>
-          <span className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]">
-            {role}
+        <div className="flex items-baseline justify-between gap-2 mb-1">
+          <span className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapContent_ForegroundTextColor,#131e29)] leading-[normal] truncate">
+            {description}
           </span>
         </div>
-        <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal] mb-2">
+
+        {object ? (
+          <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_ForegroundTextColor,#131e29)] leading-[normal] mb-1 truncate">
+            {object}
+          </div>
+        ) : null}
+
+        <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal] mb-1">
+          {actor}
+        </div>
+
+        <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]">
           {timestamp}
         </div>
-        <div className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_ForegroundTextColor,#131e29)] leading-[1.4] mb-2">
-          {message}
-        </div>
-        {quote && (
-          <div className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_LabelColor,#556b82)] leading-[1.4] italic border-l-2 border-[var(--sapContent_ForegroundBorderColor,#d9d9d9)] pl-3">
-            "{quote}"
-          </div>
-        )}
       </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        to={href}
+        className="flex gap-3 p-3 rounded-[4px] hover:bg-[var(--sapList_HoverBackground,#f7f7f7)] transition-colors cursor-pointer"
+        title="Abrir detalhes"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="flex gap-3 p-3 rounded-[4px] hover:bg-[var(--sapList_HoverBackground,#f7f7f7)] transition-colors">
+      {content}
     </div>
   );
 }
