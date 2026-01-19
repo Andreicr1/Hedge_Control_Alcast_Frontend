@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ApiError, EntityTreeResponse } from '../types';
-import { getEntityTree } from '../services/analytics.service';
+import { getEntityTree, type EntityTreeQuery } from '../services/analytics.service';
 
-export function useAnalyticsEntityTree() {
+export function useAnalyticsEntityTree(query?: EntityTreeQuery) {
   const [data, setData] = useState<EntityTreeResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [error, setError] = useState<ApiError | null>(null);
+
+  const queryKey = useMemo(() => JSON.stringify(query ?? {}), [query]);
 
   const refetch = useCallback(async () => {
     setIsLoading(true);
@@ -14,7 +16,7 @@ export function useAnalyticsEntityTree() {
     setError(null);
 
     try {
-      const res = await getEntityTree();
+      const res = await getEntityTree(query);
       setData(res);
     } catch (e) {
       setIsError(true);
@@ -23,7 +25,7 @@ export function useAnalyticsEntityTree() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [queryKey]);
 
   useEffect(() => {
     refetch();

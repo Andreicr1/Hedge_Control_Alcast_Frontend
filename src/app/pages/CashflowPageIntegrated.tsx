@@ -7,22 +7,20 @@
  * Frontend ONLY aggregates/sums amounts; it does not infer valuation.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCashflowAnalytic } from '../../hooks';
-import type { CashFlowConfidence, CashFlowLine, CashFlowType, CashflowAnalyticQueryParams } from '../../types';
+import type { CashFlowConfidence, CashFlowLine, CashFlowType, CashflowAnalyticQueryParams, Deal } from '../../types';
 import { ErrorState, LoadingState, EmptyState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
+import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { FioriInput } from '../components/fiori/FioriInput';
 import { Checkbox } from '../components/ui/checkbox';
 import { formatCurrency, formatDate } from '../../services/dashboard.service';
-import { RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Search } from 'lucide-react';
 import { useAuthContext } from '../components/AuthProvider';
 import { normalizeRoleName } from '../../utils/role';
 import { UX_COPY } from '../ux/copy';
-import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
-import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
-import { useAnalyticScope } from '../analytics/ScopeProvider';
-import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
+import { listDeals } from '../../services/deals.service';
 
 function Badge({ children }: { children: string }) {
   return (
@@ -222,12 +220,38 @@ function formatTotals(t: SignedTotals): string {
 }
 
 export function CashflowPageIntegrated() {
-  useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
-  const { scope } = useAnalyticScope();
-
-  const scopedDealId = scope.kind === 'all' ? undefined : scope.dealId;
   const { user } = useAuthContext();
   const role = normalizeRoleName(user?.role);
+
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [isLoadingDeals, setIsLoadingDeals] = useState<boolean>(true);
+  const [dealsError, setDealsError] = useState<string | null>(null);
+  const [dealSearch, setDealSearch] = useState<string>('');
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(() => new Set());
+  const [activeDealId, setActiveDealId] = useState<number | null>(null);
+
+  const fetchDeals = useCallback(async () => {
+    setIsLoadingDeals(true);
+    setDealsError(null);
+    try {
+      const res = await listDeals();
+      setDeals(res);
+      if (res.length > 0 && activeDealId === null) setActiveDealId(res[0]!.id);
+      // Default: consolidate all deals.
+      setSelectedDealIds(new Set(res.map((d) => d.id)));
+    } catch (e) {
+      console.error('Failed to fetch deals:', e);
+      setDealsError('Erro ao carregar operações');
+      setDeals([]);
+      setSelectedDealIds(new Set());
+    } finally {
+      setIsLoadingDeals(false);
+    }
+  }, [activeDealId]);
+
+  useEffect(() => {
+    fetchDeals();
+  }, [fetchDeals]);
 
   // Defaults: today → today+90d, as_of=today
   const today = useMemo(() => new Date(), []);
@@ -256,28 +280,171 @@ export function CashflowPageIntegrated() {
     deal_id: undefined,
   }));
 
-  useEffect(() => {
-    setApplied((prev) => ({ ...prev, deal_id: scopedDealId }));
-  }, [scopedDealId]);
+  // Tree selection (inside detail area): allows summing subsets.
+  const [openDeals, setOpenDeals] = useState<Record<string, boolean>>({});
+  const [selectedNodeKeys, setSelectedNodeKeys] = useState<Set<string>>(() => new Set());
 
   const cashflow = useCashflowAnalytic(applied);
+
+  const filteredDeals = useMemo(() => {
+    const s = dealSearch.trim().toLowerCase();
+    if (!s) return deals;
+    return deals.filter((d) => {
+      return (
+        String(d.id).includes(s) ||
+        (d.deal_uuid || '').toLowerCase().includes(s) ||
+        (d.reference_name || '').toLowerCase().includes(s) ||
+        (d.commodity || '').toLowerCase().includes(s)
+      );
+    });
+  }, [dealSearch, deals]);
+
+  const masterContent = (
+    <>
+      <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-['72:Bold',sans-serif] text-base text-[var(--sapList_HeaderTextColor)]">
+            Operações ({filteredDeals.length})
+          </h2>
+          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={fetchDeals}>
+            Atualizar
+          </FioriButton>
+        </div>
+
+        <div className="space-y-2">
+          <div className="relative">
+            <input
+              type="text"
+              value={dealSearch}
+              onChange={(e) => setDealSearch(e.target.value)}
+              placeholder="Buscar por ID, UUID, referência..."
+              className="w-full h-8 px-3 pr-8 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none focus:border-[var(--sapField_Focus_BorderColor)]"
+            />
+            <Search className="w-4 h-4 absolute right-2 top-2 text-[var(--sapContent_IconColor)]" />
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              className="text-xs text-[var(--sapLink_TextColor)] hover:underline"
+              onClick={() => setSelectedDealIds(new Set(filteredDeals.map((d) => d.id)))}
+            >
+              Consolidar todos
+            </button>
+            <button
+              type="button"
+              className="text-xs text-[var(--sapLink_TextColor)] hover:underline"
+              onClick={() => setSelectedDealIds(new Set())}
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        {isLoadingDeals ? (
+          <div className="p-4">
+            <LoadingState message="Carregando operações..." />
+          </div>
+        ) : dealsError ? (
+          <div className="p-4">
+            <ErrorState error={{ detail: dealsError }} onRetry={fetchDeals} />
+          </div>
+        ) : filteredDeals.length === 0 ? (
+          <div className="p-4">
+            <EmptyState title="Sem operações" description="Ajuste a busca ou verifique seus filtros." />
+          </div>
+        ) : (
+          filteredDeals.map((deal) => {
+            const label = (deal.reference_name || '').trim() || `Deal #${deal.id}`;
+            const isSelected = selectedDealIds.has(deal.id);
+            const isActive = activeDealId === deal.id;
+            return (
+              <div
+                key={deal.id}
+                className={`w-full p-3 border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
+                  isActive ? 'bg-[var(--sapList_SelectionBackgroundColor)] border-l-2 border-l-[var(--sapList_SelectionBorderColor)]' : ''
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <div className="pt-1">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(v) => {
+                        const checked = Boolean(v);
+                        setSelectedDealIds((prev) => {
+                          const next = new Set(prev);
+                          if (checked) next.add(deal.id);
+                          else next.delete(deal.id);
+                          return next;
+                        });
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="flex-1 text-left min-w-0"
+                    onClick={() => setActiveDealId(deal.id)}
+                  >
+                    <div className="font-['72:Bold',sans-serif] text-sm text-[#0064d9] truncate">{label}</div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)] truncate">Deal #{deal.id}</div>
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
 
   const filteredLines = useMemo(() => {
     const lines = cashflow.data ?? [];
     return lines.filter((l) => typeFilter[l.cashflow_type] && confidenceFilter[l.confidence]);
   }, [cashflow.data, typeFilter, confidenceFilter]);
 
+  const dealFilteredLines = useMemo(() => {
+    if (selectedDealIds.size === 0) return [] as CashFlowLine[];
+    // If API is already filtered to a single deal, keep as-is.
+    if (applied.deal_id) return filteredLines;
+    return filteredLines.filter((l) => {
+      const raw = String(l.parent_id || '').trim();
+      const did = Number(raw);
+      if (!Number.isFinite(did)) return false;
+      return selectedDealIds.has(did);
+    });
+  }, [applied.deal_id, filteredLines, selectedDealIds]);
+
+  const tree = useMemo(() => buildTree(dealFilteredLines), [dealFilteredLines]);
+
+  const allNodeKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const deal of tree.children) {
+      keys.push(`deal:${deal.dealId}`);
+      for (const ent of deal.children) keys.push(ent.id);
+    }
+    return keys;
+  }, [tree]);
+
+  const dealToChildKeys = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const deal of tree.children) {
+      map[`deal:${deal.dealId}`] = deal.children.map((c) => c.id);
+    }
+    return map;
+  }, [tree]);
+
   const selectedLines = useMemo(() => {
-    if (scope.kind === 'all') return filteredLines;
-    if (scope.kind === 'deal') return filteredLines.filter((l) => String(l.parent_id || '—') === String(scope.dealId));
-    if (scope.kind === 'so') {
-      return filteredLines.filter((l) => l.entity_type === 'so' && String(l.entity_id) === String(scope.soId));
-    }
-    if (scope.kind === 'po') {
-      return filteredLines.filter((l) => l.entity_type === 'po' && String(l.entity_id) === String(scope.poId));
-    }
-    return filteredLines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === String(scope.contractId));
-  }, [filteredLines, scope]);
+    if (selectedNodeKeys.size === 0) return dealFilteredLines;
+
+    return dealFilteredLines.filter((l) => {
+      const dealId = (String(l.parent_id || '—').trim() || '—');
+      const dealKey = `deal:${dealId}`;
+      const entityKey = `${l.entity_type}:${l.entity_id}`;
+      return selectedNodeKeys.has(dealKey) || selectedNodeKeys.has(entityKey);
+    });
+  }, [dealFilteredLines, selectedNodeKeys]);
 
   const rawLines = useMemo(() => {
     const sorted = [...selectedLines].sort((a, b) => {
@@ -310,17 +477,20 @@ export function CashflowPageIntegrated() {
   }, [selectedLines, granularity]);
 
   const handleApply = () => {
+    const selectedDealIdForQuery =
+      selectedDealIds.size === 1 ? Array.from(selectedDealIds.values())[0] : undefined;
+
     const next: CashflowAnalyticQueryParams = {
       start_date: startDate || undefined,
       end_date: endDate || undefined,
       as_of: asOf || undefined,
-      deal_id: scopedDealId,
+      deal_id: selectedDealIdForQuery,
     };
 
     setApplied(next);
   };
 
-  const right = cashflow.isError ? (
+  const detailContent = cashflow.isError ? (
     <ErrorState error={cashflow.error} onRetry={cashflow.refetch} fullPage />
   ) : cashflow.isLoading && !cashflow.data ? (
     <LoadingState message="Carregando fluxo de caixa..." fullPage />
@@ -346,6 +516,113 @@ export function CashflowPageIntegrated() {
           </FioriButton>
         </div>
       </div>
+
+      {/* Grouping (Deal → SO/PO/Contrato/Exposure) - display only */}
+      {dealFilteredLines.length > 0 && (
+        <div className="bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">Itens por operação</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">
+                Expanda um deal e selecione itens para somar.
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="text-xs text-[var(--sapLink_TextColor)] hover:underline"
+                onClick={() => setSelectedNodeKeys(new Set())}
+              >
+                Consolidar todos
+              </button>
+            </div>
+          </div>
+
+          {tree.children.map((deal) => {
+            const isOpen = openDeals[deal.dealId] ?? true;
+            const dealKey = `deal:${deal.dealId}`;
+            const isAllMode = selectedNodeKeys.size === 0;
+            const dealChecked = isAllMode ? true : selectedNodeKeys.has(dealKey);
+
+            return (
+              <div key={deal.id} className="border-t border-[var(--sapList_BorderColor,#e5e5e5)] pt-2 mt-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      type="button"
+                      className="w-8 h-8 flex items-center justify-center rounded hover:bg-[var(--sapList_Hover_Background,#f5f6f7)]"
+                      onClick={() => setOpenDeals((p) => ({ ...p, [deal.dealId]: !isOpen }))}
+                      aria-label={isOpen ? 'Recolher' : 'Expandir'}
+                    >
+                      {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </button>
+
+                    <Checkbox
+                      checked={dealChecked}
+                      onCheckedChange={(v) => {
+                        const checked = Boolean(v);
+                        setSelectedNodeKeys((prev) => {
+                          const prevIsAll = prev.size === 0;
+                          const next = prevIsAll ? new Set(allNodeKeys) : new Set(prev);
+                          const keysToChange = [dealKey, ...(dealToChildKeys[dealKey] ?? [])];
+                          for (const k of keysToChange) {
+                            if (checked) next.add(k);
+                            else next.delete(k);
+                          }
+                          if (next.size === allNodeKeys.length) return new Set();
+                          return next;
+                        });
+                      }}
+                    />
+
+                    <div className="min-w-0">
+                      <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)] truncate">
+                        {deal.label}
+                      </div>
+                      <div className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{formatTotals(deal.totals)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {isOpen && (
+                  <div className="mt-2 pl-10">
+                    {deal.children.map((ent) => {
+                      const checked = isAllMode ? true : selectedNodeKeys.has(ent.id);
+                      return (
+                        <div
+                          key={ent.id}
+                          className="flex items-center justify-between gap-2 px-2 py-2 rounded hover:bg-[var(--sapList_Hover_Background,#f5f6f7)]"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => {
+                                const isChecked = Boolean(v);
+                                setSelectedNodeKeys((prev) => {
+                                  const prevIsAll = prev.size === 0;
+                                  const next = prevIsAll ? new Set(allNodeKeys) : new Set(prev);
+                                  if (isChecked) next.add(ent.id);
+                                  else next.delete(ent.id);
+                                  if (next.size === allNodeKeys.length) return new Set();
+                                  return next;
+                                });
+                              }}
+                            />
+                            <div className="min-w-0">
+                              <div className="text-sm text-[var(--sapTextColor,#131e29)] truncate">{ent.label}</div>
+                              <div className="text-xs text-[var(--sapContent_LabelColor,#556b82)]">{formatTotals(ent.totals)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4 mb-4">
@@ -423,7 +700,9 @@ export function CashflowPageIntegrated() {
       </div>
 
       {/* Details */}
-      {filteredLines.length === 0 ? (
+      {selectedDealIds.size === 0 ? (
+        <EmptyState title="Sem seleção" description="Selecione operações na coluna da esquerda para consolidar." fullPage />
+      ) : dealFilteredLines.length === 0 ? (
         <EmptyState
           title="Sem itens"
           description="Sem itens no período/filtros selecionados. Ajuste e tente novamente."
@@ -570,7 +849,14 @@ export function CashflowPageIntegrated() {
     </div>
   );
 
-  return <AnalyticTwoPaneLayout left={<AnalyticScopeTree />} right={right} />;
+  return (
+    <FioriFlexibleColumnLayout
+      masterTitle="Operações"
+      masterContent={masterContent}
+      masterWidth={360}
+      detailContent={detailContent}
+    />
+  );
 }
 
 export default CashflowPageIntegrated;
