@@ -308,7 +308,7 @@ export function PnlPageIntegrated() {
               </div>
             ) : (
               <div className="px-3 py-2 border border-[var(--sapField_BorderColor)] rounded-md text-sm text-[var(--sapContent_LabelColor)]">
-                Use a busca global para abrir o PnL de uma operação.
+                Selecione uma operação para consultar o resultado.
               </div>
             )}
           </div>

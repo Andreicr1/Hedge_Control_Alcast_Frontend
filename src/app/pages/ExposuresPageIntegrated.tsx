@@ -1,10 +1,4 @@
-/**
- * Exposures Page - Versão Integrada com Backend
- * 
- * Exposições são criadas automaticamente pelo backend ao criar SOs/POs.
- * Representam a posição a ser hedgeada.
- * Frontend apenas visualiza - não cria/edita exposições diretamente.
- */
+/** Exposures Page */
 
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';

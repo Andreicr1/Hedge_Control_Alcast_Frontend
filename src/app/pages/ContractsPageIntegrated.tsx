@@ -1,10 +1,4 @@
-/**
- * Contracts Page - Versão Integrada com Backend
- * 
- * Contratos são SOMENTE LEITURA no frontend.
- * Criados automaticamente pelo backend ao premiar RFQ.
- * 1 trade = 1 contrato.
- */
+/** Contracts Page */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -203,7 +197,7 @@ export function ContractsPageIntegrated() {
         ) : filteredContracts.length === 0 ? (
           <EmptyState 
             title="Nenhum contrato encontrado"
-            description="Os contratos são registrados automaticamente após a decisão de uma cotação."
+            description="Não há contratos para os filtros selecionados."
           />
         ) : (
           filteredContracts.map((contract) => {
@@ -384,7 +378,7 @@ export function ContractsPageIntegrated() {
           Cobertura de exposição
         </h3>
         <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
-          Total alocado: {total.toLocaleString('pt-BR')} t (origem SO/PO explícita)
+          Total alocado: {total.toLocaleString('pt-BR')} t
         </div>
 
         <div className="space-y-4">

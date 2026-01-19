@@ -388,6 +388,7 @@ export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationPro
 
   const showInbox = !role || role === 'financeiro' || role === 'admin' || role === 'auditoria';
   const showApprovals = !role || role === 'financeiro' || role === 'admin' || role === 'auditoria';
+  const showDeals = role === 'admin';
   const financeiroChildren = [
     ...(showInbox ? [{ label: UX_COPY.nav.pending, path: '/financeiro/inbox' }] : []),
     ...(showApprovals ? [{ label: UX_COPY.nav.approvals, path: '/financeiro/aprovacoes' }] : []),
@@ -398,13 +399,13 @@ export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationPro
     { label: UX_COPY.nav.cashflow, path: '/financeiro/cashflow' },
     { label: UX_COPY.nav.reports, path: '/financeiro/exports' },
     { label: UX_COPY.nav.counterparties, path: '/financeiro/contrapartes' },
-    { label: UX_COPY.nav.deals, path: '/financeiro/deals' },
+    ...(showDeals ? [{ label: UX_COPY.nav.deals, path: '/financeiro/deals' }] : []),
   ];
   const filterByRole = (items: NavItem[]): NavItem[] => {
     if (!role) return items;
     return items.filter((item) => {
       if (item.path === '/') return true;
-      if (item.path === '/configuracoes') return true;
+      if (item.path === '/configuracoes') return role === 'admin';
       if (item.path === '/vendas') return role === 'vendas';
       if (item.path === '/compras') return role === 'compras';
       if (item.path === '/financeiro') return role === 'financeiro' || role === 'auditoria' || role === 'admin';

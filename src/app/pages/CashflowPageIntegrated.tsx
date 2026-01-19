@@ -416,9 +416,7 @@ export function CashflowPageIntegrated() {
           </div>
         </div>
 
-        <div className="mt-3 text-xs text-[var(--sapContent_LabelColor,#556b82)]">
-          A UI apenas soma valores do backend; não recalcula valuation.
-        </div>
+
       </div>
 
       {/* Tree + Details */}
@@ -644,12 +642,6 @@ export function CashflowPageIntegrated() {
 
       <div className="mt-3 text-xs text-[var(--sapContent_LabelColor,#556b82)]">
         Data-base considerada: <span className="font-['72:Bold',sans-serif]">{applied.as_of || '—'}</span>
-        {cashflow.data?.[0]?.as_of ? (
-          <>
-            {' '}
-            (backend as_of: <span className="font-['72:Bold',sans-serif]">{cashflow.data[0].as_of}</span>)
-          </>
-        ) : null}
       </div>
     </div>
   );

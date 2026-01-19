@@ -29,13 +29,13 @@ export const UX_COPY = {
     reports: 'Relatórios',
     counterparties: 'Contrapartes',
     deals: 'Operações',
-    settings: 'Configurações do Sistema',
+    settings: 'Administração',
   },
 
   pages: {
     reports: {
       title: 'Relatórios',
-      subtitle: 'Geração e acesso a relatórios oficiais para auditoria, compliance e controle interno.',
+      subtitle: '',
       sections: {
         configuration: 'Configuração do relatório',
         tracking: 'Acompanhar relatório',
@@ -50,47 +50,47 @@ export const UX_COPY = {
 
     pending: {
       title: 'Pendências',
-      subtitle: 'Itens que exigem atenção, validação ou decisão institucional.',
+      subtitle: '',
       empty: 'Não há pendências no momento.',
     },
 
     approvals: {
       title: 'Aprovações',
-      subtitle: 'Solicitações institucionais sujeitas a governança e alçada de decisão.',
+      subtitle: '',
       empty: 'Não há solicitações pendentes de aprovação.',
     },
 
     riskExposure: {
       title: 'Exposição de Risco',
-      subtitle: 'Visão consolidada das exposições geradas por operações comerciais e financeiras.',
+      subtitle: '',
       emptyTitle: 'Nenhuma exposição ativa no momento.',
-      emptyDescription: 'As exposições são geradas automaticamente a partir de pedidos e contratos.',
+      emptyDescription: 'Não há exposições para os filtros selecionados.',
     },
 
     rfqs: {
       title: 'Cotações',
-      subtitle: 'Processos de solicitação, recebimento e decisão de preços junto a contrapartes.',
+      subtitle: '',
     },
 
     contracts: {
       title: 'Contratos',
-      subtitle: 'Contratos financeiros ativos e históricos, com seus termos e exposições associadas.',
+      subtitle: '',
     },
 
     pnl: {
       title: 'Resultado (P&L)',
-      subtitle: 'Resultado financeiro consolidado, com valores realizados e a mercado.',
+      subtitle: '',
     },
 
     cashflow: {
       title: 'Fluxo de Caixa',
-      subtitle: 'Entradas e saídas financeiras previstas e realizadas.',
-      comingSoon: 'Esta funcionalidade será disponibilizada em breve.',
+      subtitle: '',
+      comingSoon: 'Indisponível no momento.',
     },
 
     settings: {
-      title: 'Configurações do Sistema',
-      subtitle: 'Parâmetros institucionais e regras operacionais do sistema.',
+      title: 'Administração',
+      subtitle: '',
       empty: 'Nenhuma configuração disponível para este perfil.',
     },
   },

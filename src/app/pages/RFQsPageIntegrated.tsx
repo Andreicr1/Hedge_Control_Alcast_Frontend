@@ -1,14 +1,4 @@
-/**
- * RFQs Page - Versão Integrada com Backend
- * 
- * Esta página consome dados reais da API via hooks.
- * NENHUMA lógica de negócio - apenas orquestração e apresentação.
- * 
- * Fluxo Backend:
- * - RFQ → criada a partir de SalesOrder
- * - RFQ → recebe quotes de counterparties
- * - RFQ.award() → cria automaticamente Contract(s)
- */
+/** RFQs Page */
 
 import { useState, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -116,6 +106,16 @@ export function RFQsPageIntegrated() {
   const [awardKycMessage, setAwardKycMessage] = useState<string | null>(null);
   const [isAwardKycLoading, setIsAwardKycLoading] = useState(false);
 
+  const formatCounterpartyKycBlockMessage = useCallback((reasonCode?: string | null) => {
+    const code = String(reasonCode || '').toUpperCase();
+    if (!code) return 'Contraparte indisponível para premiação (KYC pendente).';
+    if (code === 'KYC_CHECK_MISSING') return 'Contraparte indisponível para premiação (KYC pendente).';
+    if (code === 'KYC_CHECK_EXPIRED') return 'Contraparte indisponível para premiação (KYC vencido).';
+    if (code === 'KYC_CHECK_FAILED') return 'Contraparte indisponível para premiação (KYC reprovado).';
+    if (code === 'COUNTERPARTY_KYC_STATUS_NOT_APPROVED') return 'Contraparte indisponível para premiação (KYC pendente).';
+    return 'Contraparte indisponível para premiação (KYC pendente).';
+  }, []);
+
   const parseKycGateError = useCallback((err: ApiError | null | undefined): KycGateErrorDetail | null => {
     const obj = err?.detail_obj;
     if (obj && typeof obj === 'object' && typeof (obj as any).code === 'string') {
@@ -218,7 +218,7 @@ export function RFQsPageIntegrated() {
       try {
         const preflight = await getCounterpartyKycPreflight(cpId);
         if (!preflight.allowed) {
-          setAwardKycMessage(`KYC bloqueado: ${preflight.reason_code}`);
+          setAwardKycMessage(formatCounterpartyKycBlockMessage(preflight.reason_code));
           return;
         }
       } catch {
@@ -241,7 +241,7 @@ export function RFQsPageIntegrated() {
       refetchDetail();
       refetch();
     }
-  }, [selectedRfqId, selectedQuoteForAward, awardReason, awardMutation, refetchDetail, refetch]);
+  }, [selectedRfqId, selectedQuoteForAward, awardReason, awardMutation, refetchDetail, refetch, formatCounterpartyKycBlockMessage]);
 
   // ============================================
   // Check if actions are allowed based on backend status
@@ -700,9 +700,6 @@ export function RFQsPageIntegrated() {
                 })()}
               </div>
             )}
-            <p className="text-xs text-[var(--sapContent_LabelColor)]">
-              Ao confirmar, o sistema registrará os contratos associados a esta decisão.
-            </p>
           </div>
         </FioriModal>
       )}

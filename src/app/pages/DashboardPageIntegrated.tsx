@@ -19,7 +19,7 @@ import {
   useSettlementsUpcoming,
   useDashboard,
 } from '../../hooks';
-import { formatNumber, formatCurrency, formatDate } from '../../services/dashboard.service';
+import { formatNumber, formatCurrency, formatDate, formatDateTime } from '../../services/dashboard.service';
 import { LoadingState, ErrorState } from '../components/ui';
 import { FioriCard, FioriCardHeader, FioriCardMetric } from '../components/fiori/FioriCard';
 import { FioriBadge } from '../components/fiori/FioriBadge';
@@ -271,7 +271,7 @@ export function DashboardPageIntegrated() {
                 </div>
                 {lastQuoteTs && (
                   <div className="text-[10px] text-[var(--sapContent_LabelColor,#556b82)] text-center">
-                    Última atualização: {new Date(lastQuoteTs).toLocaleString('pt-BR')}
+                    Última atualização: {formatDateTime(lastQuoteTs)}
                   </div>
                 )}
               </>

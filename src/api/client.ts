@@ -72,8 +72,20 @@ export function clearAuthToken(): void {
 // Error Handling
 // ============================================
 
+function sanitizeBackendDetail(detail: string): string | null {
+  const text = String(detail || '').trim();
+  if (!text) return null;
+
+  // Avoid leaking technical/system details.
+  const suspicious = /(traceback|exception|stack|sqlalchemy|psycopg|sqlite|syntax error|undefined|nan|null\b|KeyError|TypeError|ValueError|AssertionError)/i;
+  if (suspicious.test(text)) return null;
+  if (/[{}\[\]]/.test(text)) return null;
+  if (text.length > 180) return null;
+  return text;
+}
+
 async function handleErrorResponse(response: Response): Promise<never> {
-  let errorDetail = 'Erro desconhecido';
+  let errorDetail = 'Não foi possível concluir a operação';
   let validationErrors = undefined;
   let detailObj: unknown = undefined;
   let responseBody: unknown = undefined;
@@ -84,30 +96,33 @@ async function handleErrorResponse(response: Response): Promise<never> {
     const detail = errorBody?.detail;
 
     if (typeof detail === 'string') {
-      errorDetail = detail;
+      const safe = sanitizeBackendDetail(detail);
+      if (safe && response.status >= 400 && response.status < 500) {
+        errorDetail = safe;
+      }
     } else if (Array.isArray(detail)) {
       // FastAPI validation errors
       validationErrors = detail as any;
-      errorDetail = (detail as Array<{ msg: string }>).map((e) => e.msg).join(', ');
+      errorDetail = 'Verifique os dados informados.';
     } else if (detail && typeof detail === 'object') {
       // Structured errors (e.g., KYC gate returns {code, counterparty_id, details})
       detailObj = detail;
-
-      const maybeCode = (detail as any).code;
-      const maybeCounterpartyId = (detail as any).counterparty_id;
-      if (typeof maybeCode === 'string') {
-        errorDetail = typeof maybeCounterpartyId === 'number'
-          ? `${maybeCode} (counterparty_id=${maybeCounterpartyId})`
-          : maybeCode;
-      } else {
-        errorDetail = JSON.stringify(detail);
-      }
+      // Keep a generic public message; pages can branch using detail_obj/response_body.
+      errorDetail = 'Não foi possível concluir a operação';
     } else if (detail !== undefined) {
-      errorDetail = String(detail);
+      errorDetail = 'Não foi possível concluir a operação';
     }
   } catch {
     errorDetail = response.statusText || `HTTP ${response.status}`;
   }
+
+  // Status-specific public messages (override, keep consistent tone)
+  if (response.status === 401) errorDetail = 'Sessão expirada. Faça login novamente.';
+  if (response.status === 403) errorDetail = 'Acesso não autorizado para esta ação.';
+  if (response.status === 404) errorDetail = 'Registro não encontrado.';
+  if (response.status === 408) errorDetail = 'Tempo limite excedido. Tente novamente.';
+  if (response.status === 422) errorDetail = 'Verifique os dados informados.';
+  if (response.status >= 500) errorDetail = 'Não foi possível concluir a operação.';
 
   const error: ApiError = {
     detail: errorDetail,

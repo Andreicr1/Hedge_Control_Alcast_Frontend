@@ -103,20 +103,20 @@ function MenuButton() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const menuItems: MenuItem[] = [
-    { label: 'Dashboard', path: '/', category: 'Principal' },
-    { label: 'Sales Orders', path: '/vendas/sales-orders', category: 'Vendas' },
-    { label: 'Purchase Orders', path: '/compras/purchase-orders', category: 'Compras' },
-    { label: 'Exposições', path: '/financeiro/exposicoes', category: 'Financeiro' },
-    { label: 'RFQs', path: '/financeiro/rfqs', category: 'Financeiro' },
+    { label: 'Visão Geral', path: '/', category: 'Principal' },
+    { label: 'Pedidos de Venda', path: '/vendas/sales-orders', category: 'Vendas' },
+    { label: 'Pedidos de Compra', path: '/compras/purchase-orders', category: 'Compras' },
+    { label: 'Exposição de Risco', path: '/financeiro/exposicoes', category: 'Financeiro' },
+    { label: 'Cotações', path: '/financeiro/rfqs', category: 'Financeiro' },
     { label: 'Contratos', path: '/financeiro/contratos', category: 'Financeiro' },
-    { label: 'Deals', path: '/financeiro/deals', category: 'Financeiro' },
-    { label: 'MTM Snapshots', path: '/mercado/mtm', category: 'Mercado' },
-    { label: 'Settlements', path: '/mercado/settlements', category: 'Mercado' },
-    { label: 'Configurações', path: '/configuracoes', category: 'Sistema' },
+    { label: 'Resultado (P&L)', path: '/financeiro/pnl', category: 'Financeiro' },
+    { label: 'Fluxo de Caixa', path: '/financeiro/cashflow', category: 'Financeiro' },
+    { label: 'Relatórios', path: '/financeiro/exports', category: 'Financeiro' },
+    { label: 'Contrapartes', path: '/financeiro/contrapartes', category: 'Financeiro' },
   ];
 
   const currentPage = menuItems.find(item => item.path === location.pathname);
-  const displayName = currentPage?.label || 'Dashboard';
+  const displayName = currentPage?.label || 'Visão Geral';
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
