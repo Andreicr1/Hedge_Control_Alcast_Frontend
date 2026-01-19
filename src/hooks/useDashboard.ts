@@ -9,7 +9,7 @@
  * - useDashboard - Composto (para compatibilidade)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   getAluminumQuote, 
   getAluminumHistory, 
@@ -44,12 +44,23 @@ export function useAluminumQuote() {
     error: null,
   });
 
+  const suspendAutoRefreshRef = useRef(false);
+
   const fetchQuote = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true, isError: false, error: null }));
     try {
       const data = await getAluminumQuote();
+      suspendAutoRefreshRef.current = false;
       setState({ data, isLoading: false, isError: false, error: null });
     } catch (err) {
+      const apiErr = err as ApiError;
+      // Backend returns 404 when market data isn't available yet.
+      // Treat as empty state (institutional UX) and avoid hammering the endpoint.
+      if (apiErr?.status_code === 404) {
+        suspendAutoRefreshRef.current = true;
+        setState({ data: null, isLoading: false, isError: false, error: null });
+        return;
+      }
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -65,7 +76,10 @@ export function useAluminumQuote() {
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
-    const interval = setInterval(fetchQuote, 30 * 1000);
+    const interval = setInterval(() => {
+      if (suspendAutoRefreshRef.current) return;
+      fetchQuote();
+    }, 30 * 1000);
     return () => clearInterval(interval);
   }, [fetchQuote]);
 

@@ -137,8 +137,8 @@ export interface DashboardSummary {
 
 export interface LmeLiveLeg {
   symbol: 'P3Y00' | 'P4Y00' | 'Q7Y00';
-  price: number;
-  ts: string; // ISO datetime (UTC)
+  price: number | null;
+  ts: string | null; // ISO datetime (UTC)
 }
 
 // Kept name for compatibility with existing hooks/pages.
