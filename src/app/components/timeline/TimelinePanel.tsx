@@ -36,6 +36,16 @@ function eventTypeLabel(eventType: string): string {
       return 'Exposição atualizada';
     case 'MTM_REQUIRED':
       return 'Marcação a mercado necessária';
+    case 'WORKFLOW_REQUESTED':
+      return 'Aprovação solicitada';
+    case 'WORKFLOW_APPROVED':
+      return 'Aprovado';
+    case 'WORKFLOW_REJECTED':
+      return 'Rejeitado';
+    case 'WORKFLOW_ADJUSTMENT_REQUESTED':
+      return 'Ajuste solicitado';
+    case 'WORKFLOW_EXECUTED':
+      return 'Executado';
     case 'human.comment.created':
       return 'Comentário';
     case 'human.comment.corrected':
@@ -49,6 +59,18 @@ function eventTypeLabel(eventType: string): string {
   }
 }
 
+const WORKFLOW_EVENT_TYPES = [
+  'WORKFLOW_REQUESTED',
+  'WORKFLOW_APPROVED',
+  'WORKFLOW_REJECTED',
+  'WORKFLOW_ADJUSTMENT_REQUESTED',
+  'WORKFLOW_EXECUTED',
+] as const;
+
+function isKnownWorkflowType(eventType: string): boolean {
+  return (WORKFLOW_EVENT_TYPES as readonly string[]).includes(eventType);
+}
+
 function visibilityLabel(value: TimelineVisibility): string {
   return value === 'finance' ? 'Financeiro' : 'Geral';
 }
@@ -58,7 +80,7 @@ function isKnownV1Type(eventType: string): boolean {
 }
 
 function isKnownType(eventType: string): boolean {
-  return isKnownV1Type(eventType) || eventType.startsWith('human.');
+  return isKnownV1Type(eventType) || isKnownWorkflowType(eventType) || eventType.startsWith('human.');
 }
 
 function safeString(value: unknown): string | null {

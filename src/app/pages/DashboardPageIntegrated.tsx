@@ -24,11 +24,10 @@ import {
   FileCheck,
   TrendingUp,
   MoreHorizontal,
-  Clock,
 } from 'lucide-react';
 
 // ============================================
-// Helpers - Horário de Mercado LME
+// Helpers
 // ============================================
 
 type HistoryRange = '7d' | '30d' | '1y';
@@ -51,24 +50,6 @@ function ErrorText() {
       <p className="text-sm text-[var(--sapContent_LabelColor,#556b82)]">Falha ao carregar.</p>
     </div>
   );
-}
-
-/**
- * Verifica se o mercado LME está aberto
- * Horário: 1:00 - 19:00 GMT, Segunda a Sexta
- */
-function isLmeMarketOpen(): boolean {
-  const now = new Date();
-  const utcHour = now.getUTCHours();
-  const utcDay = now.getUTCDay(); // 0=domingo, 6=sábado
-  
-  // Fins de semana - mercado fechado
-  if (utcDay === 0 || utcDay === 6) return false;
-  
-  // Horário de funcionamento: 1:00 - 19:00 GMT
-  if (utcHour < 1 || utcHour >= 19) return false;
-  
-  return true;
 }
 
 /**
@@ -105,9 +86,6 @@ export function DashboardPageIntegrated() {
   
   // Dashboard summary (para timeline/rfqs até API específica ser criada)
   const dashboard = useDashboard();
-  
-  // Mercado aberto/fechado
-  const marketOpen = useMemo(() => isLmeMarketOpen(), []);
 
   // ============================================
   // Dados derivados
@@ -228,6 +206,75 @@ export function DashboardPageIntegrated() {
       const raw = String(content || '').trim();
       if (!raw) return null;
 
+      // Strict institutional feed: backend dashboard timeline emits strings like
+      // "EVENT_TYPE · subject_type #123". We only render a small allowlist.
+      // Anything else is treated as non-institutional noise and hidden.
+      const parts = raw.split('·').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const eventType = String(parts[0] || '').trim();
+        const rest = String(parts.slice(1).join(' · ') || '').trim();
+
+        const subjMatch = rest.match(/^([A-Za-z_]+)\s*#\s*(\d+)/);
+        const subjectType = subjMatch?.[1]?.toLowerCase() || '';
+        const subjectId = subjMatch?.[2] ? Number(subjMatch[2]) : NaN;
+
+        const allowlisted = new Set([
+          'WORKFLOW_REQUESTED',
+          'WORKFLOW_APPROVED',
+          'WORKFLOW_REJECTED',
+          'WORKFLOW_ADJUSTMENT_REQUESTED',
+          'WORKFLOW_EXECUTED',
+          'SO_CREATED',
+          'PO_CREATED',
+          'CONTRACT_CREATED',
+          'EXPOSURE_UPDATED',
+          'MTM_REQUIRED',
+        ]);
+
+        if (!allowlisted.has(eventType)) return null;
+
+        const wfHref = Number.isFinite(subjectId)
+          ? `/financeiro/aprovacoes?request_id=${subjectId}`
+          : '/financeiro/aprovacoes';
+
+        switch (eventType) {
+          case 'WORKFLOW_REQUESTED':
+            return { description: 'Aprovação solicitada', object: Number.isFinite(subjectId) ? `Solicitação nº ${subjectId}` : undefined, href: wfHref };
+          case 'WORKFLOW_APPROVED':
+            return { description: 'Aprovado', object: Number.isFinite(subjectId) ? `Solicitação nº ${subjectId}` : undefined, href: wfHref };
+          case 'WORKFLOW_REJECTED':
+            return { description: 'Rejeitado', object: Number.isFinite(subjectId) ? `Solicitação nº ${subjectId}` : undefined, href: wfHref };
+          case 'WORKFLOW_ADJUSTMENT_REQUESTED':
+            return { description: 'Ajuste solicitado', object: Number.isFinite(subjectId) ? `Solicitação nº ${subjectId}` : undefined, href: wfHref };
+          case 'WORKFLOW_EXECUTED':
+            return { description: 'Executado', object: Number.isFinite(subjectId) ? `Solicitação nº ${subjectId}` : undefined, href: wfHref };
+          case 'SO_CREATED': {
+            const href = Number.isFinite(subjectId) ? `/vendas/sales-orders/${subjectId}` : '/vendas/sales-orders';
+            return { description: 'Novo SO criado', href };
+          }
+          case 'PO_CREATED': {
+            const href = Number.isFinite(subjectId) ? `/compras/purchase-orders/${subjectId}` : '/compras/purchase-orders';
+            return { description: 'Novo PO criado', href };
+          }
+          case 'CONTRACT_CREATED': {
+            const href = Number.isFinite(subjectId)
+              ? `/financeiro/contratos?id=${encodeURIComponent(String(subjectId))}`
+              : '/financeiro/contratos';
+            return { description: 'Contrato criado', href };
+          }
+          case 'EXPOSURE_UPDATED': {
+            const href = '/financeiro/exposicoes';
+            return { description: 'Exposição atualizada', href };
+          }
+          case 'MTM_REQUIRED': {
+            const href = '/financeiro/contratos';
+            return { description: 'Marcação a mercado necessária', href };
+          }
+          default:
+            return null;
+        }
+      }
+
       // Prefer JSON-safe extraction (keeps us from showing payloads).
       if (raw.startsWith('{') && raw.endsWith('}')) {
         try {
@@ -292,10 +339,12 @@ export function DashboardPageIntegrated() {
       const soIdMatch = raw.match(/(?:so[_\s-]?id|sales[_\s-]?order[_\s-]?id)\s*[:=]\s*(\d+)/i);
       const poIdMatch = raw.match(/(?:po[_\s-]?id|purchase[_\s-]?order[_\s-]?id)\s*[:=]\s*(\d+)/i);
       const cpIdMatch = raw.match(/(?:counterparty[_\s-]?id|cp[_\s-]?id)\s*[:=]\s*(\d+)/i);
+      const wfIdMatch = raw.match(/(?:workflow[_\s-]?(?:request[_\s-]?)?id)\s*[:=]\s*(\d+)/i);
 
       const soHashMatch = raw.match(/\bso\b\s*#\s*(\d+)/i);
       const poHashMatch = raw.match(/\bpo\b\s*#\s*(\d+)/i);
       const cpHashMatch = raw.match(/\bcounterparty\b\s*#\s*(\d+)/i);
+      const wfHashMatch = raw.match(/\bworkflow\b\s*#\s*(\d+)/i);
 
       const qtyMatch = raw.match(/(?:quantity|qty|quantidade)\s*[:=]\s*([0-9]+(?:[\.,][0-9]+)?)/i);
       const maturityMatch = raw.match(
@@ -320,6 +369,51 @@ export function DashboardPageIntegrated() {
       );
 
       const mappings: Array<{ match: RegExp; build: () => { description: string; object?: string; href?: string } }>= [
+        {
+          match: /WORKFLOW[_\s-]?REQUESTED/,
+          build: () => {
+            const idRaw = wfIdMatch?.[1] || wfHashMatch?.[1];
+            const id = idRaw ? Number(idRaw) : NaN;
+            const href = Number.isFinite(id) ? `/financeiro/aprovacoes?request_id=${id}` : '/financeiro/aprovacoes';
+            return { description: 'Aprovação solicitada', object: Number.isFinite(id) ? `Solicitação nº ${id}` : undefined, href };
+          },
+        },
+        {
+          match: /WORKFLOW[_\s-]?APPROVED/,
+          build: () => {
+            const idRaw = wfIdMatch?.[1] || wfHashMatch?.[1];
+            const id = idRaw ? Number(idRaw) : NaN;
+            const href = Number.isFinite(id) ? `/financeiro/aprovacoes?request_id=${id}` : '/financeiro/aprovacoes';
+            return { description: 'Aprovado', object: Number.isFinite(id) ? `Solicitação nº ${id}` : undefined, href };
+          },
+        },
+        {
+          match: /WORKFLOW[_\s-]?REJECTED/,
+          build: () => {
+            const idRaw = wfIdMatch?.[1] || wfHashMatch?.[1];
+            const id = idRaw ? Number(idRaw) : NaN;
+            const href = Number.isFinite(id) ? `/financeiro/aprovacoes?request_id=${id}` : '/financeiro/aprovacoes';
+            return { description: 'Rejeitado', object: Number.isFinite(id) ? `Solicitação nº ${id}` : undefined, href };
+          },
+        },
+        {
+          match: /WORKFLOW[_\s-]?ADJUSTMENT[_\s-]?REQUESTED/,
+          build: () => {
+            const idRaw = wfIdMatch?.[1] || wfHashMatch?.[1];
+            const id = idRaw ? Number(idRaw) : NaN;
+            const href = Number.isFinite(id) ? `/financeiro/aprovacoes?request_id=${id}` : '/financeiro/aprovacoes';
+            return { description: 'Ajuste solicitado', object: Number.isFinite(id) ? `Solicitação nº ${id}` : undefined, href };
+          },
+        },
+        {
+          match: /WORKFLOW[_\s-]?EXECUTED/,
+          build: () => {
+            const idRaw = wfIdMatch?.[1] || wfHashMatch?.[1];
+            const id = idRaw ? Number(idRaw) : NaN;
+            const href = Number.isFinite(id) ? `/financeiro/aprovacoes?request_id=${id}` : '/financeiro/aprovacoes';
+            return { description: 'Executado', object: Number.isFinite(id) ? `Solicitação nº ${id}` : undefined, href };
+          },
+        },
         {
           match: /\bSO\b.*\bCREATED\b|SALES[_\s-]?ORDER[_\s-]?CREATED/,
           build: () => {
@@ -396,7 +490,7 @@ export function DashboardPageIntegrated() {
   }, [dashboard.data?.timeline, translateEvent, formatActor, actorInitials]);
 
   // Cotação atual (Cash + 3M) - SEM valores fallback estáticos
-  // Se não há dados da API ou mercado fechado, mostra "--"
+  // Se não há dados da API, mostra "--"
   const cashPrice = aluminumQuote.data?.cash?.price ?? null;
   const threeMonthPrice = aluminumQuote.data?.three_month?.price ?? null;
   const hasQuoteData = cashPrice !== null || threeMonthPrice !== null;
@@ -422,19 +516,9 @@ export function DashboardPageIntegrated() {
           {/* Alumínio LME Spot */}
           <FioriCard>
             <FioriCardHeader 
-              title="Alumínio LME Spot - USD/mt" 
+              title="Alumínio LME Spot - $/t" 
               subtitle={'LME'}
             />
-            
-            {/* Indicador de mercado aberto/fechado */}
-            <div className={`flex items-center gap-2 mb-3 px-2 py-1 rounded text-xs font-['72:Regular',sans-serif] ${
-              marketOpen 
-                ? 'bg-[var(--sapPositiveBackground,#f5fae5)] text-[var(--sapPositiveTextColor,#256f3a)]' 
-                : 'bg-[var(--sapNeutralBackground,#f5f6f7)] text-[var(--sapNeutralTextColor,#556b82)]'
-            }`}>
-              <Clock className="w-3 h-3" />
-              {marketOpen ? 'Mercado aberto' : 'Mercado fechado'}
-            </div>
             
             {aluminumQuote.isLoading ? (
               <div className="py-4">
@@ -620,7 +704,7 @@ export function DashboardPageIntegrated() {
                   Alumínio LME Histórico
                 </h3>
                 <p className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] m-0">
-                  USD / ton
+                  $/t
                 </p>
               </div>
               
@@ -682,7 +766,7 @@ export function DashboardPageIntegrated() {
                   <YAxis 
                     tick={{ fill: 'var(--sapContent_LabelColor,#556b82)', fontSize: 11, fontFamily: '72:Regular,sans-serif' }}
                     domain={['dataMin - 50', 'dataMax + 50']}
-                    tickFormatter={(value) => formatNumber(value, 0)}
+                    tickFormatter={(value) => `$${formatNumber(value, 0)}`}
                     width={60}
                   />
                   <Tooltip 
@@ -695,7 +779,7 @@ export function DashboardPageIntegrated() {
                     }}
                     formatter={(value: unknown) => {
                       if (typeof value === 'number' && Number.isFinite(value)) {
-                        return [formatNumber(value, 2), ''];
+                        return [`$${formatNumber(value, 2)}`, ''];
                       }
                       return ['—', ''];
                     }}

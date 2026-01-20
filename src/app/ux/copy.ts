@@ -85,6 +85,7 @@ export const UX_COPY = {
     cashflow: {
       title: 'Fluxo de Caixa',
       subtitle: '',
+      empty: 'Nenhuma linha encontrada no período.',
       comingSoon: 'Indisponível no momento.',
     },
 

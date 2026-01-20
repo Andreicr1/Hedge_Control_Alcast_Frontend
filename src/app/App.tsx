@@ -20,7 +20,6 @@ import { InboxPageIntegrated } from './pages/InboxPageIntegrated';
 import { CashflowPageIntegrated } from './pages/CashflowPageIntegrated';
 import { ExportsPageIntegrated } from './pages/ExportsPageIntegrated';
 import { ApprovalsPageIntegrated } from './pages/ApprovalsPageIntegrated';
-import { PnlPageIntegrated } from './pages/PnlPageIntegrated';
 import { SettingsPageIntegrated } from './pages/SettingsPageIntegrated';
 import { LoginPageIntegrated } from './pages/LoginPageIntegrated';
 import { CustomersPageIntegrated } from './pages/CustomersPageIntegrated';
@@ -157,7 +156,7 @@ export default function App() {
             path="/financeiro/pnl"
             element={
               <RequireRole allowed={["financeiro", "auditoria", "admin"]}>
-                <PnlPageIntegrated />
+                <Navigate to="/financeiro/cashflow" replace />
               </RequireRole>
             }
           />
@@ -181,7 +180,7 @@ export default function App() {
             path="/financeiro/deals/:dealId"
             element={
               <RequireRole allowed={["financeiro", "auditoria", "admin"]}>
-                <DealRedirectToPnl />
+                <DealRedirectToCashflow />
               </RequireRole>
             }
           />
@@ -190,13 +189,13 @@ export default function App() {
           <Route
             path="/mercado/mtm"
             element={
-              <Navigate to="/financeiro/pnl" replace />
+              <Navigate to="/financeiro/cashflow" replace />
             }
           />
           <Route
             path="/mercado/settlements"
             element={
-              <Navigate to="/financeiro/pnl" replace />
+              <Navigate to="/financeiro/cashflow" replace />
             }
           />
           
@@ -247,10 +246,10 @@ function HomeRedirect() {
   return <Navigate to="/configuracoes" replace />;
 }
 
-function DealRedirectToPnl() {
+function DealRedirectToCashflow() {
   const { dealId } = useParams<{ dealId: string }>();
   const normalized = (dealId || '').trim();
-  if (!normalized) return <Navigate to="/financeiro/pnl" replace />;
-  const qs = new URLSearchParams({ deal_id: normalized });
-  return <Navigate to={`/financeiro/pnl?${qs.toString()}`} replace />;
+  if (!normalized) return <Navigate to="/financeiro/cashflow" replace />;
+  const qs = new URLSearchParams({ scope: 'deal', deal_id: normalized });
+  return <Navigate to={`/financeiro/cashflow?${qs.toString()}`} replace />;
 }

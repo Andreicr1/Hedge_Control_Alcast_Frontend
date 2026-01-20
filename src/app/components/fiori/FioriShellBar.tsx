@@ -122,7 +122,6 @@ function MenuButton() {
     { label: 'Exposição de Risco', path: '/financeiro/exposicoes', category: 'Financeiro' },
     { label: 'Cotações', path: '/financeiro/rfqs', category: 'Financeiro' },
     { label: 'Contratos', path: '/financeiro/contratos', category: 'Financeiro' },
-    { label: 'Resultado (P&L)', path: '/financeiro/pnl', category: 'Financeiro' },
     { label: 'Fluxo de Caixa', path: '/financeiro/cashflow', category: 'Financeiro' },
     { label: 'Relatórios', path: '/financeiro/exports', category: 'Financeiro' },
     { label: 'Contrapartes', path: '/financeiro/contrapartes', category: 'Financeiro' },

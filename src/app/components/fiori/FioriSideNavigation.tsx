@@ -395,7 +395,6 @@ export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationPro
     { label: UX_COPY.nav.riskExposure, path: '/financeiro/exposicoes' },
     { label: UX_COPY.nav.rfqs, path: '/financeiro/rfqs' },
     { label: UX_COPY.nav.contracts, path: '/financeiro/contratos' },
-    { label: UX_COPY.nav.pnl, path: '/financeiro/pnl' },
     { label: UX_COPY.nav.cashflow, path: '/financeiro/cashflow' },
     { label: UX_COPY.nav.reports, path: '/financeiro/exports' },
     { label: UX_COPY.nav.counterparties, path: '/financeiro/contrapartes' },

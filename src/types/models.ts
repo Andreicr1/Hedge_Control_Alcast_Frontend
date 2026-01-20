@@ -264,7 +264,7 @@ export interface KycPreflightResponse {
 // Workflow Approvals (T3)
 // ============================================
 
-export type WorkflowDecisionValue = 'approved' | 'rejected';
+export type WorkflowDecisionValue = 'approved' | 'rejected' | 'adjustment_requested';
 export type WorkflowRequestStatus = 'pending' | 'approved' | 'rejected' | 'executed';
 
 export interface WorkflowDecisionCreate {

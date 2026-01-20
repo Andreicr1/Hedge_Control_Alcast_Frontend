@@ -29,11 +29,24 @@ function formatApprovalStatusLabel(status?: string): string {
       return 'Aprovada';
     case 'rejected':
       return 'Rejeitada';
+    case 'adjustment_requested':
+      return 'Ajuste solicitado';
     case 'executed':
       return 'Executada';
     default:
       return status || '—';
   }
+}
+
+function formatDecisionLabel(decision?: string): string {
+  return formatApprovalStatusLabel(decision);
+}
+
+function getLastDecisionLabel(wf: WorkflowRequestRead): string | null {
+  const decisions = wf.decisions || [];
+  if (decisions.length === 0) return null;
+  const last = decisions.reduce((acc, cur) => (cur.id > acc.id ? cur : acc), decisions[0]);
+  return formatDecisionLabel(last.decision);
 }
 
 function formatWorkflowActionLabel(action?: string | null): string {
@@ -268,6 +281,7 @@ export function ApprovalsPageIntegrated() {
             ) : (
               <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden">
                 {requests.map((r) => (
+                  
                   <button
                     key={r.id}
                     onClick={() => onSelect(r.id)}
@@ -289,6 +303,11 @@ export function ApprovalsPageIntegrated() {
                       Perfil necessário: {formatRoleLabel(r.required_role)}
                       {' • '}Valor: {formatMoneyUsd(r.notional_usd)}
                     </div>
+                    {(r.status || '').toLowerCase() !== 'pending' && getLastDecisionLabel(r) && (
+                      <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                        Resultado: {getLastDecisionLabel(r)}
+                      </div>
+                    )}
                     {r.sla_due_at && (
                       <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
                         SLA: {formatDateTimePt(r.sla_due_at)}
@@ -422,7 +441,7 @@ export function ApprovalsPageIntegrated() {
                     {decisions.map((d) => (
                       <div key={d.id} className="p-3 border-b border-[var(--sapList_BorderColor)]">
                         <div className="flex items-center justify-between">
-                          <div className="text-sm font-['72:Bold',sans-serif]">{formatApprovalStatusLabel(d.decision)}</div>
+                          <div className="text-sm font-['72:Bold',sans-serif]">{formatDecisionLabel(d.decision)}</div>
                         </div>
                         <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">{d.justification}</div>
                       </div>
@@ -467,6 +486,13 @@ export function ApprovalsPageIntegrated() {
                       disabled={submitting || justification.trim().length < 3 || (wf.status || '').toLowerCase() !== 'pending'}
                     >
                       Aprovar
+                    </FioriButton>
+                    <FioriButton
+                      variant="default"
+                      onClick={() => doDecision('adjustment_requested')}
+                      disabled={submitting || justification.trim().length < 3 || (wf.status || '').toLowerCase() !== 'pending'}
+                    >
+                      Solicitar ajuste
                     </FioriButton>
                     <FioriButton
                       variant="negative"

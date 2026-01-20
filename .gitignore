@@ -23,6 +23,9 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 
+# Local design tooling artifacts
+.anima/
+
 # Optional
 *.local
 

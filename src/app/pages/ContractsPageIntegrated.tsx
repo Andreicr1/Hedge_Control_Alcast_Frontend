@@ -156,7 +156,8 @@ export function ContractsPageIntegrated() {
 
   const handleNavigateToDeal = useCallback((dealId: number) => {
     setScope({ kind: 'deal', dealId });
-    navigate('/financeiro/pnl');
+    const qs = new URLSearchParams({ scope: 'deal', deal_id: String(dealId) });
+    navigate(`/financeiro/cashflow?${qs.toString()}`);
   }, [navigate, setScope]);
 
   const handleNavigateToSource = useCallback(
