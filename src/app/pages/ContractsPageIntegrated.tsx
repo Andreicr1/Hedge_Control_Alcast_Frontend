@@ -256,18 +256,18 @@ export function ContractsPageIntegrated() {
                   <div className="flex items-center gap-2 text-xs mb-2">
                     {buyLeg && (
                       <span className="text-[var(--sapPositiveColor)]">
-                        Compra: {buyLeg.price.toLocaleString('pt-BR')}
+                        Compra: {formatNumber(buyLeg.price)}
                       </span>
                     )}
                     {buyLeg && sellLeg && <span>|</span>}
                     {sellLeg && (
                       <span className="text-[var(--sapNegativeColor)]">
-                        Venda: {sellLeg.price.toLocaleString('pt-BR')}
+                        Venda: {formatNumber(sellLeg.price)}
                       </span>
                     )}
-                    {spread !== null && (
+                    {spread != null && (
                       <span className="font-['72:Bold',sans-serif]">
-                        Δ {spread.toLocaleString('pt-BR')}
+                        Δ {formatNumber(spread)}
                       </span>
                     )}
                   </div>
@@ -305,6 +305,12 @@ export function ContractsPageIntegrated() {
   const formatAdjustment = (v?: number | null) => {
     if (v === null || v === undefined) return '—';
     return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatNumber = (v?: number | null, opts?: Intl.NumberFormatOptions) => {
+    if (v === null || v === undefined) return '—';
+    if (Number.isNaN(v)) return '—';
+    return v.toLocaleString('pt-BR', opts);
   };
 
   const formatSourceLabel = (t?: string) => {
@@ -513,7 +519,7 @@ export function ContractsPageIntegrated() {
             {buyLeg ? (
               <>
                 <div className="text-2xl font-['72:Bold',sans-serif] text-[#131e29]">
-                  {buyLeg.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {formatNumber(buyLeg.price, { minimumFractionDigits: 2 })}
                 </div>
                 <div className="text-xs text-[var(--sapContent_LabelColor)]">
                   {buyLeg.volume_mt?.toLocaleString('pt-BR')} t
@@ -538,7 +544,7 @@ export function ContractsPageIntegrated() {
             {sellLeg ? (
               <>
                 <div className="text-2xl font-['72:Bold',sans-serif] text-[#131e29]">
-                  {sellLeg.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {formatNumber(sellLeg.price, { minimumFractionDigits: 2 })}
                 </div>
                 <div className="text-xs text-[var(--sapContent_LabelColor)]">
                   {sellLeg.volume_mt?.toLocaleString('pt-BR')} t
@@ -560,15 +566,15 @@ export function ContractsPageIntegrated() {
           <div>
             <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Diferença</div>
             <div className={`font-['72:Bold',sans-serif] text-lg ${
-              spread !== null && spread < 0 ? 'text-[var(--sapPositiveColor)]' : 'text-[#131e29]'
+              spread != null && spread < 0 ? 'text-[var(--sapPositiveColor)]' : 'text-[#131e29]'
             }`}>
-              {spread !== null ? spread.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}
+              {spread != null ? formatNumber(spread, { minimumFractionDigits: 2 }) : '—'}
             </div>
           </div>
           <div>
             <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Valor nocional</div>
             <div className="font-['72:Bold',sans-serif] text-lg text-[#131e29]">
-              {notional.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {formatNumber(notional, { minimumFractionDigits: 2 })}
             </div>
           </div>
         </div>

@@ -133,7 +133,14 @@ export function DashboardPageIntegrated() {
 
     return settlementsUpcoming.data.map((item) => ({
       id: item.contract_id,
-      counterparty: item.counterparty_name,
+      ...(() => {
+        const raw = String(item.counterparty_name || '').trim();
+        const parts = raw.split('—').map((p) => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          return { company: parts[0], counterparty: parts.slice(1).join(' — ') };
+        }
+        return { company: 'Outros', counterparty: raw || '—' };
+      })(),
       liquidationDate: formatDate(item.settlement_date),
       mtm: item.mtm_today_usd 
         ? `${Math.abs(item.mtm_today_usd / 1000).toFixed(0)}K USD` 
@@ -141,6 +148,19 @@ export function DashboardPageIntegrated() {
       mtmNegative: (item.mtm_today_usd || 0) < 0,
     }));
   }, [settlementsUpcoming.data]);
+
+  const upcomingMaturitiesByCompany = useMemo(() => {
+    const map = new Map<string, typeof upcomingMaturities>();
+    for (const row of upcomingMaturities) {
+      const company = (row as any).company || 'Outros';
+      const list = map.get(company) || [];
+      list.push(row);
+      map.set(company, list);
+    }
+    return Array.from(map.entries())
+      .map(([company, rows]) => ({ company, rows }))
+      .sort((a, b) => a.company.localeCompare(b.company));
+  }, [upcomingMaturities]);
 
   // Vencimentos do dia
   const todaySettlementsCount = settlementsToday.data?.length || 0;
@@ -714,25 +734,10 @@ export function DashboardPageIntegrated() {
           {/* Próximos Vencimentos */}
           <FioriCard>
             <div className="flex items-center justify-between mb-4">
-              <FioriCardHeader title="Próximos Vencimentos" subtitle="Por contraparte e data" />
+              <FioriCardHeader title="Próximos Vencimentos" subtitle="Por empresa, contraparte e data" />
               <span className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)]">
                 {settlementsUpcoming.isLoading ? '—' : `${upcomingMaturities.length} resultados`}
               </span>
-            </div>
-
-            {/* Dropdown */}
-            <div className="mb-4">
-              <select 
-                className="w-full px-3 py-2 bg-white border border-[var(--sapField_BorderColor,#89919a)] rounded-[4px] font-['72:Regular',sans-serif] text-[14px] text-[var(--sapField_TextColor,#131e29)] cursor-pointer hover:border-[var(--sapField_Hover_BorderColor,#0064d9)] focus:outline-none focus:border-[var(--sapField_Focus_BorderColor,#0064d9)]"
-                title="Filtrar por contraparte"
-                aria-label="Filtrar por contraparte"
-                disabled={settlementsUpcoming.isLoading || settlementsUpcoming.isError || upcomingMaturities.length === 0}
-              >
-                <option>Todos</option>
-                {[...new Set(upcomingMaturities.map(m => m.counterparty))].map(cp => (
-                  <option key={cp}>{cp}</option>
-                ))}
-              </select>
             </div>
 
             {/* Table */}
@@ -749,42 +754,52 @@ export function DashboardPageIntegrated() {
             ) : upcomingMaturities.length === 0 ? (
               <EmptyText />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-[var(--sapList_BorderColor,#d9d9d9)]">
-                      <th className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapList_HeaderTextColor,#131e29)] text-left py-2 px-3">
-                        Contraparte
-                      </th>
-                      <th className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapList_HeaderTextColor,#131e29)] text-left py-2 px-3">
-                        Data de Liquidação
-                      </th>
-                      <th className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapList_HeaderTextColor,#131e29)] text-right py-2 px-3">
-                        MTM
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {upcomingMaturities.map((item) => (
-                      <tr 
-                        key={item.id}
-                        className="border-b border-[var(--sapList_BorderColor,#d9d9d9)] hover:bg-[var(--sapList_HoverBackground,#f7f7f7)] transition-colors cursor-pointer"
-                      >
-                        <td className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapList_TextColor,#131e29)] py-2 px-3">
-                          {item.counterparty}
-                        </td>
-                        <td className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapList_TextColor,#131e29)] py-2 px-3">
-                          {item.liquidationDate}
-                        </td>
-                        <td className="font-['72:Regular',sans-serif] text-[14px] text-right py-2 px-3">
-                          <span className={item.mtmNegative ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : 'text-[var(--sapPositiveTextColor,#107e3e)]'}>
-                            {item.mtm}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-3">
+                {upcomingMaturitiesByCompany.map(({ company, rows }) => (
+                  <div key={company} className="border border-[var(--sapList_BorderColor,#d9d9d9)] rounded overflow-hidden">
+                    <div className="px-3 py-2 bg-[var(--sapList_HeaderBackground,#f5f6f7)] font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapList_HeaderTextColor,#131e29)]">
+                      {company}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-[var(--sapList_BorderColor,#d9d9d9)]">
+                            <th className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapList_HeaderTextColor,#131e29)] text-left py-2 px-3">
+                              Contraparte
+                            </th>
+                            <th className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapList_HeaderTextColor,#131e29)] text-left py-2 px-3">
+                              Data de Liquidação
+                            </th>
+                            <th className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapList_HeaderTextColor,#131e29)] text-right py-2 px-3">
+                              MTM
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((item: any) => (
+                            <tr
+                              key={item.id}
+                              onClick={() => navigate(`/financeiro/contratos?id=${encodeURIComponent(String(item.id))}`)}
+                              className="border-b border-[var(--sapList_BorderColor,#d9d9d9)] hover:bg-[var(--sapList_HoverBackground,#f7f7f7)] transition-colors cursor-pointer"
+                            >
+                              <td className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapList_TextColor,#131e29)] py-2 px-3">
+                                {item.counterparty}
+                              </td>
+                              <td className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapList_TextColor,#131e29)] py-2 px-3">
+                                {item.liquidationDate}
+                              </td>
+                              <td className="font-['72:Regular',sans-serif] text-[14px] text-right py-2 px-3">
+                                <span className={item.mtmNegative ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : 'text-[var(--sapPositiveTextColor,#107e3e)]'}>
+                                  {item.mtm}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </FioriCard>

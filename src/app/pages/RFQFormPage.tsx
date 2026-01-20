@@ -1253,14 +1253,16 @@ export function RFQFormPage() {
 
         {/* Quantity */}
         <FioriCard className="mb-4">
-          <FioriInput
-            label="Quantidade (t)"
-            type="number"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            placeholder=""
-            fullWidth
-          />
+          <div className="w-full md:w-[30%]">
+            <FioriInput
+              label="Quantidade (t)"
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              placeholder=""
+              fullWidth
+            />
+          </div>
         </FioriCard>
 
         {/* Trade Cards */}

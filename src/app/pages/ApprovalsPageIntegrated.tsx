@@ -9,8 +9,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useWorkflowRequest, useWorkflowRequests } from '../../hooks';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useRfqDetail, useWorkflowRequest, useWorkflowRequests } from '../../hooks';
 import type { ApiError, WorkflowDecisionValue, WorkflowRequestRead } from '../../types';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
@@ -103,6 +103,7 @@ function canDecideThisRequest(userRole: string, wf: WorkflowRequestRead | null):
 }
 
 export function ApprovalsPageIntegrated() {
+  const navigate = useNavigate();
   const { user } = useAuthContext();
   const userRole = normalizeRoleName(user?.role);
 
@@ -154,6 +155,15 @@ export function ApprovalsPageIntegrated() {
   const [submitError, setSubmitError] = useState<ApiError | null>(null);
 
   const decisions = wf?.decisions || [];
+
+  const subjectRfqId = useMemo(() => {
+    if (!wf) return null;
+    if (String(wf.subject_type || '').toLowerCase() !== 'rfq') return null;
+    const n = Number(wf.subject_id);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [wf]);
+
+  const { rfq: subjectRfq } = useRfqDetail(subjectRfqId);
 
   const isOverdue = useMemo(() => {
     if (!wf) return false;
@@ -346,12 +356,62 @@ export function ApprovalsPageIntegrated() {
                 </div>
               </div>
 
-              {wf.context && (
-                <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded mb-4">
-                  <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Contexto</div>
-                  <pre className="m-0 text-xs whitespace-pre-wrap">{JSON.stringify(wf.context, null, 2)}</pre>
+              <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded mb-4">
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Contexto operacional</div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="text-sm">
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Objeto</div>
+                    <div>{formatSubjectLabel(wf.subject_type, wf.subject_id)}</div>
+                  </div>
+                  <div className="text-sm">
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Motivo</div>
+                    <div>{String((wf.context as any)?.hint || '—')}</div>
+                  </div>
+
+                  <div className="text-sm">
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Empresa</div>
+                    <div>{String((wf.context as any)?.company || '—')}</div>
+                  </div>
+                  <div className="text-sm">
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Exposição</div>
+                    <div>
+                      {(() => {
+                        const ex = (wf.context as any)?.exposure_id;
+                        return ex ? `#${ex}` : '—';
+                      })()}
+                    </div>
+                  </div>
+
+                  {subjectRfq && (
+                    <>
+                      <div className="text-sm">
+                        <div className="text-xs text-[var(--sapContent_LabelColor)]">Deal / SO</div>
+                        <div>
+                          #{subjectRfq.deal_id ?? '—'} / #{subjectRfq.so_id ?? '—'}
+                        </div>
+                      </div>
+                      <div className="text-sm">
+                        <div className="text-xs text-[var(--sapContent_LabelColor)]">Período / Quantidade</div>
+                        <div>
+                          {subjectRfq.period || '—'} • {(subjectRfq.quantity_mt ?? 0).toLocaleString('pt-BR')} MT
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-              )}
+
+                <div className="flex items-center gap-2 mt-3">
+                  {subjectRfqId && (
+                    <FioriButton onClick={() => navigate(`/financeiro/rfqs?selected=${subjectRfqId}`)}>
+                      Abrir RFQ
+                    </FioriButton>
+                  )}
+                  <FioriButton variant="ghost" onClick={() => navigate('/financeiro/aprovacoes')}>
+                    Voltar para lista
+                  </FioriButton>
+                </div>
+              </div>
 
               <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded mb-4">
                 <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Decisões</div>

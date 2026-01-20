@@ -1,7 +1,7 @@
 /** RFQs Page */
 
-import { useState, useMemo, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRfqs, useRfqDetail, useAwardQuote, useSendRfq } from '../../hooks';
 import { useCounterparties } from '../../hooks/useCounterparties';
 import { useContracts } from '../../hooks/useContracts';
@@ -80,6 +80,7 @@ function legSideLabel(value: string | null | undefined): string {
 
 export function RFQsPageIntegrated() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Counterparty KYC is not enforced at this phase.
   // Kept behind a feature flag for future rollout.
@@ -95,6 +96,17 @@ export function RFQsPageIntegrated() {
   const [statusFilter, setStatusFilter] = useState<RfqStatus | 'all'>('all');
   const [selectedRfqId, setSelectedRfqId] = useState<number | null>(null);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
+
+  const _didInitFromUrl = useRef(false);
+  useEffect(() => {
+    if (_didInitFromUrl.current) return;
+    _didInitFromUrl.current = true;
+
+    const raw = searchParams.get('selected') || searchParams.get('id');
+    if (!raw) return;
+    const id = Number(raw);
+    if (Number.isFinite(id) && id > 0) setSelectedRfqId(id);
+  }, [searchParams]);
   
   // Selected RFQ detail
   const { rfq: selectedRfq, isLoading: isLoadingDetail, refetch: refetchDetail } = useRfqDetail(selectedRfqId);
