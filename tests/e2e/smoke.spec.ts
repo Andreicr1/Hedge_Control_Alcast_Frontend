@@ -285,6 +285,14 @@ async function uiLoginQuickAccess(page: any, role: 'Vendas' | 'Compras') {
   await page.waitForURL((url: any) => !url.pathname.includes('/login'), { timeout: 10_000 });
 }
 
+async function uiLoginFinanceiro(page: any) {
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Financeiro' }).click();
+  await page.getByLabel('Senha').fill('123');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForURL((url: any) => !url.pathname.includes('/login'), { timeout: 15_000 });
+}
+
 test.describe('SO/PO Create Smoke', () => {
   test('vendas can create a Sales Order', async ({ page, request }) => {
     const backend = await waitForBackendReady(request);
@@ -355,5 +363,51 @@ test.describe('SO/PO Create Smoke', () => {
 
     await page.waitForURL((url: any) => url.pathname.includes('/compras/purchase-orders/'), { timeout: 20_000 });
     await expect(page.locator('h1')).toContainText('PO', { timeout: 10_000 });
+  });
+});
+
+// ============================================
+// Financeiro UX Smoke (RFQ / Cashflow / Exposures)
+// ============================================
+
+test.describe('Financeiro UX Smoke', () => {
+  test('RFQs page renders WhatsApp action', async ({ page }) => {
+    await uiLoginFinanceiro(page);
+    await page.goto('/financeiro/rfqs');
+    await expect(page.getByText('Cotações')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'WhatsApp' })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('RFQ form renders WhatsApp share button (disabled by default)', async ({ page }) => {
+    await uiLoginFinanceiro(page);
+    await page.goto('/financeiro/rfqs/novo');
+
+    const wa = page.getByRole('button', { name: 'WhatsApp' }).first();
+    await expect(wa).toBeVisible({ timeout: 15_000 });
+    await expect(wa).toBeDisabled();
+  });
+
+  test('Cashflow page loads (drill-down controls available when data exists)', async ({ page }) => {
+    await uiLoginFinanceiro(page);
+    await page.goto('/financeiro/cashflow');
+    await expect(page.getByText('Fluxo de Caixa')).toBeVisible({ timeout: 15_000 });
+
+    const collapseBtn = page.getByRole('button', { name: 'Recolher para Trimestre' });
+    if ((await collapseBtn.count()) > 0) {
+      await expect(collapseBtn).toBeVisible();
+    }
+  });
+
+  test('Exposures page hides fully-hedged filter option', async ({ page }) => {
+    await uiLoginFinanceiro(page);
+    await page.goto('/financeiro/exposicoes');
+    await expect(page.getByText('Exposição de Risco')).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.getByRole('option', { name: 'Totalmente Hedgeada' })).toHaveCount(0);
+
+    const anyReferenceLabel = page.getByText('Referência:', { exact: false });
+    if ((await anyReferenceLabel.count()) > 0) {
+      await expect(anyReferenceLabel.first()).toBeVisible();
+    }
   });
 });
