@@ -250,7 +250,7 @@ function HomeRedirect() {
 function DealRedirectToPnl() {
   const { dealId } = useParams<{ dealId: string }>();
   const normalized = (dealId || '').trim();
-  if (!normalized) return <Navigate to="/financeiro/pnl" replace />;
+  if (!normalized) return <Navigate to="/financeiro/cashflow" replace />;
   const qs = new URLSearchParams({ deal_id: normalized });
-  return <Navigate to={`/financeiro/pnl?${qs.toString()}`} replace />;
+  return <Navigate to={`/financeiro/cashflow?${qs.toString()}`} replace />;
 }

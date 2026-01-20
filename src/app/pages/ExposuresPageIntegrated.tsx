@@ -7,7 +7,7 @@ import { Exposure, ExposureStatus } from '../../types';
 import { groupExposuresByMonth, groupExposuresByStatus } from '../../services/exposures.service';
 import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
 import { FioriButton } from '../components/fiori/FioriButton';
-import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
+import { TwoColumnAnalyticalLayout } from '../components/fiori/TwoColumnAnalyticalLayout';
 import { LoadingState, ErrorState, EmptyState, DataContainer } from '../components/ui';
 import { 
   Search, 
@@ -309,8 +309,7 @@ export function ExposuresPageIntegrated() {
   // ============================================
 
   const detailContent = selectedExposure ? (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-4">
+    <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -436,22 +435,19 @@ export function ExposuresPageIntegrated() {
           </button>
         </div>
       </div>
-    </div>
   ) : (
     <EmptyState
       title="Selecione uma exposição"
       description="Escolha um item da lista para ver os detalhes."
       icon={<Layers className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
-      fullPage
     />
   );
 
   return (
-    <FioriFlexibleColumnLayout
-      masterTitle={UX_COPY.pages.riskExposure.title}
-      masterContent={masterContent}
-      masterWidth={380}
-      detailContent={detailContent}
+    <TwoColumnAnalyticalLayout
+      leftColumn={masterContent}
+      rightColumn={detailContent}
+      leftWidth={380}
     />
   );
 }

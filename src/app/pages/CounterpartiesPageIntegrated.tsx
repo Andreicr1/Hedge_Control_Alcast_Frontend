@@ -16,8 +16,8 @@ import {
 import { Counterparty, CounterpartyType } from '../../types';
 import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
 import { FioriButton } from '../components/fiori/FioriButton';
-import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { FioriDialog } from '../components/fiori/FioriDialog';
+import { TwoColumnAnalyticalLayout } from '../components/fiori/TwoColumnAnalyticalLayout';
 import { FioriInput } from '../components/fiori/FioriInput';
 import { FioriSelect } from '../components/fiori/FioriSelect';
 import { LoadingState, ErrorState, EmptyState, DataContainer } from '../components/ui';
@@ -462,8 +462,7 @@ export function CounterpartiesPageIntegrated() {
   // ============================================
 
   const detailContent = selectedCounterparty ? (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-4">
+    <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -550,14 +549,12 @@ export function CounterpartiesPageIntegrated() {
           subjectType="counterparty"
           subjectId={selectedCounterparty.id}
         />
-      </div>
     </div>
   ) : (
     <EmptyState
       title="Selecione uma contraparte"
       description="Escolha uma contraparte da lista para ver os detalhes"
       icon={<Building2 className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
-      fullPage
     />
   );
 
@@ -834,11 +831,10 @@ export function CounterpartiesPageIntegrated() {
 
   return (
     <>
-      <FioriFlexibleColumnLayout
-        masterTitle="Contrapartes"
-        masterContent={masterContent}
-        masterWidth={340}
-        detailContent={detailContent}
+      <TwoColumnAnalyticalLayout
+        leftColumn={masterContent}
+        rightColumn={detailContent}
+        leftWidth={340}
       />
 
       {/* Create Modal */}

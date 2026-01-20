@@ -11,8 +11,7 @@ import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColu
 import { FioriTile } from '../components/fiori/FioriTile';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { UX_COPY } from '../ux/copy';
-import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
-import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
+import { TwoColumnAnalyticalLayout } from '../components/fiori/TwoColumnAnalyticalLayout';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 import { 
@@ -621,8 +620,7 @@ export function ContractsPageIntegrated() {
   };
 
   const detailContent = selectedContract ? (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-4">
+    <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -741,31 +739,22 @@ export function ContractsPageIntegrated() {
             )}
           </div>
         </div>
-
       </div>
-    </div>
   ) : isLoadingDetail ? (
-    <LoadingState message="Carregando detalhes..." fullPage />
+    <LoadingState message="Carregando detalhes..." />
   ) : (
     <EmptyState
       title="Selecione um contrato"
       description="Escolha um contrato da lista para ver os detalhes"
       icon={<FileText className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
-      fullPage
     />
   );
 
   return (
-    <AnalyticTwoPaneLayout
-      left={<AnalyticScopeTree />}
-      right={
-        <FioriFlexibleColumnLayout
-          masterTitle={UX_COPY.pages.contracts.title}
-          masterContent={masterContent}
-          masterWidth={340}
-          detailContent={detailContent}
-        />
-      }
+    <TwoColumnAnalyticalLayout
+      leftColumn={masterContent}
+      rightColumn={detailContent}
+      leftWidth={340}
     />
   );
 }
