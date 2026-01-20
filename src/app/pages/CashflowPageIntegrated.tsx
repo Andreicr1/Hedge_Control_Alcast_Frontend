@@ -92,7 +92,6 @@ export function CashflowPageIntegrated() {
   // New state for consolidation and filters
   const [consolidationPeriod, setConsolidationPeriod] = useState<ConsolidationPeriod>('monthly');
   const [viewMode, setViewMode] = useState<CashflowViewMode>('consolidated');
-  const [currencyFilter, setCurrencyFilter] = useState<string>('USD');
   const [typeFilter, setTypeFilter] = useState<'all' | 'physical' | 'financial' | 'hedge'>('all');
 
   const fetchDeals = useCallback(async () => {
@@ -122,9 +121,22 @@ export function CashflowPageIntegrated() {
   }, [deals]);
 
   const normalizedLines: CashFlowLine[] = useMemo(() => {
-    const raw = cashflow.data || [];
-    return raw.filter((l) => l.entity_type !== 'exposure' && l.cashflow_type !== 'risk');
-  }, [cashflow.data]);
+    let raw = cashflow.data || [];
+    raw = raw.filter((l) => l.entity_type !== 'exposure' && l.cashflow_type !== 'risk');
+    
+    // Apply type filter
+    if (typeFilter !== 'all') {
+      if (typeFilter === 'physical') {
+        raw = raw.filter((l) => l.entity_type === 'so' || l.entity_type === 'po');
+      } else if (typeFilter === 'financial') {
+        raw = raw.filter((l) => l.entity_type === 'contract');
+      } else if (typeFilter === 'hedge') {
+        raw = raw.filter((l) => l.cashflow_type === 'hedge');
+      }
+    }
+    
+    return raw;
+  }, [cashflow.data, typeFilter]);
 
   const dateColumns = useMemo(() => {
     const set = new Set<string>();
@@ -361,7 +373,7 @@ export function CashflowPageIntegrated() {
 
       {/* Two Column Layout */}
       {!cashflow.isLoading && !cashflow.isError && (
-        <div className="h-[calc(100vh-200px)] -mx-4">
+        <div className="h-[calc(100vh-12rem)] -mx-4">
           <TwoColumnAnalyticalLayout
             leftTitle="Operações"
             leftColumn={
@@ -541,7 +553,7 @@ export function CashflowPageIntegrated() {
 
                 {/* Consolidation Controls */}
                 <div className="bg-white rounded-lg border border-[var(--sapList_BorderColor)] p-4 mb-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs text-[var(--sapContent_LabelColor)] block mb-1">
                         Consolidação
@@ -561,21 +573,6 @@ export function CashflowPageIntegrated() {
 
                     <div>
                       <label className="text-xs text-[var(--sapContent_LabelColor)] block mb-1">
-                        Moeda
-                      </label>
-                      <select
-                        className="w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                        value={currencyFilter}
-                        onChange={(e) => setCurrencyFilter(e.target.value)}
-                      >
-                        <option value="USD">USD (Dólar)</option>
-                        <option value="BRL">BRL (Real)</option>
-                        <option value="EUR">EUR (Euro)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-[var(--sapContent_LabelColor)] block mb-1">
                         Tipo
                       </label>
                       <select
@@ -584,8 +581,8 @@ export function CashflowPageIntegrated() {
                         onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
                       >
                         <option value="all">Todos</option>
-                        <option value="physical">Físico</option>
-                        <option value="financial">Financeiro</option>
+                        <option value="physical">Físico (SO/PO)</option>
+                        <option value="financial">Financeiro (Contratos)</option>
                         <option value="hedge">Hedge</option>
                       </select>
                     </div>
