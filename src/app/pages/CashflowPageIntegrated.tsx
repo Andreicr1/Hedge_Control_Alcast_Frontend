@@ -558,21 +558,18 @@ export function CashflowPageIntegrated() {
     fetchCashflowAnalytic(next, nextDealIds);
   };
 
-  const detailContent = cashflowError ? (
-    <ErrorState error={cashflowError} onRetry={handleRefetch} fullPage />
-  ) : cashflowIsLoading && !cashflowData ? (
-    <LoadingState message="Carregando fluxo de caixa..." fullPage />
-  ) : !isAppliedOnce ? (
-    <EmptyState
-      title="Sem seleção"
-      description="Selecione operações na coluna da esquerda e clique em Buscar para calcular o fluxo de caixa."
-    />
-  ) : appliedDealIds.length === 0 ? (
-    <EmptyState
-      title="Sem seleção"
-      description="Selecione pelo menos uma operação para calcular o fluxo de caixa."
-    />
-  ) : (
+  const selectionChangedSinceApply = useMemo(() => {
+    if (!isAppliedOnce) return true;
+    const current = Array.from(selectedDealIds.values()).sort((a, b) => a - b);
+    const appliedSorted = [...appliedDealIds].sort((a, b) => a - b);
+    if (current.length !== appliedSorted.length) return true;
+    for (let i = 0; i < current.length; i++) {
+      if (current[i] !== appliedSorted[i]) return true;
+    }
+    return false;
+  }, [appliedDealIds, isAppliedOnce, selectedDealIds]);
+
+  const detailContent = (
     <div className="sap-fiori-page p-4">
       {/* Header */}
       <div className="bg-[var(--sapPageHeader_Background)] border-b border-[var(--sapPageHeader_BorderColor)] -mx-4 -mt-4 px-4 py-4 mb-4">
@@ -589,7 +586,12 @@ export function CashflowPageIntegrated() {
             <Badge>Somente leitura</Badge>
             {role === 'auditoria' && <Badge>Auditoria</Badge>}
           </div>
-          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={handleRefetch}>
+          <FioriButton
+            variant="ghost"
+            icon={<RefreshCw className="w-4 h-4" />}
+            onClick={handleRefetch}
+            disabled={!isAppliedOnce}
+          >
             Atualizar
           </FioriButton>
         </div>
@@ -778,8 +780,22 @@ export function CashflowPageIntegrated() {
       </div>
 
       {/* Details */}
-      {selectedDealIds.size === 0 ? (
-        <EmptyState title="Sem seleção" description="Selecione operações na coluna da esquerda para consolidar." fullPage />
+      {cashflowError ? (
+        <ErrorState error={cashflowError} onRetry={handleRefetch} fullPage />
+      ) : cashflowIsLoading && !cashflowData ? (
+        <LoadingState message="Carregando fluxo de caixa..." fullPage />
+      ) : selectedDealIds.size === 0 ? (
+        <EmptyState
+          title="Sem seleção"
+          description="Selecione uma ou mais operações para calcular o fluxo de caixa."
+          fullPage
+        />
+      ) : selectionChangedSinceApply ? (
+        <EmptyState
+          title="Pronto para calcular"
+          description="Clique em Aplicar para calcular o fluxo de caixa para a seleção atual."
+          fullPage
+        />
       ) : dealFilteredLines.length === 0 ? (
         <EmptyState
           title="Sem itens"

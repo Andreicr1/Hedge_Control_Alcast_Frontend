@@ -392,7 +392,7 @@ export function PnlPageIntegrated() {
       ) : isLoading ? (
         <LoadingState message="Atualizando..." />
       ) : selectedDealIds.size === 0 ? (
-        <EmptyState title="Sem seleção" description="Selecione operações na coluna da esquerda para consolidar o resultado." />
+        <EmptyState title="Sem seleção" description="Selecione operações na lista para consolidar o resultado." />
       ) : tableRows.length === 0 ? (
         <EmptyState title="Nenhum resultado disponível no momento." description="Tente ajustar a data-base ou os filtros." />
       ) : (
