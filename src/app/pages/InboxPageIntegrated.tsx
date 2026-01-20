@@ -1,29 +1,96 @@
 /**
- * Inbox / Financeiro Workbench (Integrated)
+ * Team Activities / Inbox - Cleaned Up
  *
- * Sprint 2: minimal view + audit-only decision "Não fazer hedge".
+ * Mandatory Correction:
+ * - Remove backend timestamps and technical events
+ * - Show ONLY institutional events
+ * - Human language, short, auditable
+ * - Backend logs NEVER appear in UI
  */
 
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInboxWorkbench, useInboxExposure } from '../../hooks';
-import type { InboxDecisionCreate, Exposure } from '../../types';
+import type { InboxDecisionCreate, InboxDecisionRead, Exposure } from '../../types';
 import { ExposureStatus, ExposureType } from '../../types';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
-import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
+import { TwoColumnAnalyticalLayout } from '../components/fiori/TwoColumnAnalyticalLayout';
 import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { useAuthContext } from '../components/AuthProvider';
 import { normalizeRoleName } from '../../utils/role';
 import { UX_COPY } from '../ux/copy';
 
-function Badge({ children }: { children: string }) {
-  return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs border bg-[var(--sapNeutralBackground,#f5f6f7)] border-[var(--sapUiBorderColor,#d9d9d9)] text-[var(--sapTextColor,#131e29)]">
-      {children}
-    </span>
-  );
+function formatInstitutionalEvent(decision: InboxDecisionRead): { label: string; icon: JSX.Element; color: string } {
+  const type = (decision.decision || '').toLowerCase();
+  
+  if (type === 'no_hedge') {
+    return {
+      label: 'Decisão registrada: não hedgear',
+      icon: <FileText className="w-4 h-4" />,
+      color: 'var(--sapInformativeTextColor)',
+    };
+  }
+  
+  if (type === 'hedge_executed' || type === 'executed') {
+    return {
+      label: 'Hedge executado',
+      icon: <CheckCircle className="w-4 h-4" />,
+      color: 'var(--sapPositiveTextColor)',
+    };
+  }
+  
+  if (type === 'contract_created' || type.includes('contract')) {
+    return {
+      label: 'Contrato firmado',
+      icon: <CheckCircle className="w-4 h-4" />,
+      color: 'var(--sapPositiveTextColor)',
+    };
+  }
+  
+  if (type === 'exception_approved' || type.includes('exception')) {
+    return {
+      label: 'Exceção aprovada',
+      icon: <AlertTriangle className="w-4 h-4" />,
+      color: 'var(--sapCriticalTextColor)',
+    };
+  }
+  
+  if (type.includes('reject')) {
+    return {
+      label: 'Decisão rejeitada',
+      icon: <XCircle className="w-4 h-4" />,
+      color: 'var(--sapNegativeTextColor)',
+    };
+  }
+  
+  // Default for any registered decision
+  return {
+    label: 'Decisão registrada',
+    icon: <FileText className="w-4 h-4" />,
+    color: 'var(--sapInformativeTextColor)',
+  };
+}
+
+function formatBusinessDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'Agora';
+  if (diffMins < 60) return `${diffMins}m atrás`;
+  if (diffHours < 24) return `${diffHours}h atrás`;
+  if (diffDays === 0) return 'Hoje';
+  if (diffDays === 1) return 'Ontem';
+  if (diffDays < 7) return `${diffDays} dias atrás`;
+  
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
 function statusToType(status?: ExposureStatus): 'success' | 'error' | 'warning' | 'information' | 'neutral' {
@@ -71,229 +138,217 @@ export function InboxPageIntegrated() {
     return exposures.find(e => e.id === selectedExposureId) || null;
   }, [selectedExposureId, exposures]);
 
-  const master = (
-    <div className="sap-fiori-page">
-      <div className="bg-[var(--sapPageHeader_Background)] border-b border-[var(--sapPageHeader_BorderColor)] -mx-4 -mt-4 px-4 py-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-[var(--sapPageHeader_TextColor)] text-xl font-normal m-0">{UX_COPY.pages.pending.title}</h1>
-            <div className="flex items-center gap-2">
-              <p className="text-[var(--sapContent_LabelColor)] text-sm mt-1 m-0">{UX_COPY.pages.pending.subtitle}</p>
-              {role === 'auditoria' && <Badge>Acesso de visualização</Badge>}
-            </div>
-          </div>
-          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetch}>
-            Atualizar
-          </FioriButton>
-        </div>
-      </div>
-
-      {isLoading && <LoadingState message="Carregando pendências..." />}
+  const leftColumn = (
+    <>
+      {isLoading && <LoadingState message="Carregando atividades..." />}
       {isError && <ErrorState error={error || null} onRetry={refetch} />}
 
       {!isLoading && !isError && workbench && (
         <>
-          <div className="sap-fiori-section mb-4">
-            <div className="sap-fiori-section-content grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-[var(--sapTile_Background)]">
-                <div className="text-xs text-[var(--sapContent_LabelColor)]">Pedidos de venda pendentes</div>
-                <div className="text-lg">{workbench.counts.sales_orders_pending}</div>
+          {/* Summary Cards */}
+          <div className="p-3 border-b border-[var(--sapList_BorderColor)] bg-[var(--sapBackgroundColor)]">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-2 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-white">
+                <div className="text-xs text-[var(--sapContent_LabelColor)]">Vendas pendentes</div>
+                <div className="text-base font-['72:Bold',sans-serif]">{workbench.counts.sales_orders_pending}</div>
               </div>
-              <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-[var(--sapTile_Background)]">
-                <div className="text-xs text-[var(--sapContent_LabelColor)]">Pedidos de compra pendentes</div>
-                <div className="text-lg">{workbench.counts.purchase_orders_pending}</div>
+              <div className="p-2 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-white">
+                <div className="text-xs text-[var(--sapContent_LabelColor)]">Compras pendentes</div>
+                <div className="text-base font-['72:Bold',sans-serif]">{workbench.counts.purchase_orders_pending}</div>
               </div>
-              <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-[var(--sapTile_Background)]">
+              <div className="p-2 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-white">
                 <div className="text-xs text-[var(--sapContent_LabelColor)]">Exposições ativas</div>
-                <div className="text-lg">{workbench.counts.exposures_active}</div>
+                <div className="text-base font-['72:Bold',sans-serif]">{workbench.counts.exposures_active}</div>
               </div>
-              <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-[var(--sapTile_Background)]">
+              <div className="p-2 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-white">
                 <div className="text-xs text-[var(--sapContent_LabelColor)]">Residuais</div>
-                <div className="text-lg">{workbench.counts.exposures_residual}</div>
+                <div className="text-base font-['72:Bold',sans-serif]">{workbench.counts.exposures_residual}</div>
               </div>
             </div>
           </div>
 
-          <div className="sap-fiori-section mb-4">
-            <div className="sap-fiori-section-content">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-['72:Bold',sans-serif]">Exposição consolidada (por período)</div>
-                <div className="text-xs text-[var(--sapContent_LabelColor)]">Fonte: consolidação do sistema</div>
-              </div>
-
-              {workbench.net_exposure.length === 0 ? (
-                <div className="text-sm text-[var(--sapContent_LabelColor)]">Sem dados disponíveis no momento.</div>
-              ) : (
-                <div className="border border-[var(--sapList_BorderColor)] rounded overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[var(--sapList_HeaderBackground)]">
-                      <tr className="text-left">
-                        <th className="p-2 text-xs text-[var(--sapContent_LabelColor)] font-normal">Produto</th>
-                        <th className="p-2 text-xs text-[var(--sapContent_LabelColor)] font-normal">Período</th>
-                        <th className="p-2 text-xs text-[var(--sapContent_LabelColor)] font-normal">Ativo</th>
-                        <th className="p-2 text-xs text-[var(--sapContent_LabelColor)] font-normal">Passivo</th>
-                        <th className="p-2 text-xs text-[var(--sapContent_LabelColor)] font-normal">Hedgeado</th>
-                        <th className="p-2 text-xs text-[var(--sapContent_LabelColor)] font-normal">Net</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {workbench.net_exposure.map((row, idx) => (
-                        <tr key={`${row.product}-${row.period}-${idx}`} className="border-t border-[var(--sapList_BorderColor)]">
-                          <td className="p-2">{row.product}</td>
-                          <td className="p-2">{row.period}</td>
-                          <td className="p-2">{row.gross_active.toLocaleString('pt-BR')}</td>
-                          <td className="p-2">{row.gross_passive.toLocaleString('pt-BR')}</td>
-                          <td className="p-2">{row.hedged.toLocaleString('pt-BR')}</td>
-                          <td className="p-2 font-['72:Bold',sans-serif]">{row.net.toLocaleString('pt-BR')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="sap-fiori-section">
-            <div className="sap-fiori-section-content">
-              {exposures.length === 0 ? (
+          {/* Exposures List */}
+          <div>
+            {exposures.length === 0 ? (
+              <div className="p-4">
                 <EmptyState title={UX_COPY.pages.pending.empty} description="" />
-              ) : (
-                <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden">
-                  {exposures.map(exp => (
-                    <button
-                      key={exp.id}
-                      onClick={() => setSelectedExposureId(exp.id)}
-                      className={`w-full p-3 border-b border-[var(--sapList_BorderColor)] text-left hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
-                        selectedExposureId === exp.id ? 'bg-[var(--sapList_SelectionBackgroundColor)]' : ''
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm text-[#0064d9] font-['72:Bold',sans-serif]">Exposição nº {exp.id}</div>
-                        <FioriObjectStatus status={statusToType(exp.status)}>
-                          {bucketLabel(exp)}
-                        </FioriObjectStatus>
+              </div>
+            ) : (
+              <div>
+                {exposures.map(exp => (
+                  <button
+                    key={exp.id}
+                    onClick={() => setSelectedExposureId(exp.id)}
+                    className={`w-full p-3 border-b border-[var(--sapList_BorderColor)] text-left hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
+                      selectedExposureId === exp.id ? 'bg-[var(--sapList_SelectionBackgroundColor)]' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs font-['72:Bold',sans-serif] text-[var(--sapContent_LabelColor)]">
+                        Exposição #{exp.id}
                       </div>
-                      <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
-                        {exp.product || 'Produto —'} | {exp.exposure_type?.toUpperCase() || '—'} | {exp.quantity_mt?.toLocaleString('pt-BR')} MT
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                      <FioriObjectStatus status={statusToType(exp.status)}>
+                        {bucketLabel(exp)}
+                      </FioriObjectStatus>
+                    </div>
+                    <div className="text-sm text-[var(--sapTextColor)]">{exp.product || 'Produto —'}</div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                      {exp.quantity_mt?.toLocaleString('pt-BR')} MT · {exp.exposure_type?.toUpperCase()}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
-    </div>
+    </>
   );
 
-  const detail = (
-    <div className="sap-fiori-page">
-      <div className="sap-fiori-section">
-        <div className="sap-fiori-section-content">
-          {!selected && (
-            <EmptyState
-              title="Selecione um item"
-              description="Selecione uma pendência para ver os detalhes."
-            />
-          )}
+  const rightColumn = (
+    <>
+      {!selected && (
+        <EmptyState
+          title="Selecione uma exposição"
+          description="Selecione uma exposição para ver detalhes e histórico de atividades."
+        />
+      )}
 
-          {selected && (
-            <>
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h2 className="text-lg m-0">Exposição nº {selected.id}</h2>
-                  <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                    Tipo: {bucketLabel(selected)} | Situação: {selected.status}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {canCreateRfq && (
-                    <FioriButton
-                      onClick={() => {
-                        const sourceType = (selected.source_type || '').toLowerCase();
-                        if (sourceType !== 'so' || !selected.source_id) return;
-                        navigate(`/financeiro/rfqs/novo?so_id=${encodeURIComponent(String(selected.source_id))}&quantity_mt=${encodeURIComponent(String(selected.quantity_mt || ''))}&source_exposure_id=${encodeURIComponent(String(selected.id))}`);
-                      }}
-                      disabled={((selected.source_type || '').toLowerCase() !== 'so')}
-                    >
-                      Criar cotação
-                    </FioriButton>
-                  )}
-                </div>
+      {selected && (
+        <>
+          {/* Exposure Details */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-lg font-['72:Bold',sans-serif] m-0">Exposição #{selected.id}</h2>
+                <div className="text-sm text-[var(--sapContent_LabelColor)]">{bucketLabel(selected)} · {selected.status}</div>
               </div>
-
-              {((selected.source_type || '').toLowerCase() !== 'so') && (
-                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-3">
-                  A criação de cotação está disponível apenas para exposições originadas de pedido de venda.
-                </div>
-              )}
-
-              {(isLoadingDetail && !exposure) && <LoadingState message="Carregando detalhes..." />}
-              {isErrorDetail && <ErrorState error={errorDetail || null} />}
-
-              {exposure && (
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded">
-                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Produto</div>
-                    <div className="text-sm">{exposure.product || '—'}</div>
-                  </div>
-                  <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded">
-                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Quantidade</div>
-                    <div className="text-sm">{exposure.quantity_mt?.toLocaleString('pt-BR')} MT</div>
-                  </div>
-                </div>
-              )}
-
-              <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded mb-4">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="text-sm font-['72:Bold',sans-serif]">Decisão</div>
-                  {canRegisterDecision ? <Badge>Financeiro</Badge> : <Badge>Somente leitura</Badge>}
-                </div>
-
-                {canRegisterDecision ? (
-                  <DecisionForm
-                    onSubmit={async (justification) => {
-                      const payload: InboxDecisionCreate = { decision: 'no_hedge', justification };
-                      await submitDecision(payload);
+              <div className="flex items-center gap-2">
+                {canCreateRfq && (selected.source_type || '').toLowerCase() === 'so' && (
+                  <FioriButton
+                    onClick={() => {
+                      navigate(`/financeiro/rfqs/novo?so_id=${encodeURIComponent(String(selected.source_id))}&quantity_mt=${encodeURIComponent(String(selected.quantity_mt || ''))}&source_exposure_id=${encodeURIComponent(String(selected.id))}`);
                     }}
-                  />
-                ) : (
-                  <div className="text-sm text-[var(--sapContent_LabelColor)]">
-                    Ações disponíveis apenas para Auditoria.
-                  </div>
+                  >
+                    Criar cotação
+                  </FioriButton>
                 )}
               </div>
+            </div>
 
-              <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded">
-                <div className="text-sm font-['72:Bold',sans-serif] mb-2">Histórico</div>
-                {decisions.length === 0 ? (
-                  <div className="text-sm text-[var(--sapContent_LabelColor)]">Sem decisões registradas.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {decisions.map(d => (
-                      <div key={d.id} className="p-2 rounded bg-[var(--sapTile_Background)] border border-[var(--sapGroup_ContentBorderColor)]">
-                        <div className="text-xs text-[var(--sapContent_LabelColor)]">{new Date(d.created_at).toLocaleString('pt-BR')}</div>
-                        <div className="text-sm">{d.justification}</div>
-                      </div>
-                    ))}
+            {(isLoadingDetail && !exposure) && <LoadingState message="Carregando detalhes..." />}
+            {isErrorDetail && <ErrorState error={errorDetail || null} />}
+
+            {exposure && (
+              <div className="p-4 border border-[var(--sapGroup_ContentBorderColor)] rounded bg-[var(--sapBackgroundColor)]">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Produto</div>
+                    <div className="font-['72:Bold',sans-serif]">{exposure.product || '—'}</div>
                   </div>
-                )}
+                  <div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Quantidade</div>
+                    <div className="font-['72:Bold',sans-serif]">{exposure.quantity_mt?.toLocaleString('pt-BR')} MT</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Tipo</div>
+                    <div>{exposure.exposure_type || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)]">Status</div>
+                    <div>{exposure.status || '—'}</div>
+                  </div>
+                </div>
               </div>
-            </>
+            )}
+          </div>
+
+          {/* Activity Timeline - Business Events Only */}
+          <div className="mb-6">
+            <h3 className="text-base font-['72:Bold',sans-serif] mb-3">Histórico de atividades</h3>
+            {decisions.length === 0 ? (
+              <div className="p-4 border border-[var(--sapGroup_ContentBorderColor)] rounded">
+                <div className="text-sm text-[var(--sapContent_LabelColor)]">Nenhuma atividade registrada ainda.</div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {decisions.map((d, idx) => {
+                  const event = formatInstitutionalEvent(d);
+                  return (
+                    <div key={d.id} className="flex gap-3">
+                      {/* Timeline indicator */}
+                      <div className="flex flex-col items-center">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center border-2"
+                          style={{ borderColor: event.color, color: event.color }}
+                        >
+                          {event.icon}
+                        </div>
+                        {idx < decisions.length - 1 && (
+                          <div className="w-0.5 flex-1 mt-1" style={{ backgroundColor: 'var(--sapList_BorderColor)' }} />
+                        )}
+                      </div>
+
+                      {/* Event content */}
+                      <div className="flex-1 pb-4">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-sm font-['72:Bold',sans-serif]" style={{ color: event.color }}>
+                            {event.label}
+                          </div>
+                          <div className="text-xs text-[var(--sapContent_LabelColor)]">
+                            {formatBusinessDate(d.created_at)}
+                          </div>
+                        </div>
+                        {d.justification && (
+                          <div className="text-sm text-[var(--sapTextColor)] mt-1 p-2 rounded bg-[var(--sapBackgroundColor)] border border-[var(--sapList_BorderColor)]">
+                            {d.justification}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Decision Form for Financeiro */}
+          {canRegisterDecision && (
+            <div className="p-4 border-2 border-[var(--sapGroup_ContentBorderColor)] rounded">
+              <h3 className="text-base font-['72:Bold',sans-serif] mb-3">Registrar nova decisão</h3>
+              <DecisionForm
+                onSubmit={async (justification) => {
+                  const payload: InboxDecisionCreate = { decision: 'no_hedge', justification };
+                  await submitDecision(payload);
+                }}
+              />
+            </div>
           )}
-        </div>
-      </div>
-    </div>
+
+          {!canRegisterDecision && (
+            <div className="p-3 border border-[var(--sapInformativeColor)] rounded bg-[var(--sapInformativeElementColor,#e5f0fa)]">
+              <div className="text-sm text-[var(--sapInformativeTextColor)]">
+                Registro de decisões disponível apenas para perfil Financeiro.
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  const leftActions = (
+    <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetch} />
   );
 
   return (
-    <FioriFlexibleColumnLayout
-      masterTitle={UX_COPY.pages.pending.title}
-      masterContent={master}
-      detailContent={detail}
-      masterWidth={360}
+    <TwoColumnAnalyticalLayout
+      leftColumn={leftColumn}
+      rightColumn={rightColumn}
+      leftTitle="Atividades da equipe"
+      rightTitle={selected ? `Exposição #${selected.id}` : undefined}
+      leftActions={leftActions}
+      leftWidth={360}
     />
   );
 }
