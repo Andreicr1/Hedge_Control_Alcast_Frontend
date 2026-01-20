@@ -12,6 +12,8 @@
 import { api, endpoints } from '../api';
 import {
   PnlAggregateResponse,
+  PnlSnapshotExecuteResponse,
+  PnlSnapshotRequest,
 } from '../types';
 
 export interface PnlAggregateQuery {
@@ -41,6 +43,15 @@ export async function getPnlAggregated(query: PnlAggregateQuery = {}): Promise<P
   return api.get<PnlAggregateResponse>(`${endpoints.pnl.aggregated}${qs}`);
 }
 
+export async function createPnlSnapshot(payload: PnlSnapshotRequest): Promise<PnlSnapshotExecuteResponse> {
+  const body = {
+    as_of_date: payload.as_of_date,
+    filters: payload.filters || {},
+    dry_run: Boolean(payload.dry_run),
+  };
+  return api.post<PnlSnapshotExecuteResponse>(endpoints.pnl.createSnapshot, body);
+}
+
 export function formatUsd(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   return value.toLocaleString('pt-BR', {
@@ -53,4 +64,5 @@ export function formatUsd(value: number | null | undefined): string {
 
 export default {
   getAggregated: getPnlAggregated,
+  createSnapshot: createPnlSnapshot,
 };

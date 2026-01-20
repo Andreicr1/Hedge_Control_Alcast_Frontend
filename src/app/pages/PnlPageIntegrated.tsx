@@ -14,7 +14,7 @@ import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { ErrorState, LoadingState, EmptyState } from '../components/ui';
 import { DollarSign, RefreshCw, Search, ExternalLink, Receipt } from 'lucide-react';
-import { getPnlAggregated, formatUsd } from '../../services/pnl.service';
+import { getPnlAggregated, formatUsd, createPnlSnapshot } from '../../services/pnl.service';
 import { listDeals } from '../../services/deals.service';
 import type { Deal, PnlAggregateResponse, PnlDealAggregateRow } from '../../types';
 import { useAuthContext } from '../components/AuthProvider';
@@ -51,6 +51,7 @@ export function PnlPageIntegrated() {
 
   const { user } = useAuthContext();
   const role = normalizeRoleName(user?.role);
+  const canMaterializeSnapshot = role === 'financeiro' || role === 'admin';
 
   const [asOfDate, setAsOfDate] = useState<string>(todayIso());
 
@@ -65,6 +66,9 @@ export function PnlPageIntegrated() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [isMaterializing, setIsMaterializing] = useState<boolean>(false);
+  const [materializeError, setMaterializeError] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     if (selectedDealIds.size === 0) {
       setIsLoading(false);
@@ -77,7 +81,8 @@ export function PnlPageIntegrated() {
     setError(null);
 
     try {
-      const res = await getPnlAggregated({ as_of_date: asOfDate });
+      const singleDealId = selectedDealIds.size === 1 ? Array.from(selectedDealIds)[0] : undefined;
+      const res = await getPnlAggregated({ as_of_date: asOfDate, deal_id: singleDealId });
       setData(res);
     } catch (e) {
       console.error('Failed to fetch P&L aggregate:', e);
@@ -86,7 +91,30 @@ export function PnlPageIntegrated() {
     } finally {
       setIsLoading(false);
     }
-  }, [asOfDate]);
+  }, [asOfDate, selectedDealIds]);
+
+  const materializeSnapshot = useCallback(async () => {
+    if (!canMaterializeSnapshot) return;
+    if (selectedDealIds.size === 0) return;
+
+    setIsMaterializing(true);
+    setMaterializeError(null);
+
+    try {
+      const singleDealId = selectedDealIds.size === 1 ? Array.from(selectedDealIds)[0] : undefined;
+      await createPnlSnapshot({
+        as_of_date: asOfDate,
+        filters: singleDealId ? { deal_id: singleDealId } : {},
+        dry_run: false,
+      });
+      await fetchData();
+    } catch (e) {
+      console.error('Failed to materialize P&L snapshot:', e);
+      setMaterializeError('Não foi possível gerar o snapshot de P&L');
+    } finally {
+      setIsMaterializing(false);
+    }
+  }, [asOfDate, canMaterializeSnapshot, fetchData, selectedDealIds]);
 
   const fetchDeals = useCallback(async () => {
     setIsLoadingDeals(true);
@@ -113,6 +141,10 @@ export function PnlPageIntegrated() {
   useEffect(() => {
     fetchDeals();
   }, [fetchDeals]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const rows = data?.rows ?? [];
 
@@ -217,6 +249,21 @@ export function PnlPageIntegrated() {
       },
     ];
   }, [dealById, navigate]);
+
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <FioriButton
+        variant="default"
+        onClick={materializeSnapshot}
+        disabled={!canMaterializeSnapshot || selectedDealIds.size === 0 || isMaterializing}
+      >
+        {isMaterializing ? 'Gerando snapshot...' : 'Gerar snapshot'}
+      </FioriButton>
+      <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={fetchData} disabled={isLoading}>
+        Atualizar
+      </FioriButton>
+    </div>
+  );
 
   const masterContent = (
     <>
@@ -334,10 +381,12 @@ export function PnlPageIntegrated() {
             {role === 'auditoria' && <Badge>Somente leitura</Badge>}
           </div>
         </div>
-        <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={fetchData}>
-          Atualizar
-        </FioriButton>
+        {headerActions}
       </div>
+
+      {materializeError && (
+        <div className="mb-4 text-xs text-[var(--sapNegativeColor)]">{materializeError}</div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <FioriKPIPrimary
@@ -394,7 +443,17 @@ export function PnlPageIntegrated() {
       ) : selectedDealIds.size === 0 ? (
         <EmptyState title="Sem seleção" description="Selecione operações na lista para consolidar o resultado." />
       ) : tableRows.length === 0 ? (
-        <EmptyState title="Nenhum resultado disponível no momento." description="Tente ajustar a data-base ou os filtros." />
+        <div className="space-y-3">
+          <EmptyState
+            title="Nenhum resultado disponível no momento."
+            description="P&L requer materialização (snapshot). Gere um snapshot para a data-base selecionada e tente novamente."
+          />
+          {canMaterializeSnapshot && (
+            <FioriButton variant="default" onClick={materializeSnapshot} disabled={isMaterializing}>
+              {isMaterializing ? 'Gerando snapshot...' : 'Gerar snapshot'}
+            </FioriButton>
+          )}
+        </div>
       ) : (
         <SAPGridTable title={`Resultado por operação (${tableRows.length})`} columns={columns} data={tableRows} idField="deal_id" />
       )}

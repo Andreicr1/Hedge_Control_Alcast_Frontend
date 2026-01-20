@@ -36,6 +36,29 @@ function formatApprovalStatusLabel(status?: string): string {
   }
 }
 
+function formatWorkflowActionLabel(action?: string | null): string {
+  const key = String(action || '').toLowerCase();
+  if (!key) return 'ƒ?"';
+  if (key === 'rfq.award') return 'Adjudicar RFQ';
+  if (key === 'hedge.manual.create') return 'Registrar hedge manual';
+  return action || 'ƒ?"';
+}
+
+function formatSubjectLabel(subjectType?: string | null, subjectId?: string | null): string {
+  const t = String(subjectType || '').trim();
+  const id = String(subjectId || '').trim();
+  if (!t && !id) return 'ƒ?"';
+  if (!id) return t || 'ƒ?"';
+  return `${t} #${id}`;
+}
+
+function formatDateTimePt(value?: string | null): string {
+  if (!value) return 'ƒ?"';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString('pt-BR');
+}
+
 function Badge({ children }: { children: string }) {
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs border bg-[var(--sapNeutralBackground,#f5f6f7)] border-[var(--sapUiBorderColor,#d9d9d9)] text-[var(--sapTextColor,#131e29)]">
@@ -131,6 +154,14 @@ export function ApprovalsPageIntegrated() {
   const [submitError, setSubmitError] = useState<ApiError | null>(null);
 
   const decisions = wf?.decisions || [];
+
+  const isOverdue = useMemo(() => {
+    if (!wf) return false;
+    if (String(wf.status || '').toLowerCase() !== 'pending') return false;
+    const due = wf.sla_due_at ? new Date(wf.sla_due_at) : null;
+    if (!due || Number.isNaN(due.getTime())) return false;
+    return due.getTime() < Date.now();
+  }, [wf]);
 
   const onSelect = (id: number) => {
     setSelectedId(id);
@@ -241,9 +272,18 @@ export function ApprovalsPageIntegrated() {
                       <FioriObjectStatus status={statusToType(r.status)}>{formatApprovalStatusLabel(r.status)}</FioriObjectStatus>
                     </div>
                     <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                      {formatWorkflowActionLabel(r.action)}
+                      {' • '}
+                      {formatSubjectLabel(r.subject_type, r.subject_id)}
+                      {' • '}
                       Perfil necessário: {formatRoleLabel(r.required_role)}
                       {' • '}Valor: {formatMoneyUsd(r.notional_usd)}
                     </div>
+                    {r.sla_due_at && (
+                      <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                        SLA: {formatDateTimePt(r.sla_due_at)}
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
@@ -277,11 +317,19 @@ export function ApprovalsPageIntegrated() {
                 </div>
                 <div className="flex items-center gap-2">
                   <FioriObjectStatus status={statusToType(wf.status)}>{formatApprovalStatusLabel(wf.status)}</FioriObjectStatus>
+                  {isOverdue && <Badge>Atrasada</Badge>}
                   <FioriButton variant="ghost" onClick={refetchDetail}>Atualizar</FioriButton>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded">
+                  <div className="text-xs text-[var(--sapContent_LabelColor)]">Ação</div>
+                  <div className="text-sm">{formatWorkflowActionLabel(wf.action)}</div>
+                  <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                    {formatSubjectLabel(wf.subject_type, wf.subject_id)}
+                  </div>
+                </div>
                 <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded">
                   <div className="text-xs text-[var(--sapContent_LabelColor)]">Perfil necessário</div>
                   <div className="text-sm">{formatRoleLabel(wf.required_role)}</div>
@@ -292,7 +340,18 @@ export function ApprovalsPageIntegrated() {
                     {formatMoneyUsd(wf.threshold_usd)} / {formatMoneyUsd(wf.notional_usd)}
                   </div>
                 </div>
+                <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded">
+                  <div className="text-xs text-[var(--sapContent_LabelColor)]">SLA</div>
+                  <div className="text-sm">{formatDateTimePt(wf.sla_due_at)}</div>
+                </div>
               </div>
+
+              {wf.context && (
+                <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded mb-4">
+                  <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Contexto</div>
+                  <pre className="m-0 text-xs whitespace-pre-wrap">{JSON.stringify(wf.context, null, 2)}</pre>
+                </div>
+              )}
 
               <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded mb-4">
                 <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Decisões</div>
@@ -315,6 +374,12 @@ export function ApprovalsPageIntegrated() {
               {!canDecideThisRequest(userRole, wf) && (
                 <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
                   Você tem acesso de visualização. Esta ação requer perfil {formatRoleLabel(wf.required_role)}.
+                </div>
+              )}
+
+              {(wf.status || '').toLowerCase() === 'approved' && (
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
+                  Próximo passo: retorne ao módulo de origem e repita a ação para concluir a execução.
                 </div>
               )}
 

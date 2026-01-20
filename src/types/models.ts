@@ -823,6 +823,59 @@ export interface PnlAggregateResponse {
   total_pnl_usd: number;
 }
 
+export interface PnlSnapshotRequest {
+  as_of_date: string; // YYYY-MM-DD
+  filters?: Record<string, unknown>;
+  dry_run?: boolean;
+}
+
+export interface PnlSnapshotPlanRead {
+  as_of_date: string;
+  filters: Record<string, unknown>;
+  inputs_hash: string;
+  active_contract_ids: string[];
+  settled_contract_ids: string[];
+}
+
+export interface PnlUnrealizedPreview {
+  contract_id: string;
+  deal_id: number;
+  as_of_date: string;
+  unrealized_pnl_usd: number;
+  methodology?: string | null;
+  data_quality_flags: string[];
+}
+
+export interface PnlRealizedPreview {
+  contract_id: string;
+  deal_id: number;
+  settlement_date: string;
+  realized_pnl_usd: number;
+  methodology?: string | null;
+  data_quality_flags: string[];
+  locked_at: string;
+}
+
+export interface PnlSnapshotDryRunRead {
+  kind: 'dry_run';
+  plan: PnlSnapshotPlanRead;
+  active_contracts: number;
+  settled_contracts: number;
+  unrealized_preview: PnlUnrealizedPreview[];
+  realized_preview: PnlRealizedPreview[];
+}
+
+export interface PnlSnapshotMaterializeRead {
+  kind: 'materialized';
+  run_id: number;
+  inputs_hash: string;
+  unrealized_written: number;
+  unrealized_updated: number;
+  realized_locked_written: number;
+}
+
+export type PnlSnapshotExecuteResponse = PnlSnapshotDryRunRead | PnlSnapshotMaterializeRead;
+
 // ============================================
 // Inbox / Financeiro Workbench
 // ============================================

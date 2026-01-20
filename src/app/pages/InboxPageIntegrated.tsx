@@ -53,7 +53,7 @@ export function InboxPageIntegrated() {
   const { user } = useAuthContext();
   const role = normalizeRoleName(user?.role);
   const canCreateRfq = role === 'financeiro';
-  const canRegisterDecision = role === 'auditoria';
+  const canRegisterDecision = role === 'financeiro';
 
   const { workbench, isLoading, isError, error, refetch } = useInboxWorkbench();
   const [selectedExposureId, setSelectedExposureId] = useState<number | null>(null);
@@ -249,7 +249,7 @@ export function InboxPageIntegrated() {
               <div className="p-3 border border-[var(--sapGroup_ContentBorderColor)] rounded mb-4">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="text-sm font-['72:Bold',sans-serif]">Decisão</div>
-                  {canRegisterDecision ? <Badge>Auditoria</Badge> : <Badge>Somente leitura</Badge>}
+                  {canRegisterDecision ? <Badge>Financeiro</Badge> : <Badge>Somente leitura</Badge>}
                 </div>
 
                 {canRegisterDecision ? (
