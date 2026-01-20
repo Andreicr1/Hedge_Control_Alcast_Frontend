@@ -7,3 +7,4 @@ export { FioriShell } from './FioriShell';
 export { FioriModal } from './FioriModal';
 export { SAPGridTable } from './SAPGridTable';
 export { FioriFlexibleColumnLayout } from './FioriFlexibleColumnLayout';
+export { TwoColumnAnalyticalLayout } from './TwoColumnAnalyticalLayout';
