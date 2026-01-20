@@ -13,7 +13,7 @@ import { SAPGridTable } from '../components/fiori/SAPGridTable';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { ErrorState, LoadingState, EmptyState } from '../components/ui';
-import { DollarSign, RefreshCw, Search, ExternalLink, Receipt } from 'lucide-react';
+import { DollarSign, RefreshCw, Search, ExternalLink, Receipt, Info, ArrowRight } from 'lucide-react';
 import { getPnlAggregated, formatUsd, createPnlSnapshot } from '../../services/pnl.service';
 import { listDeals } from '../../services/deals.service';
 import type { Deal, PnlAggregateResponse, PnlDealAggregateRow } from '../../types';
@@ -367,6 +367,29 @@ export function PnlPageIntegrated() {
 
   const detailContent = (
     <div className="p-6">
+      {/* Deprecation Banner */}
+      <div className="mb-6 p-4 bg-[#fff4e5] border-l-4 border-[#e67300] rounded-r shadow-sm">
+        <div className="flex items-start gap-3">
+          <Info className="w-5 h-5 text-[#e67300] mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] mb-2">
+              ℹ️ Esta página será descontinuada
+            </div>
+            <p className="text-sm text-[#556b82] mb-3">
+              O Cash Flow agora é o núcleo analítico do sistema. Use a página de Cash Flow para análise consolidada de P&L.
+            </p>
+            <FioriButton
+              variant="default"
+              icon={<ArrowRight className="w-4 h-4" />}
+              onClick={() => navigate('/financeiro/cashflow')}
+              className="bg-white hover:bg-[#f5f5f5]"
+            >
+              Ir para Cash Flow
+            </FioriButton>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="font-['72:Black',sans-serif] text-2xl text-[#131e29] mb-1 flex items-center gap-2">
