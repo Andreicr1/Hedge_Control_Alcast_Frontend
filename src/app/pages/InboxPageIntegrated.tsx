@@ -22,7 +22,7 @@ import { useAuthContext } from '../components/AuthProvider';
 import { normalizeRoleName } from '../../utils/role';
 import { UX_COPY } from '../ux/copy';
 
-function formatInstitutionalEvent(decision: InboxDecisionRead): { label: string; icon: JSX.Element; color: string } {
+function formatInstitutionalEvent(decision: InboxDecisionRead): { label: string; icon: React.ReactElement; color: string } {
   const type = (decision.decision || '').toLowerCase();
   
   if (type === 'no_hedge') {

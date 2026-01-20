@@ -1169,12 +1169,12 @@ export const mockExposures: Exposure[] = [
   { exposure_id: 'EXP047', so_id: 'SO047', commodity: 'Aluminum', quantity_mt: 1180, exposure_date: addMonths(baseDate, 6), status: 'Partial' },
   
   // Over-hedged exposures (105-120% hedged - includes hedge position for price optimization)
-  { exposure_id: 'EXP004', so_id: 'SO004', commodity: 'Aluminum', quantity_mt: 600, exposure_date: addMonths(baseDate, 3), status: 'Overhedged' },
-  { exposure_id: 'EXP006', so_id: 'SO006', commodity: 'Aluminum', quantity_mt: 1500, exposure_date: addMonths(baseDate, 4), status: 'Overhedged' },
-  { exposure_id: 'EXP018', so_id: 'SO018', commodity: 'Aluminum', quantity_mt: 1980, exposure_date: addMonths(baseDate, 7), status: 'Overhedged' },
-  { exposure_id: 'EXP021', so_id: 'SO021', commodity: 'Aluminum', quantity_mt: 1800, exposure_date: addMonths(baseDate, 6), status: 'Overhedged' },
-  { exposure_id: 'EXP027', so_id: 'SO027', commodity: 'Aluminum', quantity_mt: 1560, exposure_date: addMonths(baseDate, 7), status: 'Overhedged' },
-  { exposure_id: 'EXP040', so_id: 'SO040', commodity: 'Aluminum', quantity_mt: 2150, exposure_date: addMonths(baseDate, 9), status: 'Overhedged' },
+  { exposure_id: 'EXP004', so_id: 'SO004', commodity: 'Aluminum', quantity_mt: 600, exposure_date: addMonths(baseDate, 3), status: 'Hedged' },
+  { exposure_id: 'EXP006', so_id: 'SO006', commodity: 'Aluminum', quantity_mt: 1500, exposure_date: addMonths(baseDate, 4), status: 'Hedged' },
+  { exposure_id: 'EXP018', so_id: 'SO018', commodity: 'Aluminum', quantity_mt: 1980, exposure_date: addMonths(baseDate, 7), status: 'Hedged' },
+  { exposure_id: 'EXP021', so_id: 'SO021', commodity: 'Aluminum', quantity_mt: 1800, exposure_date: addMonths(baseDate, 6), status: 'Hedged' },
+  { exposure_id: 'EXP027', so_id: 'SO027', commodity: 'Aluminum', quantity_mt: 1560, exposure_date: addMonths(baseDate, 7), status: 'Hedged' },
+  { exposure_id: 'EXP040', so_id: 'SO040', commodity: 'Aluminum', quantity_mt: 2150, exposure_date: addMonths(baseDate, 9), status: 'Hedged' },
   
   // Open exposures (0-30% hedged - high risk)
   { exposure_id: 'EXP003', so_id: 'SO003', commodity: 'Aluminum', quantity_mt: 450, exposure_date: addMonths(baseDate, 1), status: 'Open' },

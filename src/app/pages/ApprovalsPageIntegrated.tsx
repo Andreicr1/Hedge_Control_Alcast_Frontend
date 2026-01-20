@@ -409,7 +409,7 @@ export function ApprovalsPageIntegrated() {
               </div>
               {subjectRfqId && (
                 <div className="mt-3">
-                  <FioriButton size="small" onClick={() => navigate(`/financeiro/rfqs?selected=${subjectRfqId}`)}>
+                  <FioriButton onClick={() => navigate(`/financeiro/rfqs?selected=${subjectRfqId}`)}>
                     Abrir RFQ
                   </FioriButton>
                 </div>

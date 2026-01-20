@@ -131,7 +131,7 @@ export function CashflowPageIntegrated() {
       } else if (typeFilter === 'financial') {
         raw = raw.filter((l) => l.entity_type === 'contract');
       } else if (typeFilter === 'hedge') {
-        raw = raw.filter((l) => l.cashflow_type === 'hedge');
+        raw = raw.filter((l) => l.entity_type === 'contract');
       }
     }
     
