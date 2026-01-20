@@ -22,6 +22,39 @@ import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 
+function parseIsoDateUtc(dateIso: string): Date {
+  return new Date(`${dateIso}T00:00:00Z`);
+}
+
+function quarterKey(dateIso: string): { key: string; label: string } {
+  const d = parseIsoDateUtc(dateIso);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1;
+  const q = Math.floor((month - 1) / 3) + 1;
+  return { key: `${year}-Q${q}`, label: `Q${q} ${year}` };
+}
+
+function monthKey(dateIso: string): { key: string; label: string } {
+  const d = parseIsoDateUtc(dateIso);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const label = d.toLocaleString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return { key: `${yyyy}-${mm}`, label };
+}
+
+function isoWeekKey(dateIso: string): { key: string; label: string } {
+  const d = parseIsoDateUtc(dateIso);
+  // ISO week date weeks start on Monday, week 1 contains Jan 4th.
+  const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - day);
+  const weekYear = tmp.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(weekYear, 0, 1));
+  const weekNo = Math.ceil((((tmp.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  const ww = String(weekNo).padStart(2, '0');
+  return { key: `${weekYear}-W${ww}`, label: `W${ww} ${weekYear}` };
+}
+
 function isoToday(): string {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -69,6 +102,16 @@ type MatrixRow = {
   valuesByDate: Record<string, number>;
 };
 
+type TimeBucketLevel = 'quarter' | 'month' | 'week' | 'day';
+type TimeColumn = {
+  key: string;
+  label: string;
+  level: TimeBucketLevel;
+  dates: string[];
+  canExpand: boolean;
+  expanded: boolean;
+};
+
 export function CashflowPageIntegrated() {
   const navigate = useNavigate();
 
@@ -92,16 +135,150 @@ export function CashflowPageIntegrated() {
   const [collapsedDeals, setCollapsedDeals] = useState<Record<string, boolean>>({});
   const [showRawLines, setShowRawLines] = useState(false);
 
+  const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({});
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
+  const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
+
   const normalizedLines: CashFlowLine[] = useMemo(() => {
     const raw = cashflow.data || [];
     return raw.filter((l) => l.entity_type !== 'exposure' && l.cashflow_type !== 'risk');
   }, [cashflow.data]);
 
-  const dateColumns = useMemo(() => {
+  const allDates = useMemo(() => {
     const set = new Set<string>();
     for (const l of normalizedLines) set.add(String(l.date));
     return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
   }, [normalizedLines]);
+
+  const timeTree = useMemo(() => {
+    type WeekNode = { label: string; dates: string[] };
+    type MonthNode = { label: string; dates: string[]; weeks: Map<string, WeekNode> };
+    type QuarterNode = { label: string; dates: string[]; months: Map<string, MonthNode> };
+
+    const quarters = new Map<string, QuarterNode>();
+
+    for (const dateIso of allDates) {
+      const q = quarterKey(dateIso);
+      const m = monthKey(dateIso);
+      const w = isoWeekKey(dateIso);
+
+      const qNode = quarters.get(q.key) || { label: q.label, dates: [], months: new Map<string, MonthNode>() };
+      qNode.dates.push(dateIso);
+
+      const mNode = qNode.months.get(m.key) || { label: m.label, dates: [], weeks: new Map<string, WeekNode>() };
+      mNode.dates.push(dateIso);
+
+      const wNode = mNode.weeks.get(w.key) || { label: w.label, dates: [] };
+      wNode.dates.push(dateIso);
+
+      mNode.weeks.set(w.key, wNode);
+      qNode.months.set(m.key, mNode);
+      quarters.set(q.key, qNode);
+    }
+
+    // Normalize ordering.
+    for (const qNode of quarters.values()) {
+      qNode.dates.sort((a, b) => a.localeCompare(b));
+      for (const mNode of qNode.months.values()) {
+        mNode.dates.sort((a, b) => a.localeCompare(b));
+        for (const wNode of mNode.weeks.values()) {
+          wNode.dates.sort((a, b) => a.localeCompare(b));
+        }
+      }
+    }
+
+    return quarters;
+  }, [allDates]);
+
+  const timeColumns: TimeColumn[] = useMemo(() => {
+    const quarterKeys = Array.from(timeTree.keys()).sort((a, b) => {
+      const [ay, aq] = a.split('-Q');
+      const [by, bq] = b.split('-Q');
+      const na = Number(ay) * 10 + Number(aq);
+      const nb = Number(by) * 10 + Number(bq);
+      return na - nb;
+    });
+
+    const cols: TimeColumn[] = [];
+
+    for (const qKey of quarterKeys) {
+      const qNode = timeTree.get(qKey);
+      if (!qNode) continue;
+      const hasMonths = qNode.months.size > 0;
+      const qExpanded = !!expandedQuarters[qKey] && hasMonths;
+
+      if (!qExpanded) {
+        cols.push({
+          key: qKey,
+          label: qNode.label,
+          level: 'quarter',
+          dates: qNode.dates,
+          canExpand: hasMonths,
+          expanded: qExpanded,
+        });
+        continue;
+      }
+
+      const monthKeys = Array.from(qNode.months.keys()).sort((a, b) => a.localeCompare(b));
+      for (const mKey of monthKeys) {
+        const mNode = qNode.months.get(mKey);
+        if (!mNode) continue;
+        const hasWeeks = mNode.weeks.size > 0;
+        const mExpanded = !!expandedMonths[mKey] && hasWeeks;
+
+        if (!mExpanded) {
+          cols.push({
+            key: mKey,
+            label: mNode.label,
+            level: 'month',
+            dates: mNode.dates,
+            canExpand: hasWeeks,
+            expanded: mExpanded,
+          });
+          continue;
+        }
+
+        const weekKeys = Array.from(mNode.weeks.keys()).sort((a, b) => a.localeCompare(b));
+        for (const wKey of weekKeys) {
+          const wNode = mNode.weeks.get(wKey);
+          if (!wNode) continue;
+          const hasDays = wNode.dates.length > 1;
+          const wExpanded = !!expandedWeeks[wKey] && hasDays;
+
+          if (!wExpanded) {
+            cols.push({
+              key: wKey,
+              label: wNode.label,
+              level: 'week',
+              dates: wNode.dates,
+              canExpand: hasDays,
+              expanded: wExpanded,
+            });
+            continue;
+          }
+
+          for (const d of wNode.dates) {
+            cols.push({
+              key: d,
+              label: formatIsoDate(d),
+              level: 'day',
+              dates: [d],
+              canExpand: false,
+              expanded: false,
+            });
+          }
+        }
+      }
+    }
+
+    return cols;
+  }, [timeTree, expandedQuarters, expandedMonths, expandedWeeks]);
+
+  const sumRowForDates = (r: MatrixRow, dates: string[]): number => {
+    let acc = 0;
+    for (const d of dates) acc += r.valuesByDate[d] || 0;
+    return acc;
+  };
 
   const rows: MatrixRow[] = useMemo(() => {
     const byDeal = new Map<string, CashFlowLine[]>();
@@ -345,15 +522,50 @@ export function CashflowPageIntegrated() {
                   <EmptyState title={UX_COPY.pages.cashflow.empty} description="Nenhuma linha encontrada no período." />
                 ) : (
                   <>
+                    <div className="mb-2 flex items-center justify-end">
+                      <FioriButton
+                        variant="ghost"
+                        onClick={() => {
+                          setExpandedQuarters({});
+                          setExpandedMonths({});
+                          setExpandedWeeks({});
+                        }}
+                      >
+                        Recolher para Trimestre
+                      </FioriButton>
+                    </div>
                     <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden">
                       <div className="overflow-auto">
                         <table className="min-w-[900px] w-full">
                           <thead>
                             <tr className="border-b border-[var(--sapList_BorderColor)] bg-[var(--sapList_HeaderBackground)]">
                               <th className="text-left p-3 text-sm sticky left-0 bg-[var(--sapList_HeaderBackground)] z-10">Item</th>
-                              {dateColumns.map((d) => (
-                                <th key={d} className="text-right p-3 text-xs whitespace-nowrap">
-                                  {formatIsoDate(d)}
+                              {timeColumns.map((c) => (
+                                <th key={c.key} className="text-right p-3 text-xs whitespace-nowrap">
+                                  {c.canExpand ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 ml-auto text-[var(--sapLinkColor,#0a6ed1)] hover:text-[var(--sapLink_Hover_Color,#085caf)]"
+                                      onClick={() => {
+                                        if (c.level === 'quarter') {
+                                          setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                          return;
+                                        }
+                                        if (c.level === 'month') {
+                                          setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                          return;
+                                        }
+                                        if (c.level === 'week') {
+                                          setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                        }
+                                      }}
+                                    >
+                                      {c.label}
+                                      {c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                    </button>
+                                  ) : (
+                                    <span>{c.label}</span>
+                                  )}
                                 </th>
                               ))}
                             </tr>
@@ -363,10 +575,7 @@ export function CashflowPageIntegrated() {
                               const isDeal = r.kind === 'deal';
                               const isGroup = r.kind === 'group';
                               const collapsed = !!collapsedDeals[r.dealId];
-                              const isNegativeRow = (d: string) => {
-                                const v = r.valuesByDate[d];
-                                return typeof v === 'number' && v < 0;
-                              };
+                              const isNegative = (v: number) => typeof v === 'number' && v < 0;
 
                               // When scope is narrowed, avoid showing other deals.
                               if (scope.kind !== 'all' && String(scope.dealId) !== r.dealId) return null;
@@ -406,13 +615,16 @@ export function CashflowPageIntegrated() {
                                       <span className={isDeal || isGroup ? "font-['72:Bold',sans-serif]" : ''}>{r.label}</span>
                                     </div>
                                   </td>
-                                  {dateColumns.map((d) => (
-                                    <td key={`${r.key}:${d}`} className="p-3 text-xs text-right whitespace-nowrap">
-                                      <span className={isNegativeRow(d) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>
-                                        {formatUsdSigned(r.valuesByDate[d])}
-                                      </span>
-                                    </td>
-                                  ))}
+                                      {timeColumns.map((c) => {
+                                        const v = sumRowForDates(r, c.dates);
+                                        return (
+                                          <td key={`${r.key}:${c.key}`} className="p-3 text-xs text-right whitespace-nowrap">
+                                            <span className={isNegative(v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>
+                                              {formatUsdSigned(v)}
+                                            </span>
+                                          </td>
+                                        );
+                                      })}
                                 </tr>
                               );
                             })}

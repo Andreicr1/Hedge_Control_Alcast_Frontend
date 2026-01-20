@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
-  Trophy,
 } from 'lucide-react';
 
 type SortField = 'rank' | 'counterparty' | 'spread' | 'buy_price' | 'sell_price' | 'channel' | 'quoted_at';
@@ -127,7 +126,6 @@ export function RFQRankingTable({
         </thead>
         <tbody>
           {quotes.map((quote, index) => {
-            const isBest = index === 0 && sortField === 'rank' && sortDirection === 'asc';
             const isQuoteAwarded = quote.status === 'Awarded';
             const isQuoteRejected = quote.status === 'Rejected';
 
@@ -135,16 +133,11 @@ export function RFQRankingTable({
               <tr
                 key={quote.quote_id}
                 className={`border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
-                  isBest && showPrices ? 'bg-[var(--sapList_HighlightBackground,#e5f0fa)]' : ''
-                } ${isQuoteAwarded ? 'bg-[var(--sapSuccessBackground,#f1fdf6)]' : ''} ${
-                  isQuoteRejected ? 'opacity-60' : ''
-                }`}
+                  isQuoteAwarded ? 'bg-[var(--sapList_SelectionBackgroundColor)] border-l-2 border-l-[var(--sapPositiveColor)]' : ''
+                } ${isQuoteRejected ? 'opacity-60' : ''}`}
               >
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-2">
-                    {isBest && showPrices && (
-                      <Trophy className="w-3.5 h-3.5 text-[var(--sapPositiveColor)] fill-[var(--sapPositiveColor)]" />
-                    )}
                     <span className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
                       {quote.rank}º
                     </span>
@@ -172,9 +165,7 @@ export function RFQRankingTable({
                     </td>
                     <td className="px-3 py-3 text-right">
                       <span
-                        className={`font-['72:Bold',sans-serif] text-sm ${
-                          isBest ? 'text-[var(--sapPositiveTextColor)]' : 'text-[#131e29]'
-                        }`}
+                        className="font-['72:Bold',sans-serif] text-sm text-[#131e29]"
                       >
                         ${quote.spread?.toFixed(2)}
                       </span>

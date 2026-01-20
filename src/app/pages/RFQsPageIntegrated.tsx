@@ -25,12 +25,21 @@ import {
   Users, 
   Calendar, 
   Plus,
-  Trophy,
+  MessageCircle,
   Send,
   RefreshCw,
   PlusCircle,
 } from 'lucide-react';
 import { UX_COPY } from '../ux/copy';
+
+function buildWhatsAppUrl(text: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+function openWhatsApp(text: string) {
+  const url = buildWhatsAppUrl(text);
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
 
 // ============================================
 // Status Helpers - Baseado nos enums do backend
@@ -59,7 +68,7 @@ function getStatusLabel(status: RfqStatus): string {
     [RfqStatus.PENDING]: 'Pendente',
     [RfqStatus.SENT]: 'Enviada',
     [RfqStatus.QUOTED]: 'Cotada',
-    [RfqStatus.AWARDED]: 'Premiada',
+    [RfqStatus.AWARDED]: 'Contratada',
     [RfqStatus.EXPIRED]: 'Expirada',
     [RfqStatus.FAILED]: 'Falhou',
   };
@@ -124,12 +133,12 @@ export function RFQsPageIntegrated() {
 
   const formatCounterpartyKycBlockMessage = useCallback((reasonCode?: string | null) => {
     const code = String(reasonCode || '').toUpperCase();
-    if (!code) return 'Contraparte indisponível para premiação (KYC pendente).';
-    if (code === 'KYC_CHECK_MISSING') return 'Contraparte indisponível para premiação (KYC pendente).';
-    if (code === 'KYC_CHECK_EXPIRED') return 'Contraparte indisponível para premiação (KYC vencido).';
-    if (code === 'KYC_CHECK_FAILED') return 'Contraparte indisponível para premiação (KYC reprovado).';
-    if (code === 'COUNTERPARTY_KYC_STATUS_NOT_APPROVED') return 'Contraparte indisponível para premiação (KYC pendente).';
-    return 'Contraparte indisponível para premiação (KYC pendente).';
+    if (!code) return 'Contraparte indisponível para contratação (KYC pendente).';
+    if (code === 'KYC_CHECK_MISSING') return 'Contraparte indisponível para contratação (KYC pendente).';
+    if (code === 'KYC_CHECK_EXPIRED') return 'Contraparte indisponível para contratação (KYC vencido).';
+    if (code === 'KYC_CHECK_FAILED') return 'Contraparte indisponível para contratação (KYC reprovado).';
+    if (code === 'COUNTERPARTY_KYC_STATUS_NOT_APPROVED') return 'Contraparte indisponível para contratação (KYC pendente).';
+    return 'Contraparte indisponível para contratação (KYC pendente).';
   }, []);
 
   const parseKycGateError = useCallback((err: ApiError | null | undefined): KycGateErrorDetail | null => {
@@ -214,6 +223,34 @@ export function RFQsPageIntegrated() {
       refetch();
     }
   }, [selectedRfqId, sendMutation, refetchDetail, refetch]);
+
+  const handleShareWhatsApp = useCallback(() => {
+    if (!selectedRfqId || !selectedRfq) return;
+
+    const origin = window.location.origin;
+    const link = `${origin}/financeiro/rfqs/${selectedRfqId}`;
+    const qty = typeof selectedRfq.quantity_mt === 'number' ? `${selectedRfq.quantity_mt.toLocaleString('pt-BR')} MT` : '—';
+    const rfqNo = selectedRfq.rfq_number || `#${selectedRfqId}`;
+    const period = selectedRfq.period || '—';
+
+    const top = (rankedTrades || []).slice(0, 3).map((trade) => {
+      const buyLeg = trade.quotes.find(q => q.leg_side === 'buy');
+      const sellLeg = trade.quotes.find(q => q.leg_side === 'sell');
+      const counterpartyName = buyLeg?.counterparty_name || sellLeg?.counterparty_name || '—';
+      const spread = trade.spread?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '—';
+      return `${trade.rank}º ${counterpartyName} | Spread ${spread}`;
+    });
+
+    const lines = [
+      `RFQ ${rfqNo}`,
+      `Qtd: ${qty} | Período: ${period}`,
+      top.length ? 'Top cotações:' : '',
+      ...top.map(t => `- ${t}`),
+      `Link: ${link}`,
+    ].filter(Boolean);
+
+    openWhatsApp(lines.join('\n'));
+  }, [selectedRfqId, selectedRfq, rankedTrades]);
 
   const handleOpenAwardModal = useCallback((quote: RfqQuote) => {
     setSelectedQuoteForAward(quote);
@@ -403,6 +440,9 @@ export function RFQsPageIntegrated() {
                 {sendMutation.isLoading ? 'Enviando...' : 'Enviar'}
               </FioriButton>
             )}
+            <FioriButton variant="ghost" icon={<MessageCircle className="w-4 h-4" />} onClick={handleShareWhatsApp}>
+              WhatsApp
+            </FioriButton>
             <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetchDetail}>
               Atualizar
             </FioriButton>
@@ -434,17 +474,14 @@ export function RFQsPageIntegrated() {
           />
         </div>
 
-        {/* Winner Info (if awarded) */}
+        {/* Contracted Quote Info (if awarded) */}
         {isAwarded && selectedRfq.winner_quote_id && (
-          <div className="bg-[var(--sapSuccessBackground,#f1fdf6)] border border-[var(--sapSuccessBorderColor,#107e3e)] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Trophy className="w-5 h-5 text-[var(--sapPositiveColor,#107e3e)]" />
-              <h3 className="font-['72:Bold',sans-serif] text-base text-[var(--sapPositiveTextColor,#107e3e)]">
-                Cotação selecionada
-              </h3>
-            </div>
+          <div className="bg-[var(--sapInformationBackground,#f5faff)] border border-[var(--sapInformationBorderColor,#0a6ed1)] rounded-lg p-4">
+            <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29]">
+              Cotação contratada
+            </h3>
             <p className="text-sm text-[var(--sapContent_LabelColor)]">
-              Cotação vencedora: #{selectedRfq.winner_quote_id}
+              Cotação: #{selectedRfq.winner_quote_id}
               {selectedRfq.winner_rank && ` (Classificação: ${selectedRfq.winner_rank}º)`}
             </p>
             {selectedRfq.decision_reason && (
@@ -517,14 +554,13 @@ export function RFQsPageIntegrated() {
                       <tr 
                         key={trade.groupId} 
                         className={`border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] ${
-                          isWinner ? 'bg-[var(--sapSuccessBackground,#f1fdf6)]' : ''
+                          isWinner ? 'bg-[var(--sapList_SelectionBackgroundColor)] border-l-2 border-l-[var(--sapPositiveColor)]' : ''
                         }`}
                       >
                         <td className="p-2">
-                          <span className={`font-['72:Bold',sans-serif] ${trade.rank === 1 ? 'text-[var(--sapPositiveColor)]' : ''}`}>
+                          <span className="font-['72:Bold',sans-serif]">
                             {trade.rank}º
                           </span>
-                          {isWinner && <Trophy className="w-4 h-4 inline ml-1 text-[var(--sapPositiveColor)]" />}
                         </td>
                         <td className="p-2">{counterpartyName}</td>
                         <td className="p-2 text-right font-['72:Regular',sans-serif]">
@@ -533,9 +569,7 @@ export function RFQsPageIntegrated() {
                         <td className="p-2 text-right font-['72:Regular',sans-serif]">
                           {sellLeg?.quote_price?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '—'}
                         </td>
-                        <td className={`p-2 text-right font-['72:Bold',sans-serif] ${
-                          trade.spread !== null && trade.spread < 0 ? 'text-[var(--sapPositiveColor)]' : ''
-                        }`}>
+                        <td className="p-2 text-right font-['72:Bold',sans-serif]">
                           {trade.spread?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '—'}
                         </td>
                         {canAward && (

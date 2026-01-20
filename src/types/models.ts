@@ -699,6 +699,18 @@ export interface Exposure {
   status: ExposureStatus;
   created_at: string;
   tasks: HedgeTask[];
+
+  // Decision/UX fields (optional; populated by backend when available)
+  pricing_reference?: string | null;
+  hedged_quantity_mt?: number | null;
+  unhedged_quantity_mt?: number | null;
+  hedges?: Array<{
+    hedge_id: number;
+    quantity_mt: number;
+    counterparty_name?: string | null;
+    instrument?: string | null;
+    period?: string | null;
+  }>;
 }
 
 // ============================================

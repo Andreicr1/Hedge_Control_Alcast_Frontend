@@ -6,7 +6,7 @@ import { FioriSelect } from '../components/fiori/FioriSelect';
 import { FioriRadioGroup } from '../components/fiori/FioriRadioGroup';
 import { FioriTextarea } from '../components/fiori/FioriTextarea';
 import { FioriButton } from '../components/fiori/FioriButton';
-import { Plus, Copy, ChevronLeft, Loader2, Send, Users, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { Plus, Copy, ChevronLeft, Loader2, Send, Users, CheckCircle, AlertCircle, Trash2, MessageCircle } from 'lucide-react';
 import {
   ApiError,
   KycGateErrorDetail,
@@ -102,6 +102,15 @@ function channelLabel(value: string | null | undefined): string {
   if (k === 'email') return 'E-mail';
   if (k === 'whatsapp') return 'WhatsApp';
   return '—';
+}
+
+function buildWhatsAppUrl(text: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+function openWhatsApp(text: string) {
+  const url = buildWhatsAppUrl(text);
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 const MONTH_TO_NUMBER: Record<string, number> = {
@@ -738,6 +747,33 @@ export function RFQFormPage() {
     }
     return `${new Date().toISOString().slice(0, 7)}`;
   };
+
+  const handleShareWhatsApp = useCallback(() => {
+    if (!selectedDealId || !selectedSoId) return;
+
+    const origin = window.location.origin;
+    const params = new URLSearchParams();
+    params.set('deal_id', String(selectedDealId));
+    params.set('so_id', String(selectedSoId));
+    if (quantity) params.set('quantity_mt', String(quantity));
+    const deepLink = `${origin}/financeiro/rfqs/novo?${params.toString()}`;
+
+    const period = computePeriodString();
+    const qtyText = quantity ? `${quantity} MT` : '—';
+    const header = companyHeader ? `Empresa: ${companyHeader}` : '';
+
+    const text = [
+      'RFQ (resumo)',
+      header,
+      `Deal #${selectedDealId} | SO #${selectedSoId}`,
+      `Qtd: ${qtyText} | Período: ${period}`,
+      `Link: ${deepLink}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    openWhatsApp(text);
+  }, [selectedDealId, selectedSoId, quantity, companyHeader]);
   
   // ============================================
   // Handle Create and Send RFQ
@@ -1539,8 +1575,17 @@ export function RFQFormPage() {
             </div>
           )}
 
-          {/* Send Button inside Card */}
-          <div className="mt-4 pt-4 border-t border-[var(--sapTile_BorderColor,#e5e5e5)] flex justify-end">
+          {/* Send + WhatsApp Share */}
+          <div className="mt-4 pt-4 border-t border-[var(--sapTile_BorderColor,#e5e5e5)] flex items-center justify-end gap-2">
+            <FioriButton
+              variant="ghost"
+              icon={<MessageCircle className="w-4 h-4" />}
+              onClick={handleShareWhatsApp}
+              disabled={!selectedDealId || !selectedSoId}
+              title="Compartilhar resumo por WhatsApp"
+            >
+              WhatsApp
+            </FioriButton>
             <FioriButton 
               variant="emphasized" 
               icon={sendingStatus === 'creating' || sendingStatus === 'sending' 

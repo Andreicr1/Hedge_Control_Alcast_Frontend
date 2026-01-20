@@ -98,8 +98,11 @@ export function ExposuresPageIntegrated() {
   
   const filteredExposures = useMemo(() => {
     if (!exposures) return [];
-    
+
     return exposures.filter((exp) => {
+      // Institutional requirement: fully hedged exposures should not appear in this (risk) menu.
+      if (exp.status === ExposureStatus.HEDGED) return false;
+
       const matchesSearch =
         exp.product?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         exp.source_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -169,11 +172,16 @@ export function ExposuresPageIntegrated() {
           <Package className="w-3 h-3" />
           {exp.quantity_mt?.toLocaleString('pt-BR')} MT
         </span>
-        <span className="flex items-center gap-1">
-          <DollarSign className="w-3 h-3" />
-          —
+        <span className="text-[var(--sapContent_LabelColor)]">
+          Referência: {exp.pricing_reference || '—'}
         </span>
       </div>
+
+      {exp.hedged_quantity_mt !== undefined && exp.unhedged_quantity_mt !== undefined ? (
+        <div className="mt-2 text-xs text-[var(--sapContent_LabelColor)]">
+          Coberto {(Number(exp.hedged_quantity_mt) || 0).toLocaleString('pt-BR')} / {exp.quantity_mt.toLocaleString('pt-BR')} MT
+        </div>
+      ) : null}
       
       <div className="flex items-center justify-between mt-2 text-xs text-[var(--sapContent_LabelColor)]">
         <span>Source #{exp.source_id}</span>
@@ -228,7 +236,6 @@ export function ExposuresPageIntegrated() {
               <option value="all">Todos os status</option>
               <option value={ExposureStatus.OPEN}>Abertas</option>
               <option value={ExposureStatus.PARTIALLY_HEDGED}>Parcialmente Hedgeadas</option>
-              <option value={ExposureStatus.HEDGED}>Totalmente Hedgeadas</option>
             </select>
             
             {/* View Mode */}
@@ -338,11 +345,11 @@ export function ExposuresPageIntegrated() {
           
           <div className="bg-white rounded-lg shadow-sm p-4">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-              <span className="text-xs text-[var(--sapContent_LabelColor)]">Tipo</span>
+              <BarChart3 className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
+              <span className="text-xs text-[var(--sapContent_LabelColor)]">Referência de preço</span>
             </div>
             <div className="font-['72:Bold',sans-serif] text-xl text-[#131e29]">
-              {selectedExposure.exposure_type || '—'}
+              {selectedExposure.pricing_reference || '—'}
             </div>
           </div>
         </div>
@@ -368,6 +375,11 @@ export function ExposuresPageIntegrated() {
               </span>
             </div>
             
+            <div className="flex items-center justify-between py-2 border-b border-[var(--sapGroup_ContentBorderColor)]">
+              <span className="text-sm text-[var(--sapContent_LabelColor)]">Referência de preço</span>
+              <span className="text-sm font-['72:Bold',sans-serif]">{selectedExposure.pricing_reference || '—'}</span>
+            </div>
+
             <div className="flex items-center justify-between py-2 border-b border-[var(--sapGroup_ContentBorderColor)]">
               <span className="text-sm text-[var(--sapContent_LabelColor)]">Data de Entrega</span>
               <span className="text-sm font-['72:Bold',sans-serif]">
@@ -404,18 +416,61 @@ export function ExposuresPageIntegrated() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)]">Quantidade</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)]">Exposto</div>
               <div className="font-['72:Bold',sans-serif] text-sm">
                 {selectedExposure.quantity_mt?.toLocaleString('pt-BR') ?? 0} MT
               </div>
             </div>
             <div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)]">Registros</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)]">Coberto</div>
               <div className="font-['72:Bold',sans-serif] text-sm">
-                {selectedExposure.tasks?.length ?? 0}
+                {(selectedExposure.hedged_quantity_mt ?? '—') === '—'
+                  ? '—'
+                  : `${Number(selectedExposure.hedged_quantity_mt || 0).toLocaleString('pt-BR')} MT`}
               </div>
             </div>
           </div>
+
+          {selectedExposure.unhedged_quantity_mt !== undefined ? (
+            <div className="mt-3 text-xs text-[var(--sapContent_LabelColor)]">
+              Descoberto: {Number(selectedExposure.unhedged_quantity_mt || 0).toLocaleString('pt-BR')} MT
+            </div>
+          ) : null}
+
+          {Array.isArray(selectedExposure.hedges) && selectedExposure.hedges.length > 0 ? (
+            <div className="mt-4">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Hedges relacionados</div>
+              <div className="space-y-2">
+                {selectedExposure.hedges.slice(0, 5).map((h) => (
+                  <div
+                    key={String(h.hedge_id)}
+                    className="p-2 rounded border border-[var(--sapTile_BorderColor)] bg-[var(--sapGroup_ContentBackground)]"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-['72:Bold',sans-serif] text-[#131e29]">
+                        Hedge #{h.hedge_id}
+                      </div>
+                      <div className="text-xs text-[var(--sapContent_LabelColor)]">
+                        {(Number(h.quantity_mt || 0) || 0).toLocaleString('pt-BR')} MT
+                      </div>
+                    </div>
+                    <div className="mt-1 text-[11px] text-[var(--sapContent_LabelColor)]">
+                      {(h.counterparty_name || h.instrument || h.period) ? (
+                        [h.counterparty_name, h.instrument, h.period].filter(Boolean).join(' • ')
+                      ) : (
+                        '—'
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {selectedExposure.hedges.length > 5 ? (
+                  <div className="text-[11px] text-[var(--sapContent_LabelColor)]">
+                    + {selectedExposure.hedges.length - 5} outro(s)
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Link to Source */}
