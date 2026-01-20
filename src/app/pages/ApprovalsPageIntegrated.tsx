@@ -494,10 +494,12 @@ export function ApprovalsPageIntegrated() {
                   variant="ghost"
                   onClick={() => {
                     if (justification.trim().length < 3) return;
-                    // Request adjustment is same as reject with justification
+                    // Note: Request adjustment is a rejection with justification for modification.
+                    // The justification should indicate what needs to be adjusted.
                     doDecision('rejected');
                   }}
                   disabled={submitting || justification.trim().length < 3}
+                  title="Rejeitar com solicitação de ajustes. Use a justificativa para explicar as mudanças necessárias."
                 >
                   Solicitar Ajuste
                 </FioriButton>

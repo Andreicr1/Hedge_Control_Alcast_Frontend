@@ -301,7 +301,9 @@ export function InboxPageIntegrated() {
                         </div>
                         {d.justification && (
                           <div className="text-sm text-[var(--sapTextColor)] mt-1 p-2 rounded bg-[var(--sapBackgroundColor)] border border-[var(--sapList_BorderColor)]">
-                            {d.justification}
+                            {d.justification.length > 200 
+                              ? `${d.justification.substring(0, 200)}...` 
+                              : d.justification}
                           </div>
                         )}
                       </div>
