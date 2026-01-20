@@ -62,10 +62,17 @@ export function PnlPageIntegrated() {
   const [activeDealId, setActiveDealId] = useState<number | null>(null);
 
   const [data, setData] = useState<PnlAggregateResponse | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
+    if (selectedDealIds.size === 0) {
+      setIsLoading(false);
+      setError(null);
+      setData(null);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -90,8 +97,8 @@ export function PnlPageIntegrated() {
       if (res.length > 0 && activeDealId === null) {
         setActiveDealId(res[0]!.id);
       }
-      // Default: consolidate all deals (can be refined by user).
-      setSelectedDealIds(new Set(res.map((d) => d.id)));
+      // Default: nothing selected; user chooses what to calculate.
+      setSelectedDealIds(new Set());
     } catch (e) {
       console.error('Failed to fetch deals:', e);
       setDealsError('Erro ao carregar operações');
@@ -106,10 +113,6 @@ export function PnlPageIntegrated() {
   useEffect(() => {
     fetchDeals();
   }, [fetchDeals]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   const rows = data?.rows ?? [];
 

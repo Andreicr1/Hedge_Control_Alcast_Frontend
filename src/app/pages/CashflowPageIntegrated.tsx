@@ -7,8 +7,7 @@
  * Frontend ONLY aggregates/sums amounts; it does not infer valuation.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useCashflowAnalytic } from '../../hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CashFlowConfidence, CashFlowLine, CashFlowType, CashflowAnalyticQueryParams, Deal } from '../../types';
 import { ErrorState, LoadingState, EmptyState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
@@ -21,6 +20,7 @@ import { useAuthContext } from '../components/AuthProvider';
 import { normalizeRoleName } from '../../utils/role';
 import { UX_COPY } from '../ux/copy';
 import { listDeals } from '../../services/deals.service';
+import { getCashflowAnalytic } from '../../services/cashflow.service';
 
 function Badge({ children }: { children: string }) {
   return (
@@ -237,8 +237,8 @@ export function CashflowPageIntegrated() {
       const res = await listDeals();
       setDeals(res);
       if (res.length > 0 && activeDealId === null) setActiveDealId(res[0]!.id);
-      // Default: consolidate all deals.
-      setSelectedDealIds(new Set(res.map((d) => d.id)));
+      // Default: no selection; user chooses what to calculate.
+      setSelectedDealIds(new Set());
     } catch (e) {
       console.error('Failed to fetch deals:', e);
       setDealsError('Erro ao carregar operações');
@@ -280,11 +280,78 @@ export function CashflowPageIntegrated() {
     deal_id: undefined,
   }));
 
+  const [appliedDealIds, setAppliedDealIds] = useState<number[]>([]);
+  const [isAppliedOnce, setIsAppliedOnce] = useState<boolean>(false);
+
+  const [cashflowData, setCashflowData] = useState<CashFlowLine[] | null>(null);
+  const [cashflowIsLoading, setCashflowIsLoading] = useState<boolean>(false);
+  const [cashflowError, setCashflowError] = useState<{ detail: string } | null>(null);
+  const lastRequestId = useRef<number>(0);
+
   // Tree selection (inside detail area): allows summing subsets.
   const [openDeals, setOpenDeals] = useState<Record<string, boolean>>({});
   const [selectedNodeKeys, setSelectedNodeKeys] = useState<Set<string>>(() => new Set());
 
-  const cashflow = useCashflowAnalytic(applied);
+  const fetchCashflowAnalytic = useCallback(async (query: CashflowAnalyticQueryParams, dealIds: number[]) => {
+    if (dealIds.length === 0) {
+      setCashflowData([]);
+      setCashflowError(null);
+      setCashflowIsLoading(false);
+      return;
+    }
+
+    const requestId = ++lastRequestId.current;
+    setCashflowIsLoading(true);
+    setCashflowError(null);
+
+    try {
+      const base: CashflowAnalyticQueryParams = {
+        start_date: query.start_date,
+        end_date: query.end_date,
+        as_of: query.as_of,
+        deal_id: undefined,
+      };
+
+      if (dealIds.length === 1) {
+        const data = await getCashflowAnalytic({ ...base, deal_id: dealIds[0] });
+        if (lastRequestId.current !== requestId) return;
+        setCashflowData(data);
+        setCashflowIsLoading(false);
+        return;
+      }
+
+      // Multi-deal: batch per deal (avoids fetching ALL deals).
+      const concurrency = 3;
+      const pending = [...dealIds];
+      const chunks: CashFlowLine[][] = [];
+
+      async function worker() {
+        while (pending.length > 0) {
+          const did = pending.shift();
+          if (did === undefined) return;
+          const data = await getCashflowAnalytic({ ...base, deal_id: did });
+          chunks.push(data);
+        }
+      }
+
+      await Promise.all(Array.from({ length: Math.min(concurrency, dealIds.length) }, () => worker()));
+      if (lastRequestId.current !== requestId) return;
+
+      setCashflowData(chunks.flat());
+      setCashflowIsLoading(false);
+    } catch (e) {
+      console.error('Failed to fetch cashflow analytic:', e);
+      if (lastRequestId.current !== requestId) return;
+      setCashflowData(null);
+      setCashflowIsLoading(false);
+      setCashflowError({ detail: 'Erro ao carregar fluxo de caixa' });
+    }
+  }, []);
+
+  const handleRefetch = useCallback(() => {
+    if (!isAppliedOnce) return;
+    fetchCashflowAnalytic(applied, appliedDealIds);
+  }, [applied, appliedDealIds, fetchCashflowAnalytic, isAppliedOnce]);
 
   const filteredDeals = useMemo(() => {
     const s = dealSearch.trim().toLowerCase();
@@ -400,9 +467,9 @@ export function CashflowPageIntegrated() {
   );
 
   const filteredLines = useMemo(() => {
-    const lines = cashflow.data ?? [];
+    const lines = cashflowData ?? [];
     return lines.filter((l) => typeFilter[l.cashflow_type] && confidenceFilter[l.confidence]);
-  }, [cashflow.data, typeFilter, confidenceFilter]);
+  }, [cashflowData, typeFilter, confidenceFilter]);
 
   const dealFilteredLines = useMemo(() => {
     if (selectedDealIds.size === 0) return [] as CashFlowLine[];
@@ -477,23 +544,34 @@ export function CashflowPageIntegrated() {
   }, [selectedLines, granularity]);
 
   const handleApply = () => {
-    const selectedDealIdForQuery =
-      selectedDealIds.size === 1 ? Array.from(selectedDealIds.values())[0] : undefined;
-
     const next: CashflowAnalyticQueryParams = {
       start_date: startDate || undefined,
       end_date: endDate || undefined,
       as_of: asOf || undefined,
-      deal_id: selectedDealIdForQuery,
+      deal_id: undefined,
     };
 
+    const nextDealIds = Array.from(selectedDealIds.values());
     setApplied(next);
+    setAppliedDealIds(nextDealIds);
+    setIsAppliedOnce(true);
+    fetchCashflowAnalytic(next, nextDealIds);
   };
 
-  const detailContent = cashflow.isError ? (
-    <ErrorState error={cashflow.error} onRetry={cashflow.refetch} fullPage />
-  ) : cashflow.isLoading && !cashflow.data ? (
+  const detailContent = cashflowError ? (
+    <ErrorState error={cashflowError} onRetry={handleRefetch} fullPage />
+  ) : cashflowIsLoading && !cashflowData ? (
     <LoadingState message="Carregando fluxo de caixa..." fullPage />
+  ) : !isAppliedOnce ? (
+    <EmptyState
+      title="Sem seleção"
+      description="Selecione operações na coluna da esquerda e clique em Buscar para calcular o fluxo de caixa."
+    />
+  ) : appliedDealIds.length === 0 ? (
+    <EmptyState
+      title="Sem seleção"
+      description="Selecione pelo menos uma operação para calcular o fluxo de caixa."
+    />
   ) : (
     <div className="sap-fiori-page p-4">
       {/* Header */}
@@ -511,7 +589,7 @@ export function CashflowPageIntegrated() {
             <Badge>Somente leitura</Badge>
             {role === 'auditoria' && <Badge>Auditoria</Badge>}
           </div>
-          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch}>
+          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={handleRefetch}>
             Atualizar
           </FioriButton>
         </div>
