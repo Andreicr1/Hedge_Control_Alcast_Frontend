@@ -9,19 +9,21 @@ let
     BackendHost = "https://<YOUR_BACKEND_HOST>",
     ApiPrefix = "",
     ReportsPublicToken = "<REPORTS_PUBLIC_TOKEN>",
-    UseBearerAuth = true,
+    AuthMode = "x-reports-token", // "x-reports-token" | "bearer" | "query"
     CsvOrJson = "csv",
     AsOf = "2026-01-20",
 
     BaseUrl = BackendHost & ApiPrefix & "/reports/cashflow-ledger-public",
     Url =
-        if UseBearerAuth then
+        if AuthMode = "x-reports-token" or AuthMode = "bearer" then
             BaseUrl & "?format=" & CsvOrJson & "&as_of=" & AsOf
         else
             BaseUrl & "?token=" & ReportsPublicToken & "&format=" & CsvOrJson & "&as_of=" & AsOf,
 
     WebOptions =
-        if UseBearerAuth then
+        if AuthMode = "x-reports-token" then
+            [Headers = [#"X-Reports-Token" = ReportsPublicToken]]
+        else if AuthMode = "bearer" then
             [Headers = [Authorization = "Bearer " & ReportsPublicToken]]
         else
             [],
