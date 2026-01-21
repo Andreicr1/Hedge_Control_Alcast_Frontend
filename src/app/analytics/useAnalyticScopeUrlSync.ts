@@ -37,7 +37,7 @@ export function useAnalyticScopeUrlSync(options: ScopeUrlSyncOptions = {}) {
 
     if (acceptLegacyDealId) {
       const did = readLegacyDealId(searchParams);
-      if (did && (!scope || scope.kind === 'all')) {
+      if (did && (!scope || scope.kind === 'all' || scope.kind === 'none')) {
         setScope({ kind: 'deal', dealId: did });
       }
     }

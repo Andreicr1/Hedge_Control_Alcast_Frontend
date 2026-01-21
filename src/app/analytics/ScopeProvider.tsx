@@ -10,7 +10,7 @@ type ScopeContextValue = {
 const ScopeContext = createContext<ScopeContextValue | null>(null);
 
 export function AnalyticScopeProvider({ children }: { children: ReactNode }) {
-  const [scope, setScope] = useState<AnalyticScope>({ kind: 'all' });
+  const [scope, setScope] = useState<AnalyticScope>({ kind: 'none' });
 
   const value = useMemo<ScopeContextValue>(() => ({ scope, setScope }), [scope]);
 

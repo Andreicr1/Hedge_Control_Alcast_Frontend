@@ -81,7 +81,10 @@ export function ContractsPageIntegrated() {
   useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
   const { scope, setScope } = useAnalyticScope();
 
-  const scopedDealId = scope.kind === 'all' ? undefined : scope.dealId;
+  const scopedDealId =
+    scope.kind === 'deal' || scope.kind === 'so' || scope.kind === 'po' || scope.kind === 'contract'
+      ? scope.dealId
+      : undefined;
   
   // API State via hooks
   const contractFilters = useMemo(() => ({ deal_id: scopedDealId }), [scopedDealId]);

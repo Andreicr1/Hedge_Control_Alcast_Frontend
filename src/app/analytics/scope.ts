@@ -1,4 +1,5 @@
 export type AnalyticScope =
+  | { kind: 'none' }
   | { kind: 'all' }
   | { kind: 'deal'; dealId: number }
   | { kind: 'so'; dealId: number; soId: number }
@@ -7,6 +8,7 @@ export type AnalyticScope =
 
 export function isSameScope(a: AnalyticScope, b: AnalyticScope): boolean {
   if (a.kind !== b.kind) return false;
+  if (a.kind === 'none') return true;
   if (a.kind === 'all') return true;
   if (a.kind === 'deal' && b.kind === 'deal') return a.dealId === b.dealId;
   if (a.kind === 'so' && b.kind === 'so') return a.dealId === b.dealId && a.soId === b.soId;
@@ -16,6 +18,7 @@ export function isSameScope(a: AnalyticScope, b: AnalyticScope): boolean {
 }
 
 export function scopeKey(scope: AnalyticScope): string {
+  if (scope.kind === 'none') return 'none';
   if (scope.kind === 'all') return 'all';
   if (scope.kind === 'deal') return `deal:${scope.dealId}`;
   if (scope.kind === 'so') return `so:${scope.soId}`;
@@ -36,6 +39,7 @@ export function scopeFromSearchParams(params: URLSearchParams): AnalyticScope | 
   const kind = (params.get('scope') || '').trim().toLowerCase();
   if (!kind) return null;
 
+  if (kind === 'none') return { kind: 'none' };
   if (kind === 'all') return { kind: 'all' };
 
   const dealId = readInt(params, 'deal_id');
@@ -73,6 +77,11 @@ export function writeScopeToSearchParams(params: URLSearchParams, scope: Analyti
   next.delete('so_id');
   next.delete('po_id');
   next.delete('contract_id');
+
+  // For "none" (no selection), keep the URL clean.
+  if (scope.kind === 'none') {
+    return next;
+  }
 
   if (scope.kind === 'all') {
     next.set('scope', 'all');

@@ -21,6 +21,7 @@ import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
 import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
+import { PowerBIReportFrame } from '../components/powerbi/PowerBIReportFrame';
 
 function parseIsoDateUtc(dateIso: string): Date {
   return new Date(`${dateIso}T00:00:00Z`);
@@ -118,6 +119,8 @@ export function CashflowPageIntegrated() {
   useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
   const { scope } = useAnalyticScope();
 
+  const [viewMode, setViewMode] = useState<'powerbi' | 'matrix'>('powerbi');
+
   const today = useMemo(() => isoToday(), []);
 
   const [queryBase, setQueryBase] = useState<CashflowAnalyticQueryParams>(() => ({
@@ -126,12 +129,14 @@ export function CashflowPageIntegrated() {
     end_date: addDaysIso(today, 90),
   }));
 
-  const effectiveQuery: CashflowAnalyticQueryParams = useMemo(() => {
-    const dealId = scope.kind === 'all' ? undefined : scope.dealId;
-    return { ...queryBase, deal_id: dealId };
+  const matrixQuery: CashflowAnalyticQueryParams | null = useMemo(() => {
+    if (scope.kind === 'none') return null;
+    if (scope.kind === 'all') return { ...queryBase };
+    return { ...queryBase, deal_id: scope.dealId };
   }, [queryBase, scope]);
 
-  const cashflow = useCashflowAnalytic(effectiveQuery);
+  // Performance: do not load analytic lines unless the user is explicitly using the matrix.
+  const cashflow = useCashflowAnalytic(viewMode === 'matrix' ? matrixQuery : null);
   const [collapsedDeals, setCollapsedDeals] = useState<Record<string, boolean>>({});
   const [showRawLines, setShowRawLines] = useState(false);
 
@@ -395,6 +400,7 @@ export function CashflowPageIntegrated() {
   }, [normalizedLines, collapsedDeals]);
 
   const selectedLines: CashFlowLine[] = useMemo(() => {
+    if (scope.kind === 'none') return [];
     if (scope.kind === 'all') return normalizedLines;
     if (scope.kind === 'deal') return normalizedLines;
 
@@ -414,6 +420,7 @@ export function CashflowPageIntegrated() {
   }, [normalizedLines, scope]);
 
   const selectionTitle = useMemo(() => {
+    if (scope.kind === 'none') return 'Nenhuma seleção';
     if (scope.kind === 'all') return 'Consolidado';
     if (scope.kind === 'deal') return `Deal #${scope.dealId}`;
     if (scope.kind === 'so') return `SO #${scope.soId} (Deal #${scope.dealId})`;
@@ -439,6 +446,47 @@ export function CashflowPageIntegrated() {
   const appliedAsOf = useMemo(() => (queryBase.as_of ? formatIsoDate(String(queryBase.as_of)) : '—'), [queryBase.as_of]);
   const showInitialLoading = cashflow.isLoading && !cashflow.data;
 
+  const powerBiBaseUrl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_EMBED_URL as string | undefined;
+  const powerBiDealFilterTpl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_FILTER_DEAL_TEMPLATE as string | undefined;
+  const powerBiContractFilterTpl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_FILTER_CONTRACT_TEMPLATE as string | undefined;
+
+  function buildPowerBiEmbedUrl(): string | null {
+    const base = String(powerBiBaseUrl || '').trim();
+    if (!base) return null;
+
+    const replaceTokens = (tpl: string, vars: Record<string, string>) => {
+      let out = tpl;
+      for (const [k, v] of Object.entries(vars)) {
+        out = out.split(`{${k}}`).join(v);
+      }
+      return out;
+    };
+
+    const dealId =
+      scope.kind === 'deal' || scope.kind === 'so' || scope.kind === 'po' || scope.kind === 'contract'
+        ? String(scope.dealId)
+        : '';
+    const contractId = scope.kind === 'contract' ? String(scope.contractId) : '';
+
+    let filter = '';
+    if (scope.kind === 'contract' && powerBiContractFilterTpl) {
+      filter = replaceTokens(String(powerBiContractFilterTpl), { dealId, contractId });
+    } else if ((scope.kind === 'deal' || scope.kind === 'so' || scope.kind === 'po') && powerBiDealFilterTpl) {
+      filter = replaceTokens(String(powerBiDealFilterTpl), { dealId });
+    }
+
+    if (!filter.trim()) return base;
+
+    try {
+      const u = new URL(base);
+      u.searchParams.set('filter', filter);
+      return u.toString();
+    } catch {
+      const sep = base.includes('?') ? '&' : '?';
+      return `${base}${sep}filter=${encodeURIComponent(filter)}`;
+    }
+  }
+
   return (
     <AnalyticTwoPaneLayout
       left={<AnalyticScopeTree />}
@@ -455,73 +503,111 @@ export function CashflowPageIntegrated() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <FioriButton variant="ghost" onClick={() => setShowRawLines((v) => !v)}>
+                <FioriButton
+                  variant={viewMode === 'powerbi' ? 'emphasized' : 'ghost'}
+                  onClick={() => setViewMode('powerbi')}
+                >
+                  Power BI
+                </FioriButton>
+                <FioriButton
+                  variant={viewMode === 'matrix' ? 'emphasized' : 'ghost'}
+                  onClick={() => setViewMode('matrix')}
+                >
+                  Matriz
+                </FioriButton>
+                <FioriButton
+                  variant="ghost"
+                  onClick={() => setShowRawLines((v) => !v)}
+                  disabled={viewMode !== 'matrix'}
+                >
                   {showRawLines ? 'Ocultar linhas' : 'Ver linhas'}
                 </FioriButton>
-                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch}>
+                <FioriButton
+                  variant="ghost"
+                  icon={<RefreshCw className="w-4 h-4" />}
+                  onClick={cashflow.refetch}
+                  disabled={viewMode !== 'matrix' || scope.kind === 'none'}
+                >
                   Atualizar
                 </FioriButton>
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                Período (de)
-                <input
-                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                  type="date"
-                  value={queryBase.start_date || ''}
-                  onChange={(e) => setQueryBase((prev) => ({ ...prev, start_date: e.target.value || undefined }))}
-                />
-              </label>
+            {viewMode === 'matrix' ? (
+              <>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <label className="text-xs text-[var(--sapContent_LabelColor)]">
+                    Período (de)
+                    <input
+                      className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
+                      type="date"
+                      value={queryBase.start_date || ''}
+                      onChange={(e) => setQueryBase((prev) => ({ ...prev, start_date: e.target.value || undefined }))}
+                    />
+                  </label>
 
-              <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                Período (até)
-                <input
-                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                  type="date"
-                  value={queryBase.end_date || ''}
-                  onChange={(e) => setQueryBase((prev) => ({ ...prev, end_date: e.target.value || undefined }))}
-                />
-              </label>
+                  <label className="text-xs text-[var(--sapContent_LabelColor)]">
+                    Período (até)
+                    <input
+                      className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
+                      type="date"
+                      value={queryBase.end_date || ''}
+                      onChange={(e) => setQueryBase((prev) => ({ ...prev, end_date: e.target.value || undefined }))}
+                    />
+                  </label>
 
-              <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                As-of (corte)
-                <input
-                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                  type="date"
-                  value={queryBase.as_of || ''}
-                  onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
-                />
-              </label>
-            </div>
+                  <label className="text-xs text-[var(--sapContent_LabelColor)]">
+                    As-of (corte)
+                    <input
+                      className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
+                      type="date"
+                      value={queryBase.as_of || ''}
+                      onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
+                    />
+                  </label>
+                </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Entradas (USD)</div>
-                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.inflow)}</div>
-              </div>
-              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saídas (USD)</div>
-                <div className="text-sm font-['72:Bold',sans-serif]">-{formatUsdSigned(totals.outflow).replace(/^\-/, '')}</div>
-              </div>
-              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saldo (USD)</div>
-                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.net)}</div>
-              </div>
-            </div>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
+                    <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Entradas (USD)</div>
+                    <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.inflow)}</div>
+                  </div>
+                  <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
+                    <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saídas (USD)</div>
+                    <div className="text-sm font-['72:Bold',sans-serif]">-{formatUsdSigned(totals.outflow).replace(/^\-/, '')}</div>
+                  </div>
+                  <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
+                    <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saldo (USD)</div>
+                    <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.net)}</div>
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
 
-          {showInitialLoading ? <LoadingState message="Carregando cashflow..." /> : null}
-          {cashflow.isError ? <ErrorState error={cashflow.error || null} onRetry={cashflow.refetch} /> : null}
+          {viewMode === 'powerbi' ? (
+            <div className="h-[calc(100vh-220px)] min-h-[560px]">
+              <PowerBIReportFrame embedUrl={buildPowerBiEmbedUrl()} title="Cashflow (Power BI)" />
+            </div>
+          ) : scope.kind === 'none' ? (
+            <div className="p-6">
+              <EmptyState
+                title="Selecione itens para visualizar"
+                description="Nenhum deal/contrato está selecionado. Use a árvore de escopo à esquerda para montar a visualização."
+              />
+            </div>
+          ) : (
+            <>
+              {showInitialLoading ? <LoadingState message="Carregando cashflow..." /> : null}
+              {cashflow.isError ? <ErrorState error={cashflow.error || null} onRetry={cashflow.refetch} /> : null}
 
-          {!showInitialLoading && !cashflow.isError ? (
-            <div className="sap-fiori-section">
-              <div className="sap-fiori-section-content">
-                {selectedLines.length === 0 ? (
-                  <EmptyState title={UX_COPY.pages.cashflow.empty} description="Nenhuma linha encontrada no período." />
-                ) : (
-                  <>
+              {!showInitialLoading && !cashflow.isError ? (
+                <div className="sap-fiori-section">
+                  <div className="sap-fiori-section-content">
+                    {selectedLines.length === 0 ? (
+                      <EmptyState title={UX_COPY.pages.cashflow.empty} description="Nenhuma linha encontrada no período." />
+                    ) : (
+                      <>
                     <div className="mb-2 flex items-center justify-end">
                       <FioriButton
                         variant="ghost"
@@ -673,10 +759,12 @@ export function CashflowPageIntegrated() {
                       </div>
                     ) : null}
                   </>
-                )}
-              </div>
-            </div>
-          ) : null}
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       }
     />
