@@ -9,21 +9,32 @@ let
     BackendHost = "https://<YOUR_BACKEND_HOST>",
     ApiPrefix = "",
     ReportsPublicToken = "<REPORTS_PUBLIC_TOKEN>",
+    UseBearerAuth = true,
     CsvOrJson = "csv",
     AsOf = "2026-01-20",
 
     BaseUrl = BackendHost & ApiPrefix & "/reports/cashflow-ledger-public",
-    Url = BaseUrl & "?token=" & ReportsPublicToken & "&format=" & CsvOrJson & "&as_of=" & AsOf,
+    Url =
+        if UseBearerAuth then
+            BaseUrl & "?format=" & CsvOrJson & "&as_of=" & AsOf
+        else
+            BaseUrl & "?token=" & ReportsPublicToken & "&format=" & CsvOrJson & "&as_of=" & AsOf,
+
+    WebOptions =
+        if UseBearerAuth then
+            [Headers = [Authorization = "Bearer " & ReportsPublicToken]]
+        else
+            [],
 
     Source =
         if CsvOrJson = "csv" then
             Csv.Document(
-                Web.Contents(Url),
+                Web.Contents(Url, WebOptions),
                 [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]
             )
         else
             let
-                J = Json.Document(Web.Contents(Url))
+                J = Json.Document(Web.Contents(Url, WebOptions))
             in
                 Table.FromRecords(J),
 

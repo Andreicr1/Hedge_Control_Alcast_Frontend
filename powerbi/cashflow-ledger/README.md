@@ -7,7 +7,9 @@ This folder contains the minimal artifacts to build the Cashflow report quickly 
 The backend now exposes a normalized “ledger” export:
 
 - Authenticated (app users): `GET /reports/cashflow-ledger?format=csv|json`
-- Token-guarded public (Power BI scheduled refresh): `GET /reports/cashflow-ledger-public?token=...&format=csv|json`
+- Token-guarded public (Power BI scheduled refresh):
+  - Preferred: `GET /reports/cashflow-ledger-public` with `Authorization: Bearer <REPORTS_PUBLIC_TOKEN>`
+  - Fallback: `GET /reports/cashflow-ledger-public?token=...&format=csv|json`
 
 The export values variable SO/PO and variable contract legs using **qty × last official LME price** (by default symbol `Q7Y00`, reference date `as_of - 1`).
 
@@ -18,6 +20,10 @@ The export values variable SO/PO and variable contract legs using **qty × last 
 - `REPORTS_PUBLIC_TOKEN=<long-random-secret>`
 
 2) Use this URL in Power BI:
+
+- Preferred (Bearer auth):
+  - `https://<YOUR_BACKEND_HOST>/reports/cashflow-ledger-public?format=csv&as_of=2026-01-20`
+  - And send header: `Authorization: Bearer <REPORTS_PUBLIC_TOKEN>`
 
 - CSV:
   - `https://<YOUR_BACKEND_HOST>/reports/cashflow-ledger-public?token=<REPORTS_PUBLIC_TOKEN>&format=csv&as_of=2026-01-20`
