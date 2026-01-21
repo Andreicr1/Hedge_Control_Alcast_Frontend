@@ -450,10 +450,7 @@ export function CashflowPageIntegrated() {
   const powerBiDealFilterTpl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_FILTER_DEAL_TEMPLATE as string | undefined;
   const powerBiContractFilterTpl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_FILTER_CONTRACT_TEMPLATE as string | undefined;
 
-  function buildPowerBiEmbedUrl(): string | null {
-    const base = String(powerBiBaseUrl || '').trim();
-    if (!base) return null;
-
+  const powerBiFilter = useMemo(() => {
     const replaceTokens = (tpl: string, vars: Record<string, string>) => {
       let out = tpl;
       for (const [k, v] of Object.entries(vars)) {
@@ -468,24 +465,18 @@ export function CashflowPageIntegrated() {
         : '';
     const contractId = scope.kind === 'contract' ? String(scope.contractId) : '';
 
-    let filter = '';
     if (scope.kind === 'contract' && powerBiContractFilterTpl) {
-      filter = replaceTokens(String(powerBiContractFilterTpl), { dealId, contractId });
-    } else if ((scope.kind === 'deal' || scope.kind === 'so' || scope.kind === 'po') && powerBiDealFilterTpl) {
-      filter = replaceTokens(String(powerBiDealFilterTpl), { dealId });
+      const f = replaceTokens(String(powerBiContractFilterTpl), { dealId, contractId });
+      return f.trim() ? f : null;
     }
 
-    if (!filter.trim()) return base;
-
-    try {
-      const u = new URL(base);
-      u.searchParams.set('filter', filter);
-      return u.toString();
-    } catch {
-      const sep = base.includes('?') ? '&' : '?';
-      return `${base}${sep}filter=${encodeURIComponent(filter)}`;
+    if ((scope.kind === 'deal' || scope.kind === 'so' || scope.kind === 'po') && powerBiDealFilterTpl) {
+      const f = replaceTokens(String(powerBiDealFilterTpl), { dealId });
+      return f.trim() ? f : null;
     }
-  }
+
+    return null;
+  }, [powerBiContractFilterTpl, powerBiDealFilterTpl, scope]);
 
   return (
     <AnalyticTwoPaneLayout
@@ -587,7 +578,12 @@ export function CashflowPageIntegrated() {
 
           {viewMode === 'powerbi' ? (
             <div className="h-[calc(100vh-220px)] min-h-[560px]">
-              <PowerBIReportFrame embedUrl={buildPowerBiEmbedUrl()} title="Cashflow (Power BI)" />
+              <PowerBIReportFrame
+                baseUrl={powerBiBaseUrl}
+                filter={powerBiFilter}
+                storageKey="powerbi.cashflow.embedUrl"
+                title="Cashflow (Power BI)"
+              />
             </div>
           ) : scope.kind === 'none' ? (
             <div className="p-6">
