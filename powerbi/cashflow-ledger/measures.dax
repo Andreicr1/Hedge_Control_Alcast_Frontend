@@ -1,0 +1,14 @@
+-- Measures for Cashflow Ledger
+-- Assumes a table named 'CashflowLedger' with a numeric column [amount_usd]
+
+Cashflow USD :=
+SUM ( CashflowLedger[amount_usd] )
+
+Fisico (SO - PO) :=
+CALCULATE ( [Cashflow USD], CashflowLedger[category] = "physical" )
+
+Financeiro (sell - buy) :=
+CALCULATE ( [Cashflow USD], CashflowLedger[category] = "financial" )
+
+Resultado Deal (F1 - F2) :=
+[Fisico (SO - PO)] - [Financeiro (sell - buy)]
