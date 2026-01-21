@@ -294,25 +294,25 @@ export function ContractsPageIntegrated() {
   // Detail Column - Contract Detail
   // ============================================
 
-  const formatPriceTypeLabel = (pt?: string | null) => {
+  function formatPriceTypeLabel(pt?: string | null) {
     const k = (pt || '').toLowerCase();
     if (k === 'fix') return 'Preço Fixo';
     if (k === 'avg') return 'Média Mensal';
     if (k === 'avginter' || k === 'avg_inter' || k === 'avg inter') return 'Média de dias intermediários';
     if (k === 'c2r') return 'Preço Futuro';
     return pt || '—';
-  };
+  }
 
-  const formatAdjustment = (v?: number | null) => {
+  function formatAdjustment(v?: number | null) {
     if (v === null || v === undefined) return '—';
     return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
+  }
 
-  const formatNumber = (v?: number | null, opts?: Intl.NumberFormatOptions) => {
+  function formatNumber(v?: number | null, opts?: Intl.NumberFormatOptions) {
     if (v === null || v === undefined) return '—';
     if (Number.isNaN(v)) return '—';
     return v.toLocaleString('pt-BR', opts);
-  };
+  }
 
   const formatSourceLabel = (t?: string) => {
     const k = (t || '').toLowerCase();
