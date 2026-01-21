@@ -60,7 +60,22 @@ Crie um arquivo `.env` na raiz do projeto:
 ```env
 # URL do backend
 VITE_API_BASE_URL=http://localhost:8000
+
+# Power BI (Cashflow)
+# URL de embed do relatório (iframe src). Necessário para "subir pronto" no build.
+VITE_POWERBI_CASHFLOW_EMBED_URL=
+
+# Filtros opcionais para aplicar no relatório baseado no escopo selecionado.
+# Tokens aceitos: {dealId}, {contractId}
+VITE_POWERBI_CASHFLOW_FILTER_DEAL_TEMPLATE=
+VITE_POWERBI_CASHFLOW_FILTER_CONTRACT_TEMPLATE=
 ```
+
+### Deploy no Vercel (nota importante)
+
+- O Vercel injeta variáveis de ambiente **no build**.
+- Para Vite, apenas variáveis prefixadas com `VITE_` ficam disponíveis no browser.
+- Após alterar env vars no Vercel, é necessário um **redeploy** para refletir no frontend.
 
 O frontend opera no modo integrado (API real). O modo mock foi descontinuado para reduzir ruído e superfície de manutenção.
 
