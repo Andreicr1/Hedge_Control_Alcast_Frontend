@@ -6,8 +6,8 @@ This folder contains the minimal artifacts to build the Cashflow report quickly 
 
 The backend now exposes a normalized “ledger” export:
 
-- Authenticated (app users): `GET /api/reports/cashflow-ledger?format=csv|json`
-- Token-guarded public (Power BI scheduled refresh): `GET /api/reports/cashflow-ledger-public?token=...&format=csv|json`
+- Authenticated (app users): `GET /reports/cashflow-ledger?format=csv|json`
+- Token-guarded public (Power BI scheduled refresh): `GET /reports/cashflow-ledger-public?token=...&format=csv|json`
 
 The export values variable SO/PO and variable contract legs using **qty × last official LME price** (by default symbol `Q7Y00`, reference date `as_of - 1`).
 
@@ -20,15 +20,16 @@ The export values variable SO/PO and variable contract legs using **qty × last 
 2) Use this URL in Power BI:
 
 - CSV:
-  - `https://<YOUR_BACKEND_HOST>/api/reports/cashflow-ledger-public?token=<REPORTS_PUBLIC_TOKEN>&format=csv&as_of=2026-01-20`
+  - `https://<YOUR_BACKEND_HOST>/reports/cashflow-ledger-public?token=<REPORTS_PUBLIC_TOKEN>&format=csv&as_of=2026-01-20`
 - JSON:
-  - `https://<YOUR_BACKEND_HOST>/api/reports/cashflow-ledger-public?token=<REPORTS_PUBLIC_TOKEN>&format=json&as_of=2026-01-20`
+  - `https://<YOUR_BACKEND_HOST>/reports/cashflow-ledger-public?token=<REPORTS_PUBLIC_TOKEN>&format=json&as_of=2026-01-20`
 
 ## VS Code (Power BI Studio) quick steps
 
 1) Create a new PBIP project (Power BI Studio)
 2) Open **Power Query** (Transform data)
 3) Create a new query and paste the M code from [cashflow_ledger.pq](cashflow_ledger.pq)
+  - If your deployment uses an API prefix (e.g. `/api`), set `ApiPrefix = "/api"` in the template.
 4) Create measures from [measures.dax](measures.dax)
 5) Build a Matrix visual:
    - Rows: Deal → Category → Subtype → (optional) Contract/Leg

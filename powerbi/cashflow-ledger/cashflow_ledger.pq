@@ -7,11 +7,12 @@
 //
 let
     BackendHost = "https://<YOUR_BACKEND_HOST>",
+    ApiPrefix = "",
     ReportsPublicToken = "<REPORTS_PUBLIC_TOKEN>",
     CsvOrJson = "csv",
     AsOf = "2026-01-20",
 
-    BaseUrl = BackendHost & "/api/reports/cashflow-ledger-public",
+    BaseUrl = BackendHost & ApiPrefix & "/reports/cashflow-ledger-public",
     Url = BaseUrl & "?token=" & ReportsPublicToken & "&format=" & CsvOrJson & "&as_of=" & AsOf,
 
     Source =
