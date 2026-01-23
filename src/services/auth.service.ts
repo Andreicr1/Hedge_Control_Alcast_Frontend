@@ -96,6 +96,8 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     const response = await fetch(`${apiBaseUrl}/auth/me`, {
       headers: {
         'Authorization': `Bearer ${token}`,
+        // Keep parity with the centralized API client: SWA/Functions proxy forwards this reliably.
+        'x-hc-authorization': `Bearer ${token}`,
       },
     });
 

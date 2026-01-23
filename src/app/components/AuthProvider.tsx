@@ -17,8 +17,10 @@ interface AuthContextValue {
   isLoading: boolean;
   error: string | null;
   login: (credentials: LoginCredentials) => Promise<void>;
+  loginEntra: () => Promise<void>;
   logout: () => void;
   checkAuth: () => Promise<void>;
+  authMode: 'local' | 'entra';
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -105,8 +107,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isLoading: auth.isLoading,
         error: auth.error,
         login: auth.login,
+        loginEntra: auth.loginEntra,
         logout: auth.logout,
         checkAuth: auth.checkAuth,
+        authMode: auth.authMode,
       }}
     >
       {children}

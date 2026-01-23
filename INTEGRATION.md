@@ -58,8 +58,18 @@ src/
 Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-# URL do backend
-VITE_API_BASE_URL=http://localhost:8000
+# URL do backend (opcional)
+#
+# - Local (dev): por padrão o frontend usa `/api` e o Vite faz proxy para `http://localhost:8001`
+#   (ver `vite.config.ts`). Você pode deixar vazio.
+#
+# - Azure Static Web Apps (SWA): recomendado manter `VITE_API_BASE_URL=/api`.
+#   O projeto usa **Azure Functions integradas no SWA** como proxy para o backend (Container Apps),
+#   então o browser sempre chama o mesmo domínio (sem CORS) e POST/PUT/PATCH/DELETE funcionam.
+#
+#   Nesse modo, o backend real é configurado via `BACKEND_BASE_URL` (app setting do SWA),
+#   e NÃO deve ser exposto como variável `VITE_` no frontend.
+VITE_API_BASE_URL=
 
 # Power BI (Cashflow)
 # URL de embed do relatório (iframe src). Necessário para "subir pronto" no build.
@@ -71,11 +81,35 @@ VITE_POWERBI_CASHFLOW_FILTER_DEAL_TEMPLATE=
 VITE_POWERBI_CASHFLOW_FILTER_CONTRACT_TEMPLATE=
 ```
 
-### Deploy no Vercel (nota importante)
+### Deploy via GitHub Actions (Azure Static Web Apps)
 
-- O Vercel injeta variáveis de ambiente **no build**.
+- O Azure Static Web Apps injeta variáveis de ambiente **no build** (via workflow do GitHub Actions).
 - Para Vite, apenas variáveis prefixadas com `VITE_` ficam disponíveis no browser.
-- Após alterar env vars no Vercel, é necessário um **redeploy** para refletir no frontend.
+- Após alterar GitHub Secrets/vars, é necessário um **redeploy** para refletir no frontend.
+
+### Deploy no Azure Static Web Apps (nota importante)
+
+- O Azure Static Web Apps injeta variáveis de ambiente **no build**.
+- Para Vite, apenas variáveis prefixadas com `VITE_` ficam disponíveis no browser.
+- Para integrar com o backend em Azure Container Apps, mantenha `VITE_API_BASE_URL=/api` e faça **redeploy**.
+- O proxy do `/api/*` é feito por Azure Functions integradas no SWA (pasta `api/`), usando `BACKEND_BASE_URL` como destino.
+
+Nota de robustez (auth): em alguns cenários o header padrão `Authorization` pode chegar alterado ao backend quando passa por camadas do SWA. Por isso, o frontend também envia `x-hc-authorization: Bearer <token>` e a Function proxy mapeia esse header para `Authorization` ao chamar o backend.
+
+Para teste manual (curl) via SWA, prefira:
+
+```bash
+curl -i https://<SWA_HOST>/api/auth/me -H "x-hc-authorization: Bearer <TOKEN>"
+```
+
+Teste rápido (login direto no backend — diagnóstico):
+
+```bash
+curl -i -X POST \
+    https://<BACKEND_FQDN>/auth/token \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    --data "grant_type=password&username=admin@alcast.local&password=123"
+```
 
 O frontend opera no modo integrado (API real). O modo mock foi descontinuado para reduzir ruído e superfície de manutenção.
 

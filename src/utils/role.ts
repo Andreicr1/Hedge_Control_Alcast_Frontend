@@ -42,8 +42,10 @@ function canonicalizeRole(raw: string): string {
   if (['auditoria', 'audit', 'auditor', 'auditoría'].includes(r)) return 'auditoria';
 
   // Sales / Purchase
-  if (['vendas', 'sales', 'venda'].includes(r)) return 'vendas';
-  if (['compras', 'purchase', 'purchasing', 'compra'].includes(r)) return 'compras';
+  // Consolidated commercial role
+  if (['comercial', 'commercial', 'commerce'].includes(r)) return 'comercial';
+  if (['vendas', 'sales', 'venda'].includes(r)) return 'comercial';
+  if (['compras', 'purchase', 'purchasing', 'compra'].includes(r)) return 'comercial';
 
   return r;
 }

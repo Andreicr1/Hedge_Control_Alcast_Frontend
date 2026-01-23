@@ -1,0 +1,30 @@
+name: Deploy (Azure Static Web Apps)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Azure SWA action runs the Oryx build. Vite env vars must be present at build time.
+      - name: Deploy
+        uses: Azure/static-web-apps-deploy@v1
+        env:
+          VITE_API_BASE_URL: /api
+          VITE_AUTH_MODE: ${{ secrets.VITE_AUTH_MODE }}
+          VITE_ENTRA_TENANT_ID: ${{ secrets.VITE_ENTRA_TENANT_ID }}
+          VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
+          VITE_ENTRA_API_SCOPE: ${{ secrets.VITE_ENTRA_API_SCOPE }}
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: .
+          api_location: api
+          output_location: dist

@@ -27,12 +27,12 @@ export function getApiBaseUrl(): string {
     return normalized;
   }
 
-  // Default (dev): use Vite proxy to avoid CORS.
-  if (import.meta.env.DEV) return '/api';
-
-  // Default (prod-like fallback)
-  // Prefer failing clearly (relative URL) over silently calling localhost in production.
-  return '';
+  // Default: use same-origin proxy (/api) to avoid CORS.
+  if (import.meta.env.PROD) {
+    // On Azure Static Web Apps we use same-origin /api.
+    // When deployed with integrated Azure Functions (api/), the Functions layer proxies to the backend.
+  }
+  return '/api';
 }
 
 const API_TIMEOUT = 30000; // 30 segundos
@@ -182,7 +182,11 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   // Add auth token if available
   const token = getAuthToken();
   if (token && !skipAuth) {
-    requestHeaders['Authorization'] = `Bearer ${token}`;
+    const bearer = `Bearer ${token}`;
+    requestHeaders['Authorization'] = bearer;
+    // Some platforms can interfere with the standard Authorization header.
+    // We also send a custom header so the SWA-integrated Functions proxy can forward it reliably.
+    requestHeaders['x-hc-authorization'] = bearer;
   }
 
   // Create abort controller for timeout
@@ -247,7 +251,9 @@ async function requestRaw(endpoint: string, options: RawRequestOptions = {}): Pr
 
   const token = getAuthToken();
   if (token && !skipAuth) {
-    requestHeaders['Authorization'] = `Bearer ${token}`;
+    const bearer = `Bearer ${token}`;
+    requestHeaders['Authorization'] = bearer;
+    requestHeaders['x-hc-authorization'] = bearer;
   }
 
   const controller = new AbortController();

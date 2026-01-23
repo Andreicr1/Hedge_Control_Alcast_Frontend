@@ -39,7 +39,7 @@ export default function App() {
           <Route
             path="/vendas/sales-orders"
             element={
-              <RequireRole allowed={["vendas"]}>
+              <RequireRole allowed={["comercial"]}>
                 <SalesOrdersPage />
               </RequireRole>
             }
@@ -47,7 +47,7 @@ export default function App() {
           <Route
             path="/vendas/sales-orders/:soId"
             element={
-              <RequireRole allowed={["vendas"]}>
+              <RequireRole allowed={["comercial"]}>
                 <SalesOrdersPage />
               </RequireRole>
             }
@@ -55,7 +55,7 @@ export default function App() {
           <Route
             path="/vendas/clientes"
             element={
-              <RequireRole allowed={["vendas", "admin"]}>
+              <RequireRole allowed={["comercial", "admin"]}>
                 <CustomersPageIntegrated />
               </RequireRole>
             }
@@ -65,7 +65,7 @@ export default function App() {
           <Route
             path="/compras/purchase-orders"
             element={
-              <RequireRole allowed={["compras"]}>
+              <RequireRole allowed={["comercial"]}>
                 <PurchaseOrdersPage />
               </RequireRole>
             }
@@ -73,7 +73,7 @@ export default function App() {
           <Route
             path="/compras/purchase-orders/:poId"
             element={
-              <RequireRole allowed={["compras"]}>
+              <RequireRole allowed={["comercial"]}>
                 <PurchaseOrdersPage />
               </RequireRole>
             }
@@ -81,7 +81,7 @@ export default function App() {
           <Route
             path="/compras/fornecedores"
             element={
-              <RequireRole allowed={["compras", "admin"]}>
+              <RequireRole allowed={["comercial", "admin"]}>
                 <SuppliersPageIntegrated />
               </RequireRole>
             }

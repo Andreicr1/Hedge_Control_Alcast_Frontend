@@ -22,7 +22,19 @@ pnpm-debug.log*
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# VS Code
 .vscode/
+
+# Azure Static Web Apps tooling
+.swa/
+.azure/
+
+# Copilot Playwright MCP artifacts
+.playwright-mcp/
+
+# Keep SWA routing config under /public so it is copied to /dist by Vite
+/staticwebapp.config.json
 
 # Local design tooling artifacts
 .anima/

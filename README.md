@@ -1,4 +1,3 @@
-
 # Hedge Management System
 
 This is a code bundle for Hedge Management System. The original project is available at
@@ -13,19 +12,28 @@ This is a code bundle for Hedge Management System. The original project is avail
 - Copy `.env.example` to `.env` (do not commit `.env`).
 - Adjust `VITE_API_BASE_URL` as needed.
 
-## Production deploy (Vercel)
+## Production deploy (Azure Static Web Apps via GitHub Actions)
 
-Vercel injects environment variables at **build time**. After changing env vars, trigger a **redeploy**.
+This frontend is deployed to **Azure Static Web Apps (SWA)** using GitHub Actions.
 
-Required env vars:
+Important:
 
-- `VITE_API_BASE_URL` (example: `https://hedge-control-alcast-backend.onrender.com`)
-- `VITE_POWERBI_CASHFLOW_EMBED_URL` (Power BI `reportEmbed` URL for the Cashflow page iframe)
+- Vite environment variables are injected at **build time**.
+- After changing any `VITE_*` values, trigger a new deploy.
 
-Optional (scope filters applied to the embedded report):
+Workflow: `.github/workflows/deploy-swa.yml`
 
-- `VITE_POWERBI_CASHFLOW_FILTER_DEAL_TEMPLATE`
-- `VITE_POWERBI_CASHFLOW_FILTER_CONTRACT_TEMPLATE`
+Required GitHub Secrets:
+
+- `AZURE_STATIC_WEB_APPS_API_TOKEN` (SWA deployment token)
+- `VITE_AUTH_MODE` (`local` or `entra`)
+- `VITE_ENTRA_TENANT_ID`
+- `VITE_ENTRA_CLIENT_ID`
+- `VITE_ENTRA_API_SCOPE` (example: `api://<api-app-client-id>/access_as_user`)
+
+Notes:
+
+- In SWA, the app uses same-origin API calls (`VITE_API_BASE_URL=/api`). The integrated `api/` Functions project proxies to the backend.
 
 ## Running the code
 

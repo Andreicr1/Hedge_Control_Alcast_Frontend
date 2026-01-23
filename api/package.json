@@ -1,0 +1,6 @@
+{
+  "name": "alcast-hc-swa-api",
+  "private": true,
+  "version": "0.0.0",
+  "main": "index.js"
+}
