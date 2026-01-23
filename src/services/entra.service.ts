@@ -9,25 +9,9 @@ import { clearAuthToken, setAuthToken } from '../api/client';
 
 export type AuthMode = 'local' | 'entra';
 
-/* =========================================================
- * Helpers
- * ========================================================= */
-
 function envVal(v: unknown): string {
   return String(v || '').trim();
 }
-
-function requiredEnv(name: string, value: unknown): string {
-  const s = envVal(value);
-  if (!s) {
-    throw new Error(`Missing ${name} env var`);
-  }
-  return s;
-}
-
-/* =========================================================
- * Entra configuration checks
- * ========================================================= */
 
 export function getMissingEntraEnvVars(): string[] {
   const missing: string[] = [];
@@ -43,29 +27,31 @@ export function isEntraConfigured(): boolean {
 
 export function getAuthMode(): AuthMode {
   const raw = envVal(import.meta.env.VITE_AUTH_MODE).toLowerCase();
-
   if (raw === 'entra') return 'entra';
   if (raw === 'local') return 'local';
 
-  // Safety net for prod builds
   if (import.meta.env.PROD && isEntraConfigured()) return 'entra';
-
   return 'local';
 }
 
-/* =========================================================
- * MSAL setup (SWA-safe)
- * ========================================================= */
+function requiredEnv(name: string, value: unknown): string {
+  const s = envVal(value);
+  if (!s) throw new Error(`Missing ${name} env var`);
+  return s;
+}
 
-function createMsalInstance(): PublicClientApplication {
+let _msal: PublicClientApplication | null = null;
+
+function msal(): PublicClientApplication {
+  if (_msal) return _msal;
+
   const tenantId = requiredEnv('VITE_ENTRA_TENANT_ID', import.meta.env.VITE_ENTRA_TENANT_ID);
   const clientId = requiredEnv('VITE_ENTRA_CLIENT_ID', import.meta.env.VITE_ENTRA_CLIENT_ID);
 
-  return new PublicClientApplication({
+  _msal = new PublicClientApplication({
     auth: {
       authority: `https://login.microsoftonline.com/${tenantId}`,
       clientId,
-      // IMPORTANT: must match Entra redirect URIs
       redirectUri: `${window.location.origin}/login`,
       postLogoutRedirectUri: `${window.location.origin}/login`,
     },
@@ -74,30 +60,31 @@ function createMsalInstance(): PublicClientApplication {
       storeAuthStateInCookie: false,
     },
   });
+
+  return _msal;
 }
-
-let _msalInstance: PublicClientApplication | null = null;
-
-function msal(): PublicClientApplication {
-  if (!_msalInstance) {
-    _msalInstance = createMsalInstance();
-  }
-  return _msalInstance;
-}
-
-/* =========================================================
- * Token helpers
- * ========================================================= */
 
 function getApiScopes(): string[] {
-  // Example: api://<API_APP_ID>/access_as_user
-  const scope = requiredEnv('VITE_ENTRA_API_SCOPE', import.meta.env.VITE_ENTRA_API_SCOPE);
-  return [scope];
+  return [requiredEnv('VITE_ENTRA_API_SCOPE', import.meta.env.VITE_ENTRA_API_SCOPE)];
 }
 
 function pickAccount(accounts: AccountInfo[]): AccountInfo | null {
-  if (!accounts || accounts.length === 0) return null;
-  return accounts[0];
+  return accounts?.[0] ?? null;
+}
+
+/**
+ * 🔑 PROCESSA O REDIRECT DO ENTRA
+ * Isso PRECISA rodar no boot da aplicação
+ */
+export async function entraHandleRedirect(): Promise<string | null> {
+  if (getAuthMode() !== 'entra') return null;
+
+  const result = await msal().handleRedirectPromise();
+
+  if (!result) return null;
+
+  setAuthToken(result.accessToken);
+  return result.accessToken;
 }
 
 async function acquireApiToken(account: AccountInfo): Promise<AuthenticationResult> {
@@ -107,28 +94,16 @@ async function acquireApiToken(account: AccountInfo): Promise<AuthenticationResu
   });
 }
 
-/* =========================================================
- * Public API
- * ========================================================= */
-
-/**
- * Called on app bootstrap / route guard.
- * Restores session after redirect.
- */
 export async function entraTrySilentLogin(): Promise<string | null> {
   if (getAuthMode() !== 'entra') return null;
 
-  const accounts = msal().getAllAccounts();
-  const account = pickAccount(accounts);
+  const account = pickAccount(msal().getAllAccounts());
   if (!account) return null;
 
   try {
     const result = await acquireApiToken(account);
-    if (result?.accessToken) {
-      setAuthToken(result.accessToken);
-      return result.accessToken;
-    }
-    return null;
+    setAuthToken(result.accessToken);
+    return result.accessToken;
   } catch (err) {
     if (err instanceof InteractionRequiredAuthError) {
       return null;
@@ -137,9 +112,6 @@ export async function entraTrySilentLogin(): Promise<string | null> {
   }
 }
 
-/**
- * LOGIN — Redirect flow (MANDATORY for Azure Static Web Apps)
- */
 export async function entraLoginRedirect(): Promise<void> {
   if (getAuthMode() !== 'entra') {
     throw new Error('Entra auth not enabled');
@@ -148,21 +120,13 @@ export async function entraLoginRedirect(): Promise<void> {
   await msal().loginRedirect({
     scopes: getApiScopes(),
   });
-
-  // IMPORTANT:
-  // execution stops here — browser will redirect
 }
 
-/**
- * LOGOUT — Redirect flow
- */
 export async function entraLogout(): Promise<void> {
   clearAuthToken();
 
   const account = pickAccount(msal().getAllAccounts());
+  if (!account) return;
 
-  await msal().logoutRedirect({
-    account: account ?? undefined,
-    postLogoutRedirectUri: `${window.location.origin}/login`,
-  });
+  await msal().logoutRedirect({ account });
 }
