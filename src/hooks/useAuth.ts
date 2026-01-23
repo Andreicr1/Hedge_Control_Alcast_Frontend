@@ -1,7 +1,8 @@
 /**
  * Auth Hook
  *
- * Hook para gerenciar estado de autenticação no React.
+ * Gerencia autenticação local ou Microsoft Entra ID
+ * Compatível com Azure Static Web Apps (redirect flow)
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -14,12 +15,17 @@ import {
   LoginCredentials,
   UserInfo,
 } from '../services/auth.service';
+
 import {
-  entraLoginPopup,
+  entraLoginRedirect,
   entraLogout,
   entraTrySilentLogin,
   getAuthMode,
 } from '../services/entra.service';
+
+/* =========================================================
+ * Types
+ * ========================================================= */
 
 interface AuthState {
   user: UserInfo | null;
@@ -36,8 +42,12 @@ interface UseAuthReturn extends AuthState {
   authMode: 'local' | 'entra';
 }
 
+/* =========================================================
+ * Hook
+ * ========================================================= */
+
 export function useAuth(): UseAuthReturn {
-  // 🔒 Fonte única da verdade (imutável)
+  // 🔒 Fonte única da verdade
   const authMode = getAuthMode();
 
   const [state, setState] = useState<AuthState>({
@@ -47,15 +57,19 @@ export function useAuth(): UseAuthReturn {
     error: null,
   });
 
+  /**
+   * Restaura sessão após reload / redirect
+   */
   const checkAuth = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
+      // 🔐 Entra silent restore
       if (authMode === 'entra') {
         await entraTrySilentLogin();
       }
 
-      // Auto-login DEV é opt-in
+      // Auto-login DEV (opt-in)
       if (import.meta.env.DEV && import.meta.env.VITE_AUTO_LOGIN_DEV === 'true') {
         await autoLoginDev();
       }
@@ -78,16 +92,15 @@ export function useAuth(): UseAuthReturn {
     }
   }, [authMode]);
 
+  /**
+   * Login LOCAL (email/senha)
+   */
   const login = useCallback(
     async (credentials: LoginCredentials) => {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        if (authMode === 'entra') {
-          await entraLoginPopup();
-        } else {
-          await loginService(credentials);
-        }
+        await loginService(credentials);
 
         const user = await getCurrentUser();
 
@@ -106,32 +119,23 @@ export function useAuth(): UseAuthReturn {
         throw err;
       }
     },
-    [authMode]
+    []
   );
 
+  /**
+   * Login ENTRA — REDIRECT FLOW (obrigatório no SWA)
+   */
   const loginEntra = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
-    try {
-      await entraLoginPopup();
-      const user = await getCurrentUser();
-
-      setState({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
-    } catch (err) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: err instanceof Error ? err.message : 'Login failed',
-      }));
-      throw err;
-    }
+    // ⛔ NÃO continuar execução
+    // o browser será redirecionado
+    await entraLoginRedirect();
   }, []);
 
+  /**
+   * Logout
+   */
   const logout = useCallback(() => {
     if (authMode === 'entra') {
       void entraLogout();
@@ -147,7 +151,9 @@ export function useAuth(): UseAuthReturn {
     });
   }, [authMode]);
 
-  // Check auth on mount
+  /**
+   * Bootstrap
+   */
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
