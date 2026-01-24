@@ -1,11 +1,14 @@
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuthContext } from '../components/AuthProvider';
 import { getMissingEntraEnvVars } from '../../services/entra.service';
 
 export function LoginPageIntegrated() {
-  const navigate = useNavigate();
   const auth = useAuthContext();
   const missingEntra = getMissingEntraEnvVars();
+
+  if (!auth.isLoading && auth.isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-[var(--sapBackgroundColor)] flex items-center justify-center p-4">

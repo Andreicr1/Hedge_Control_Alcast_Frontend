@@ -19,6 +19,7 @@ import {
 import {
   entraLoginRedirect,
   entraLogout,
+  entraHandleRedirect,
   entraTrySilentLogin,
   getAuthMode,
 } from '../services/entra.service';
@@ -64,8 +65,9 @@ export function useAuth(): UseAuthReturn {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // 🔐 Entra silent restore
+      // 🔐 Entra redirect + silent restore
       if (authMode === 'entra') {
+        await entraHandleRedirect();
         await entraTrySilentLogin();
       }
 
