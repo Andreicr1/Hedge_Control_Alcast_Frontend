@@ -90,6 +90,29 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     return null;
   }
 
+  const persistAuthFailureDetail = async (response: Response) => {
+    try {
+      const wwwAuthenticate = response.headers.get('www-authenticate');
+      const ct = response.headers.get('content-type') || '';
+      const body = ct.includes('application/json') ? await response.clone().json() : null;
+      const detail = (body && typeof body === 'object' && 'detail' in (body as any))
+        ? (body as any).detail
+        : null;
+
+      localStorage.setItem(
+        'hc_last_auth_response',
+        JSON.stringify({
+          at: Date.now(),
+          status: response.status,
+          detail,
+          www_authenticate: wwwAuthenticate,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  };
+
   const persistTokenMeta = () => {
     try {
       const parts = String(token || '').split('.');
@@ -134,6 +157,9 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     });
 
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        await persistAuthFailureDetail(response);
+      }
       if (response.status === 401) {
         persistTokenMeta();
         clearAuthToken();

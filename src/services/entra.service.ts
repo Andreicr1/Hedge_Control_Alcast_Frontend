@@ -69,6 +69,9 @@ function getApiScopes(): string[] {
 }
 
 function pickAccount(accounts: AccountInfo[]): AccountInfo | null {
+  // Prefer the active account when available.
+  const active = msal().getActiveAccount();
+  if (active) return active;
   return accounts?.[0] ?? null;
 }
 
@@ -82,6 +85,10 @@ export async function entraHandleRedirect(): Promise<string | null> {
   const result = await msal().handleRedirectPromise();
 
   if (!result) return null;
+
+  if (result.account) {
+    msal().setActiveAccount(result.account);
+  }
 
   setAuthToken(result.accessToken);
   return result.accessToken;
@@ -99,6 +106,9 @@ export async function entraTrySilentLogin(): Promise<string | null> {
 
   const account = pickAccount(msal().getAllAccounts());
   if (!account) return null;
+
+  // Keep MSAL's active account aligned with what we're using.
+  msal().setActiveAccount(account);
 
   try {
     const result = await acquireApiToken(account);
