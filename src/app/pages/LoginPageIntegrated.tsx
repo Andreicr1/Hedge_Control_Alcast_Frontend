@@ -6,6 +6,13 @@ export function LoginPageIntegrated() {
   const auth = useAuthContext();
   const missingEntra = getMissingEntraEnvVars();
 
+  let lastAuthError: string | null = null;
+  try {
+    lastAuthError = localStorage.getItem('hc_last_auth_error');
+  } catch {
+    lastAuthError = null;
+  }
+
   if (!auth.isLoading && auth.isAuthenticated) {
     return <Navigate to="/" replace />;
   }
@@ -21,10 +28,12 @@ export function LoginPageIntegrated() {
           Autenticação via conta corporativa Microsoft.
         </p>
 
-        {(auth.error || missingEntra.length > 0) && (
+        {(auth.error || missingEntra.length > 0 || lastAuthError) && (
           <div className="p-3 mb-4 rounded bg-[var(--sapErrorBackground,#ffebeb)] text-[var(--sapNegativeColor,#b00)] text-sm">
             {missingEntra.length > 0
               ? `Configuração Entra incompleta: ${missingEntra.join(', ')}`
+              : lastAuthError === 'unauthorized'
+              ? 'Login concluído, mas o backend rejeitou o token (401). Verifique AUTH_MODE/ENTRA_* no backend e se VITE_ENTRA_API_SCOPE aponta para o App Registration da API (não Microsoft Graph).'
               : auth.error}
           </div>
         )}
@@ -33,7 +42,15 @@ export function LoginPageIntegrated() {
           type="button"
           disabled={auth.isLoading || missingEntra.length > 0}
           className="w-full px-4 py-2 bg-[var(--sapButton_Emphasized_Background)] text-white rounded hover:bg-[var(--sapButton_Emphasized_Hover_Background)] disabled:opacity-60"
-          onClick={() => auth.loginEntra()}
+          onClick={() => {
+            try {
+              localStorage.removeItem('hc_last_auth_error');
+              localStorage.removeItem('hc_last_auth_error_at');
+            } catch {
+              // ignore
+            }
+            auth.loginEntra();
+          }}
         >
           {auth.isLoading ? 'Redirecionando...' : 'Entrar com Microsoft'}
         </button>

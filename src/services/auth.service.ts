@@ -104,6 +104,14 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     if (!response.ok) {
       if (response.status === 401) {
         clearAuthToken();
+
+        // Surface the reason on the login page (otherwise it only shows in Console).
+        try {
+          localStorage.setItem('hc_last_auth_error', 'unauthorized');
+          localStorage.setItem('hc_last_auth_error_at', String(Date.now()));
+        } catch {
+          // ignore storage failures
+        }
       }
       return null;
     }
