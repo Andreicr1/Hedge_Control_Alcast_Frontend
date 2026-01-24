@@ -285,6 +285,7 @@ export function RFQFormPage() {
   // Preview Texts
   const [brokerPreviewText, setBrokerPreviewText] = useState('');
   const [bankPreviewText, setBankPreviewText] = useState('');
+  const [previewFormError, setPreviewFormError] = useState<string | null>(null);
 
   // KYC Preflight (read-only)
   const [kycPreflightByCounterpartyId, setKycPreflightByCounterpartyId] = useState<Record<number, KycPreflightResponse>>({});
@@ -706,15 +707,51 @@ export function RFQFormPage() {
       language,
     };
   };
+
+  const getPreviewValidationError = useCallback((trade: TradeState, qty: number): string | null => {
+    if (!trade.leg1PriceType || !trade.leg2PriceType) return 'Selecione os tipos de preço.';
+    if (!qty || qty <= 0) return 'Informe uma quantidade maior que zero.';
+
+    if (trade.leg1PriceType === RfqPriceType.AVG) {
+      const year = parseInt(trade.leg1Year);
+      if (!trade.leg1Month || !trade.leg1Year || Number.isNaN(year)) {
+        return 'Para “Média mensal”, selecione Mês e Ano.';
+      }
+    }
+
+    if (trade.leg1PriceType === RfqPriceType.AVG_INTER) {
+      if (!trade.leg1StartDate || !trade.leg1EndDate) {
+        return 'Para “Média entre datas”, informe Data inicial e Data final.';
+      }
+    }
+
+    // Backend requires fixing_date for C2R.
+    if (trade.leg2PriceType === RfqPriceType.C2R && !trade.leg2FixingDate) {
+      return 'Para “Fechamento até referência”, informe a Data de referência.';
+    }
+
+    return null;
+  }, []);
+
+  const canGeneratePreview = useMemo(() => {
+    const trade = trades[0];
+    if (!trade) return false;
+    const qty = parseFloat(quantity) || 0;
+    return getPreviewValidationError(trade, qty) === null;
+  }, [getPreviewValidationError, quantity, trades]);
   
   // ============================================
   // Handle Generate Preview
   // ============================================
   const handleGeneratePreview = async () => {
     const firstTrade = trades[0];
-    if (!firstTrade.leg1PriceType || !firstTrade.leg2PriceType || !quantity) {
+    const qty = parseFloat(quantity) || 0;
+    const formErr = getPreviewValidationError(firstTrade, qty);
+    if (formErr) {
+      setPreviewFormError(formErr);
       return;
     }
+    setPreviewFormError(null);
     
     try {
       // Always generate BOTH previews (EN for Brokers, PT for Banks)
@@ -1325,7 +1362,7 @@ export function RFQFormPage() {
               <FioriButton 
                 variant="default" 
                 onClick={handleGeneratePreview}
-                disabled={isPreviewLoading || !trades[0]?.leg1PriceType || !trades[0]?.leg2PriceType || !quantity}
+                disabled={isPreviewLoading || !canGeneratePreview}
                 icon={isPreviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
               >
                 {isPreviewLoading ? 'Gerando...' : 'Gerar texto'}
@@ -1333,9 +1370,9 @@ export function RFQFormPage() {
             </div>
           </div>
           
-          {previewError && (
+          {(previewFormError || previewError) && (
             <div className="mb-3 p-3 bg-[var(--sapErrorBackground,#ffebeb)] text-[var(--sapNegativeColor,#bb0000)] rounded text-sm">
-              {UX_COPY.errors.title}
+              {previewFormError || previewError?.detail || UX_COPY.errors.title}
             </div>
           )}
           
