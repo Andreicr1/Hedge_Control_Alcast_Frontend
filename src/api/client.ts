@@ -47,6 +47,71 @@ function getRequestBaseUrl(): string {
 
 let authToken: string | null = null;
 
+function decodeJwtMeta(token: string): Record<string, unknown> | null {
+  const t = String(token || '').trim();
+  if (!t) return null;
+
+  const parts = t.split('.');
+  if (parts.length < 2) return null;
+
+  const b64urlToJson = (b64url: string): any => {
+    const normalized = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = '='.repeat((4 - (normalized.length % 4)) % 4);
+    const json = atob(normalized + pad);
+    return JSON.parse(json);
+  };
+
+  try {
+    const header = b64urlToJson(parts[0]);
+    const payload = b64urlToJson(parts[1]);
+    return {
+      alg: header?.alg,
+      aud: payload?.aud,
+      iss: payload?.iss,
+      tid: payload?.tid,
+      roles: payload?.roles,
+      scp: payload?.scp,
+      appid: payload?.appid,
+      azp: payload?.azp,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistLastAuthTokenMeta(reason: string, token: string | null): void {
+  try {
+    const meta = token ? decodeJwtMeta(token) : null;
+    if (meta) {
+      localStorage.setItem(
+        'hc_last_token_meta',
+        JSON.stringify({ reason, at: Date.now(), ...meta })
+      );
+    }
+  } catch {
+    // ignore storage/parse failures
+  }
+}
+
+function normalizeDoubleApiPath(url: string): string {
+  const input = String(url || '');
+  if (!input) return input;
+
+  const fixPath = (path: string) => path.replace(/\/api\/api(\/|$)/, '/api$1');
+
+  if (/^https?:\/\//i.test(input)) {
+    try {
+      const u = new URL(input);
+      u.pathname = fixPath(u.pathname);
+      return u.toString();
+    } catch {
+      return input;
+    }
+  }
+
+  return fixPath(input);
+}
+
 export function setAuthToken(token: string | null): void {
   authToken = token;
   if (token) {
@@ -134,6 +199,7 @@ async function handleErrorResponse(response: Response): Promise<never> {
 
   // Handle specific status codes
   if (response.status === 401) {
+    persistLastAuthTokenMeta('401', getAuthToken());
     clearAuthToken();
     // Opcionalmente redirecionar para login
     // window.location.href = '/login';
@@ -171,7 +237,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     skipAuth = false,
   } = options;
 
-  const url = endpoint.startsWith('http') ? endpoint : `${getRequestBaseUrl()}${endpoint}`;
+  const rawUrl = endpoint.startsWith('http') ? endpoint : `${getRequestBaseUrl()}${endpoint}`;
+  const url = normalizeDoubleApiPath(rawUrl);
 
   // Build headers
   const requestHeaders: Record<string, string> = {
@@ -243,7 +310,8 @@ async function requestRaw(endpoint: string, options: RawRequestOptions = {}): Pr
     skipAuth = false,
   } = options;
 
-  const url = endpoint.startsWith('http') ? endpoint : `${getRequestBaseUrl()}${endpoint}`;
+  const rawUrl = endpoint.startsWith('http') ? endpoint : `${getRequestBaseUrl()}${endpoint}`;
+  const url = normalizeDoubleApiPath(rawUrl);
 
   const requestHeaders: Record<string, string> = {
     ...headers,

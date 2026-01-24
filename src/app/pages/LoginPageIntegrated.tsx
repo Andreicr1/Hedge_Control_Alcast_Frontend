@@ -7,10 +7,20 @@ export function LoginPageIntegrated() {
   const missingEntra = getMissingEntraEnvVars();
 
   let lastAuthError: string | null = null;
+  let lastTokenMeta: string | null = null;
   try {
     lastAuthError = localStorage.getItem('hc_last_auth_error');
+    lastTokenMeta = localStorage.getItem('hc_last_token_meta');
   } catch {
     lastAuthError = null;
+    lastTokenMeta = null;
+  }
+
+  let tokenMeta: any = null;
+  try {
+    tokenMeta = lastTokenMeta ? JSON.parse(lastTokenMeta) : null;
+  } catch {
+    tokenMeta = null;
   }
 
   if (!auth.isLoading && auth.isAuthenticated) {
@@ -33,7 +43,23 @@ export function LoginPageIntegrated() {
             {missingEntra.length > 0
               ? `Configuração Entra incompleta: ${missingEntra.join(', ')}`
               : lastAuthError === 'unauthorized'
-              ? 'Login concluído, mas o backend rejeitou o token (401). Verifique AUTH_MODE/ENTRA_* no backend e se VITE_ENTRA_API_SCOPE aponta para o App Registration da API (não Microsoft Graph).'
+              ? (
+                  <div>
+                    <div>
+                      Login concluído, mas o backend rejeitou o token (401). Verifique AUTH_MODE/ENTRA_* no backend e se VITE_ENTRA_API_SCOPE aponta para o App Registration da API (não Microsoft Graph).
+                    </div>
+                    {tokenMeta && (
+                      <div className="mt-2 text-xs opacity-90">
+                        <div>alg: {String(tokenMeta.alg ?? '—')}</div>
+                        <div>aud: {String(tokenMeta.aud ?? '—')}</div>
+                        <div>iss: {String(tokenMeta.iss ?? '—')}</div>
+                        <div>tid: {String(tokenMeta.tid ?? '—')}</div>
+                        <div>roles: {Array.isArray(tokenMeta.roles) ? tokenMeta.roles.join(', ') : String(tokenMeta.roles ?? '—')}</div>
+                        <div>scp: {String(tokenMeta.scp ?? '—')}</div>
+                      </div>
+                    )}
+                  </div>
+                )
               : auth.error}
           </div>
         )}
@@ -46,6 +72,7 @@ export function LoginPageIntegrated() {
             try {
               localStorage.removeItem('hc_last_auth_error');
               localStorage.removeItem('hc_last_auth_error_at');
+              localStorage.removeItem('hc_last_token_meta');
             } catch {
               // ignore
             }

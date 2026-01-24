@@ -90,6 +90,38 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     return null;
   }
 
+  const persistTokenMeta = () => {
+    try {
+      const parts = String(token || '').split('.');
+      if (parts.length < 2) return;
+      const b64urlToJson = (b64url: string): any => {
+        const normalized = b64url.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = '='.repeat((4 - (normalized.length % 4)) % 4);
+        const json = atob(normalized + pad);
+        return JSON.parse(json);
+      };
+      const header = b64urlToJson(parts[0]);
+      const payload = b64urlToJson(parts[1]);
+      localStorage.setItem(
+        'hc_last_token_meta',
+        JSON.stringify({
+          reason: '401',
+          at: Date.now(),
+          alg: header?.alg,
+          aud: payload?.aud,
+          iss: payload?.iss,
+          tid: payload?.tid,
+          roles: payload?.roles,
+          scp: payload?.scp,
+          appid: payload?.appid,
+          azp: payload?.azp,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  };
+
   const apiBaseUrl = getApiBaseUrl();
 
   try {
@@ -103,6 +135,7 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
 
     if (!response.ok) {
       if (response.status === 401) {
+        persistTokenMeta();
         clearAuthToken();
 
         // Surface the reason on the login page (otherwise it only shows in Console).
