@@ -8,7 +8,6 @@ import { RefreshCw, Layers } from 'lucide-react';
 import { useExposures } from '../../hooks';
 import { Exposure, ExposureStatus, MarketObjectType } from '../../types';
 
-import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
 import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
@@ -16,6 +15,7 @@ import { useAnalyticsEntityTreeContext } from '../analytics/EntityTreeProvider';
 
 import { EmptyState, ErrorState, LoadingState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
+import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
 import { UX_COPY } from '../ux/copy';
 
@@ -156,10 +156,12 @@ export function ExposuresPageIntegrated() {
   const onOpenDeal = (dealId: number) => navigate(`/financeiro/deals/${dealId}`);
 
   return (
-    <AnalyticTwoPaneLayout
-      left={<AnalyticScopeTree />}
-      right={
-        <div className="sap-fiori-page">
+    <FioriFlexibleColumnLayout
+      masterTitle="Escopo"
+      masterContent={<AnalyticScopeTree />}
+      masterWidth={340}
+      detailContent={
+        <div className="sap-fiori-page h-full overflow-y-auto">
           <div className="bg-[var(--sapPageHeader_Background)] border-b border-[var(--sapPageHeader_BorderColor)] -mx-4 -mt-4 px-4 py-4 mb-4">
             <div className="flex items-center justify-between">
               <div>
