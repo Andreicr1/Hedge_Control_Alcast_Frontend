@@ -1,26 +1,14 @@
-/**
- * PnlPageIntegrated
- *
- * Minimal Financeiro/Auditoria view over portfolio P&L read models.
- * Source of truth: backend /pnl endpoints.
- */
+import { Navigate } from 'react-router-dom';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FioriKPIPrimary } from '../components/fiori/FioriKPIPrimary';
-import { FioriKPISecondary } from '../components/fiori/FioriKPISecondary';
-import { SAPGridTable } from '../components/fiori/SAPGridTable';
-import { FioriButton } from '../components/fiori/FioriButton';
-import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
-import { ErrorState, LoadingState, EmptyState } from '../components/ui';
-import { DollarSign, RefreshCw, Search, ExternalLink, Receipt } from 'lucide-react';
-import { getPnlAggregated, formatUsd, createPnlSnapshot } from '../../services/pnl.service';
-import { listDeals } from '../../services/deals.service';
-import type { Deal, PnlAggregateResponse, PnlDealAggregateRow } from '../../types';
-import { useAuthContext } from '../components/AuthProvider';
-import { normalizeRoleName } from '../../utils/role';
-import { UX_COPY } from '../ux/copy';
-import { Checkbox } from '../components/ui/checkbox';
+export function PnlPageIntegrated() {
+  return <Navigate to="/financeiro/cashflow" replace />;
+}
+
+/*
+Legacy P&L page removed.
+
+O frontend foi institucionalizado para ter o Fluxo de Caixa como eixo analítico.
+Esta implementação antiga foi mantida apenas como referência histórica.
 
 function Badge({ children }: { children: string }) {
   return (
@@ -469,3 +457,5 @@ export function PnlPageIntegrated() {
     />
   );
 }
+
+*/

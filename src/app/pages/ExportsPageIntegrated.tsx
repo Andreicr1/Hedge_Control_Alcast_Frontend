@@ -212,7 +212,6 @@ export function ExportsPageIntegrated() {
               { value: 'chain_export', label: 'Relatório consolidado' },
               { value: 'state_at_time', label: 'Posição em data-base' },
               { value: 'audit_log', label: 'Registro de auditoria' },
-              { value: 'pnl_aggregate', label: 'Resultado consolidado (P&L)' },
             ]}
           />
           <FioriInput label="Data-base" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} fullWidth />

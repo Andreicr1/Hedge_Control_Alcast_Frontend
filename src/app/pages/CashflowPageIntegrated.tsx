@@ -21,7 +21,6 @@ import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
 import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
-import { PowerBIReportFrame } from '../components/powerbi/PowerBIReportFrame';
 
 function parseIsoDateUtc(dateIso: string): Date {
   return new Date(`${dateIso}T00:00:00Z`);
@@ -119,8 +118,6 @@ export function CashflowPageIntegrated() {
   useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
   const { scope } = useAnalyticScope();
 
-  const [viewMode, setViewMode] = useState<'powerbi' | 'matrix'>('powerbi');
-
   const today = useMemo(() => isoToday(), []);
 
   const [queryBase, setQueryBase] = useState<CashflowAnalyticQueryParams>(() => ({
@@ -135,25 +132,26 @@ export function CashflowPageIntegrated() {
     return { ...queryBase, deal_id: scope.dealId };
   }, [queryBase, scope]);
 
-  // Performance: do not load analytic lines unless the user is explicitly using the matrix.
-  const cashflow = useCashflowAnalytic(viewMode === 'matrix' ? matrixQuery : null);
+  const cashflow = useCashflowAnalytic(matrixQuery);
   const [collapsedDeals, setCollapsedDeals] = useState<Record<string, boolean>>({});
-  const [showRawLines, setShowRawLines] = useState(false);
 
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({});
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
 
-  const normalizedLines: CashFlowLine[] = useMemo(() => {
-    const raw = cashflow.data || [];
-    return raw.filter((l) => l.entity_type !== 'exposure' && l.cashflow_type !== 'risk');
-  }, [cashflow.data]);
+  const lines: CashFlowLine[] = useMemo(() => cashflow.data || [], [cashflow.data]);
+
+  const dealIdOfLine = (l: CashFlowLine): string | null => {
+    if (l.entity_type === 'deal') return String(l.entity_id || '').trim() || null;
+    const pid = String(l.parent_id || '').trim();
+    return pid || null;
+  };
 
   const allDates = useMemo(() => {
     const set = new Set<string>();
-    for (const l of normalizedLines) set.add(String(l.date));
+    for (const l of lines) set.add(String(l.date));
     return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
-  }, [normalizedLines]);
+  }, [lines]);
 
   const timeTree = useMemo(() => {
     type WeekNode = { label: string; dates: string[] };
@@ -287,9 +285,9 @@ export function CashflowPageIntegrated() {
 
   const rows: MatrixRow[] = useMemo(() => {
     const byDeal = new Map<string, CashFlowLine[]>();
-    for (const l of normalizedLines) {
-      if (l.entity_type !== 'so' && l.entity_type !== 'po' && l.entity_type !== 'contract') continue;
-      const dealId = (l.parent_id || '').trim() || '—';
+    for (const l of lines) {
+      const dealId = dealIdOfLine(l);
+      if (!dealId) continue;
       const list = byDeal.get(dealId) || [];
       list.push(l);
       byDeal.set(dealId, list);
@@ -329,6 +327,8 @@ export function CashflowPageIntegrated() {
         contract: {},
       };
 
+      const riskTotals: Record<string, number> = {};
+
       const itemRowsByType: Record<'so' | 'po' | 'contract', Map<string, MatrixRow>> = {
         so: new Map(),
         po: new Map(),
@@ -336,11 +336,19 @@ export function CashflowPageIntegrated() {
       };
 
       for (const l of dealLines) {
-        if (l.entity_type !== 'so' && l.entity_type !== 'po' && l.entity_type !== 'contract') continue;
-        const type = l.entity_type;
         const v = signedAmountUsd(l);
 
         add(dealRow.valuesByDate, l.date, v);
+
+        // Keep the hierarchy (SO/PO/Contrato) but also include risk in the consolidated view.
+        if (l.cashflow_type === 'risk' || l.confidence === 'risk' || l.entity_type === 'exposure') {
+          add(riskTotals, l.date, v);
+          continue;
+        }
+
+        if (l.entity_type !== 'so' && l.entity_type !== 'po' && l.entity_type !== 'contract') continue;
+
+        const type = l.entity_type;
         add(groupTotals[type], l.date, v);
 
         const key = `${type}:${l.entity_id}`;
@@ -391,40 +399,55 @@ export function CashflowPageIntegrated() {
         out.push(...items);
       };
 
-      pushGroup('so', 'Sales Orders (SO)');
-      pushGroup('po', 'Purchase Orders (PO)');
+      pushGroup('so', 'Pedidos de Venda (SO)');
+      pushGroup('po', 'Pedidos de Compra (PO)');
       pushGroup('contract', 'Contratos');
+
+      if (Object.keys(riskTotals).length > 0) {
+        out.push({
+          key: `group:${dealId}:risk`,
+          kind: 'group',
+          level: 1,
+          dealId,
+          label: 'Risco (estimado)',
+          valuesByDate: riskTotals,
+        });
+      }
     }
 
     return out;
-  }, [normalizedLines, collapsedDeals]);
+  }, [lines, collapsedDeals]);
 
   const selectedLines: CashFlowLine[] = useMemo(() => {
     if (scope.kind === 'none') return [];
-    if (scope.kind === 'all') return normalizedLines;
-    if (scope.kind === 'deal') return normalizedLines;
+    if (scope.kind === 'all') return lines;
+
+    if (scope.kind === 'deal') {
+      const did = String(scope.dealId);
+      return lines.filter((l) => dealIdOfLine(l) === did);
+    }
 
     if (scope.kind === 'so') {
       const id = String(scope.soId);
-      return normalizedLines.filter((l) => l.entity_type === 'so' && String(l.entity_id) === id);
+      return lines.filter((l) => l.entity_type === 'so' && String(l.entity_id) === id);
     }
 
     if (scope.kind === 'po') {
       const id = String(scope.poId);
-      return normalizedLines.filter((l) => l.entity_type === 'po' && String(l.entity_id) === id);
+      return lines.filter((l) => l.entity_type === 'po' && String(l.entity_id) === id);
     }
 
     // contract
     const id = String(scope.contractId);
-    return normalizedLines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === id);
-  }, [normalizedLines, scope]);
+    return lines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === id);
+  }, [lines, scope]);
 
   const selectionTitle = useMemo(() => {
     if (scope.kind === 'none') return 'Nenhuma seleção';
-    if (scope.kind === 'all') return 'Consolidado';
+    if (scope.kind === 'all') return 'Todos os deals';
     if (scope.kind === 'deal') return `Deal #${scope.dealId}`;
-    if (scope.kind === 'so') return `SO #${scope.soId} (Deal #${scope.dealId})`;
-    if (scope.kind === 'po') return `PO #${scope.poId} (Deal #${scope.dealId})`;
+    if (scope.kind === 'so') return `SO #${scope.soId} · Deal #${scope.dealId}`;
+    if (scope.kind === 'po') return `PO #${scope.poId} · Deal #${scope.dealId}`;
     return `Contrato ${scope.contractId} (Deal #${scope.dealId})`;
   }, [scope]);
 
@@ -443,40 +466,23 @@ export function CashflowPageIntegrated() {
     };
   }, [selectedLines]);
 
+  const confidenceTotals = useMemo(() => {
+    let deterministic = 0;
+    let estimated = 0;
+    let risk = 0;
+
+    for (const l of selectedLines) {
+      const v = signedAmountUsd(l);
+      if (l.confidence === 'deterministic') deterministic += v;
+      else if (l.confidence === 'estimated') estimated += v;
+      else risk += v;
+    }
+
+    return { deterministic, estimated, risk };
+  }, [selectedLines]);
+
   const appliedAsOf = useMemo(() => (queryBase.as_of ? formatIsoDate(String(queryBase.as_of)) : '—'), [queryBase.as_of]);
   const showInitialLoading = cashflow.isLoading && !cashflow.data;
-
-  const powerBiBaseUrl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_EMBED_URL as string | undefined;
-  const powerBiDealFilterTpl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_FILTER_DEAL_TEMPLATE as string | undefined;
-  const powerBiContractFilterTpl = (import.meta as any)?.env?.VITE_POWERBI_CASHFLOW_FILTER_CONTRACT_TEMPLATE as string | undefined;
-
-  const powerBiFilter = useMemo(() => {
-    const replaceTokens = (tpl: string, vars: Record<string, string>) => {
-      let out = tpl;
-      for (const [k, v] of Object.entries(vars)) {
-        out = out.split(`{${k}}`).join(v);
-      }
-      return out;
-    };
-
-    const dealId =
-      scope.kind === 'deal' || scope.kind === 'so' || scope.kind === 'po' || scope.kind === 'contract'
-        ? String(scope.dealId)
-        : '';
-    const contractId = scope.kind === 'contract' ? String(scope.contractId) : '';
-
-    if (scope.kind === 'contract' && powerBiContractFilterTpl) {
-      const f = replaceTokens(String(powerBiContractFilterTpl), { dealId, contractId });
-      return f.trim() ? f : null;
-    }
-
-    if ((scope.kind === 'deal' || scope.kind === 'so' || scope.kind === 'po') && powerBiDealFilterTpl) {
-      const f = replaceTokens(String(powerBiDealFilterTpl), { dealId });
-      return f.trim() ? f : null;
-    }
-
-    return null;
-  }, [powerBiContractFilterTpl, powerBiDealFilterTpl, scope]);
 
   return (
     <AnalyticTwoPaneLayout
@@ -488,108 +494,78 @@ export function CashflowPageIntegrated() {
               <div>
                 <h1 className="text-[var(--sapPageHeader_TextColor)] text-xl font-normal m-0">{UX_COPY.pages.cashflow.title}</h1>
                 <p className="text-[var(--sapContent_LabelColor)] text-sm mt-1">
-                  Seleção: <span className="font-['72:Bold',sans-serif]">{selectionTitle}</span> · As-of:{' '}
+                  Seleção: <span className="font-['72:Bold',sans-serif]">{selectionTitle}</span> · Data de corte:{' '}
                   <span className="font-['72:Bold',sans-serif]">{appliedAsOf}</span>
                   {cashflow.isLoading && cashflow.data ? <span className="ml-2 text-xs">(atualizando…)</span> : null}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <FioriButton
-                  variant={viewMode === 'powerbi' ? 'emphasized' : 'ghost'}
-                  onClick={() => setViewMode('powerbi')}
-                >
-                  Power BI
-                </FioriButton>
-                <FioriButton
-                  variant={viewMode === 'matrix' ? 'emphasized' : 'ghost'}
-                  onClick={() => setViewMode('matrix')}
-                >
-                  Matriz
-                </FioriButton>
-                <FioriButton
-                  variant="ghost"
-                  onClick={() => setShowRawLines((v) => !v)}
-                  disabled={viewMode !== 'matrix'}
-                >
-                  {showRawLines ? 'Ocultar linhas' : 'Ver linhas'}
-                </FioriButton>
-                <FioriButton
                   variant="ghost"
                   icon={<RefreshCw className="w-4 h-4" />}
                   onClick={cashflow.refetch}
-                  disabled={viewMode !== 'matrix' || scope.kind === 'none'}
+                  disabled={scope.kind === 'none'}
                 >
                   Atualizar
                 </FioriButton>
               </div>
             </div>
 
-            {viewMode === 'matrix' ? (
-              <>
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                    Período (de)
-                    <input
-                      className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                      type="date"
-                      value={queryBase.start_date || ''}
-                      onChange={(e) => setQueryBase((prev) => ({ ...prev, start_date: e.target.value || undefined }))}
-                    />
-                  </label>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <label className="text-xs text-[var(--sapContent_LabelColor)]">
+                Período (de)
+                <input
+                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
+                  type="date"
+                  value={queryBase.start_date || ''}
+                  onChange={(e) => setQueryBase((prev) => ({ ...prev, start_date: e.target.value || undefined }))}
+                />
+              </label>
 
-                  <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                    Período (até)
-                    <input
-                      className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                      type="date"
-                      value={queryBase.end_date || ''}
-                      onChange={(e) => setQueryBase((prev) => ({ ...prev, end_date: e.target.value || undefined }))}
-                    />
-                  </label>
+              <label className="text-xs text-[var(--sapContent_LabelColor)]">
+                Período (até)
+                <input
+                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
+                  type="date"
+                  value={queryBase.end_date || ''}
+                  onChange={(e) => setQueryBase((prev) => ({ ...prev, end_date: e.target.value || undefined }))}
+                />
+              </label>
 
-                  <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                    As-of (corte)
-                    <input
-                      className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                      type="date"
-                      value={queryBase.as_of || ''}
-                      onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
-                    />
-                  </label>
+              <label className="text-xs text-[var(--sapContent_LabelColor)]">
+                Data de corte
+                <input
+                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
+                  type="date"
+                  value={queryBase.as_of || ''}
+                  onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
+                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saldo líquido (USD)</div>
+                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.net)}</div>
+              </div>
+              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
+                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Determinístico (USD)</div>
+                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(confidenceTotals.deterministic)}</div>
+              </div>
+              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
+                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Estimado + Risco (USD)</div>
+                <div className="text-sm font-['72:Bold',sans-serif]">
+                  {formatUsdSigned(confidenceTotals.estimated + confidenceTotals.risk)}
                 </div>
-
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                    <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Entradas (USD)</div>
-                    <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.inflow)}</div>
-                  </div>
-                  <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                    <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saídas (USD)</div>
-                    <div className="text-sm font-['72:Bold',sans-serif]">-{formatUsdSigned(totals.outflow).replace(/^\-/, '')}</div>
-                  </div>
-                  <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                    <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saldo (USD)</div>
-                    <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.net)}</div>
-                  </div>
-                </div>
-              </>
-            ) : null}
+              </div>
+            </div>
           </div>
 
-          {viewMode === 'powerbi' ? (
-            <div className="h-[calc(100vh-220px)] min-h-[560px]">
-              <PowerBIReportFrame
-                baseUrl={powerBiBaseUrl}
-                filter={powerBiFilter}
-                storageKey="powerbi.cashflow.embedUrl"
-                title="Cashflow (Power BI)"
-              />
-            </div>
-          ) : scope.kind === 'none' ? (
+          {scope.kind === 'none' ? (
             <div className="p-6">
               <EmptyState
-                title="Selecione itens para visualizar"
-                description="Nenhum deal/contrato está selecionado. Use a árvore de escopo à esquerda para montar a visualização."
+                title="Sem seleção"
+                description="Selecione um deal para visualizar." 
               />
             </div>
           ) : (
@@ -604,99 +580,122 @@ export function CashflowPageIntegrated() {
                       <EmptyState title={UX_COPY.pages.cashflow.empty} description="Nenhuma linha encontrada no período." />
                     ) : (
                       <>
-                    <div className="mb-2 flex items-center justify-end">
-                      <FioriButton
-                        variant="ghost"
-                        onClick={() => {
-                          setExpandedQuarters({});
-                          setExpandedMonths({});
-                          setExpandedWeeks({});
-                        }}
-                      >
-                        Recolher para Trimestre
-                      </FioriButton>
-                    </div>
-                    <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden">
-                      <div className="overflow-auto">
-                        <table className="min-w-[900px] w-full">
-                          <thead>
-                            <tr className="border-b border-[var(--sapList_BorderColor)] bg-[var(--sapList_HeaderBackground)]">
-                              <th className="text-left p-3 text-sm sticky left-0 bg-[var(--sapList_HeaderBackground)] z-10">Item</th>
-                              {timeColumns.map((c) => (
-                                <th key={c.key} className="text-right p-3 text-xs whitespace-nowrap">
-                                  {c.canExpand ? (
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center gap-1 ml-auto text-[var(--sapLinkColor,#0a6ed1)] hover:text-[var(--sapLink_Hover_Color,#085caf)]"
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <div className="text-xs text-[var(--sapContent_LabelColor)]">
+                            Preço variável (AVG/AVGInter/C2R) ⇒ exposição ⇒ hedge. Preço fixo ⇒ sem exposição.
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <FioriButton
+                              variant="ghost"
+                              onClick={() => {
+                                setExpandedQuarters({});
+                                setExpandedMonths({});
+                                setExpandedWeeks({});
+                              }}
+                            >
+                              Recolher colunas
+                            </FioriButton>
+                          </div>
+                        </div>
+
+                        <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
+                          <div className="overflow-auto">
+                            <table className="min-w-[900px] w-full">
+                              <thead>
+                                <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                                  <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Entidade</th>
+                                  {timeColumns.map((c) => {
+                                    const canExpand = c.canExpand;
+                                    const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
+                                    const toggle = () => {
+                                      if (!c.canExpand) return;
+                                      if (c.level === 'quarter') {
+                                        setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                        if (c.expanded) {
+                                          setExpandedMonths({});
+                                          setExpandedWeeks({});
+                                        }
+                                        return;
+                                      }
+                                      if (c.level === 'month') {
+                                        setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                        if (c.expanded) setExpandedWeeks({});
+                                        return;
+                                      }
+                                      if (c.level === 'week') {
+                                        setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                      }
+                                    };
+
+                                    return (
+                                      <th key={c.key} className="text-right p-3 text-xs whitespace-nowrap">
+                                        {canExpand ? (
+                                          <button
+                                            type="button"
+                                            className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggle();
+                                            }}
+                                            title="Expandir/recolher"
+                                          >
+                                            <span>{c.label}</span>
+                                            {icon}
+                                          </button>
+                                        ) : (
+                                          <span>{c.label}</span>
+                                        )}
+                                      </th>
+                                    );
+                                  })}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rows.map((r) => {
+                                  const isDeal = r.kind === 'deal';
+                                  const isGroup = r.kind === 'group';
+                                  const collapsed = !!collapsedDeals[r.dealId];
+                                  const isNegative = (v: number) => typeof v === 'number' && v < 0;
+
+                                  // When scope is narrowed, avoid showing other deals.
+                                  if (scope.kind !== 'all' && String(scope.dealId) !== r.dealId) return null;
+
+                                  return (
+                                    <tr
+                                      key={r.key}
+                                      className={`border-b border-[var(--sapList_BorderColor)] ${
+                                        isDeal
+                                          ? 'bg-[var(--sapGroup_ContentBackground)] cursor-pointer hover:bg-[var(--sapList_HoverBackground)]'
+                                          : 'bg-white'
+                                      }`}
                                       onClick={() => {
-                                        if (c.level === 'quarter') {
-                                          setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                        if (r.kind === 'deal' && scope.kind === 'all') {
+                                          setCollapsedDeals((prev) => ({ ...prev, [r.dealId]: !prev[r.dealId] }));
                                           return;
                                         }
-                                        if (c.level === 'month') {
-                                          setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                          return;
-                                        }
-                                        if (c.level === 'week') {
-                                          setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                        if (r.kind === 'contract' && r.entityId) {
+                                          navigate(`/financeiro/contratos?id=${encodeURIComponent(String(r.entityId))}`);
                                         }
                                       }}
                                     >
-                                      {c.label}
-                                      {c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                                    </button>
-                                  ) : (
-                                    <span>{c.label}</span>
-                                  )}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.map((r) => {
-                              const isDeal = r.kind === 'deal';
-                              const isGroup = r.kind === 'group';
-                              const collapsed = !!collapsedDeals[r.dealId];
-                              const isNegative = (v: number) => typeof v === 'number' && v < 0;
+                                      <td
+                                        className={`p-3 text-sm sticky left-0 z-10 ${
+                                          isDeal ? 'bg-[var(--sapGroup_ContentBackground)]' : 'bg-white'
+                                        }`}
+                                        style={{ paddingLeft: `${r.level * 16 + 12}px` }}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          {isDeal && scope.kind === 'all' ? (
+                                            collapsed ? (
+                                              <ChevronRight className="w-4 h-4" />
+                                            ) : (
+                                              <ChevronDown className="w-4 h-4" />
+                                            )
+                                          ) : null}
+                                          <span className={isDeal || isGroup ? "font-['72:Bold',sans-serif]" : ''}>{r.label}</span>
+                                        </div>
+                                      </td>
 
-                              // When scope is narrowed, avoid showing other deals.
-                              if (scope.kind !== 'all' && String(scope.dealId) !== r.dealId) return null;
-
-                              return (
-                                <tr
-                                  key={r.key}
-                                  className={`border-b border-[var(--sapList_BorderColor)] ${
-                                    isDeal
-                                      ? 'bg-[var(--sapGroup_ContentBackground)] cursor-pointer hover:bg-[var(--sapList_HoverBackground)]'
-                                      : 'bg-white'
-                                  }`}
-                                  onClick={() => {
-                                    if (r.kind === 'deal' && scope.kind === 'all') {
-                                      setCollapsedDeals((prev) => ({ ...prev, [r.dealId]: !prev[r.dealId] }));
-                                      return;
-                                    }
-                                    if (r.kind === 'contract' && r.entityId) {
-                                      navigate(`/financeiro/contratos?id=${encodeURIComponent(String(r.entityId))}`);
-                                    }
-                                  }}
-                                >
-                                  <td
-                                    className={`p-3 text-sm sticky left-0 z-10 ${
-                                      isDeal ? 'bg-[var(--sapGroup_ContentBackground)]' : 'bg-white'
-                                    }`}
-                                    style={{ paddingLeft: `${r.level * 16 + 12}px` }}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {isDeal && scope.kind === 'all' ? (
-                                        collapsed ? (
-                                          <ChevronRight className="w-4 h-4" />
-                                        ) : (
-                                          <ChevronDown className="w-4 h-4" />
-                                        )
-                                      ) : null}
-                                      <span className={isDeal || isGroup ? "font-['72:Bold',sans-serif]" : ''}>{r.label}</span>
-                                    </div>
-                                  </td>
                                       {timeColumns.map((c) => {
                                         const v = sumRowForDates(r, c.dates);
                                         return (
@@ -707,54 +706,14 @@ export function CashflowPageIntegrated() {
                                           </td>
                                         );
                                       })}
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {showRawLines ? (
-                      <div className="mt-4 border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
-                        <div className="p-3 border-b border-[var(--sapList_BorderColor)] bg-[var(--sapList_HeaderBackground)]">
-                          <div className="text-sm font-['72:Bold',sans-serif]">Linhas (raw)</div>
-                          <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                            Dados técnicos sob demanda; use para auditoria/checagem.
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
-                        <div className="overflow-auto">
-                          <table className="min-w-[900px] w-full">
-                            <thead>
-                              <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                                <th className="text-left p-3 text-xs">Data</th>
-                                <th className="text-left p-3 text-xs">Tipo</th>
-                                <th className="text-left p-3 text-xs">Entidade</th>
-                                <th className="text-right p-3 text-xs">Valor (USD)</th>
-                                <th className="text-left p-3 text-xs">Referência</th>
-                                <th className="text-left p-3 text-xs">Explicação</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {selectedLines
-                                .slice()
-                                .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-                                .map((l, idx) => (
-                                  <tr key={`${l.entity_type}:${l.entity_id}:${l.date}:${idx}`} className="border-b border-[var(--sapList_BorderColor)]">
-                                    <td className="p-3 text-xs whitespace-nowrap">{formatIsoDate(l.date)}</td>
-                                    <td className="p-3 text-xs whitespace-nowrap">{l.cashflow_type}</td>
-                                    <td className="p-3 text-xs whitespace-nowrap">{l.entity_type} {l.entity_id}</td>
-                                    <td className="p-3 text-xs text-right whitespace-nowrap">{formatUsdSigned(signedAmountUsd(l))}</td>
-                                    <td className="p-3 text-xs whitespace-nowrap">{l.source_reference || '—'}</td>
-                                    <td className="p-3 text-xs">{(l.explanation || '').trim() || '—'}</td>
-                                  </tr>
-                                ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
+                      </>
                     )}
                   </div>
                 </div>

@@ -24,7 +24,6 @@ export const UX_COPY = {
     riskExposure: 'Exposição de Risco',
     rfqs: 'Cotações',
     contracts: 'Contratos',
-    pnl: 'Resultado (P&L)',
     cashflow: 'Fluxo de Caixa',
     reports: 'Relatórios',
     counterparties: 'Contrapartes',
@@ -74,11 +73,6 @@ export const UX_COPY = {
 
     contracts: {
       title: 'Contratos',
-      subtitle: '',
-    },
-
-    pnl: {
-      title: 'Resultado (P&L)',
       subtitle: '',
     },
 

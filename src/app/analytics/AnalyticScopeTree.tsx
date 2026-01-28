@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, FolderTree, RefreshCw } from 'lucide-react';
 
 import type { EntityTreeNode } from '../../types';
-import { useAnalyticsEntityTree } from '../../hooks';
 import { ErrorState, LoadingState, EmptyState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { useAnalyticScope } from './ScopeProvider';
-import { scopeKey } from './scope';
+import { isSameScope, scopeKey } from './scope';
+import { useAnalyticsEntityTreeContext } from './EntityTreeProvider';
 
 function kindLabel(kind: EntityTreeNode['kind']): string {
-  if (kind === 'root') return 'Consolidado';
+  if (kind === 'root') return 'Todos os deals';
   if (kind === 'deal') return 'Deal';
   if (kind === 'so') return 'SO';
   if (kind === 'po') return 'PO';
@@ -55,7 +55,7 @@ export function AnalyticScopeTree() {
   const { scope, setScope } = useAnalyticScope();
   const selectedKey = scopeKey(scope);
 
-  const tree = useAnalyticsEntityTree();
+  const tree = useAnalyticsEntityTreeContext();
 
   const [openDeals, setOpenDeals] = useState<Record<string, boolean>>({});
 
@@ -63,16 +63,15 @@ export function AnalyticScopeTree() {
     const root = tree.data?.root;
     if (!root) return [] as Array<{ node: EntityTreeNode; depth: number }>;
 
-    // Render root + deals, and conditionally deal children.
+    // Deals are the primary entry point. Children are shown under each deal.
     const out: Array<{ node: EntityTreeNode; depth: number }> = [];
-    out.push({ node: root, depth: 0 });
 
     for (const deal of root.children || []) {
-      out.push({ node: deal, depth: 1 });
+      out.push({ node: deal, depth: 0 });
       const isOpen = openDeals[deal.id] ?? true;
       if (!isOpen) continue;
       for (const child of deal.children || []) {
-        out.push({ node: child, depth: 2 });
+        out.push({ node: child, depth: 1 });
       }
     }
 
@@ -121,9 +120,33 @@ export function AnalyticScopeTree() {
       </div>
 
       <div className="flex-1 overflow-auto">
+        <div
+          key="all"
+          className={`flex items-center gap-2 px-3 py-2 border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] cursor-pointer ${
+            selectedKey === 'all' ? 'bg-[var(--sapList_SelectionBackgroundColor)]' : ''
+          }`}
+          style={{ paddingLeft: 12 }}
+          role="button"
+          tabIndex={0}
+          onClick={() => setScope({ kind: 'all' })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setScope({ kind: 'all' });
+            }
+          }}
+          aria-label="Todos os deals"
+        >
+          <span className="w-5" />
+          <div className="min-w-0">
+            <div className="text-sm text-[var(--sapTextColor,#131e29)] truncate">Todos os deals</div>
+          </div>
+        </div>
+
         {rows.map(({ node, depth }) => {
-          const key = node.kind === 'root' ? 'all' : node.id;
-          const isSelected = selectedKey === (node.kind === 'root' ? 'all' : node.id);
+          const key = node.id;
+          const rowScope = deriveScopeFromNode(node);
+          const isSelected = isSameScope(scope, rowScope);
           const isDeal = isDealNode(node);
           const isOpen = isDeal ? (openDeals[node.id] ?? true) : true;
           const indent = depth * 12;
@@ -140,20 +163,20 @@ export function AnalyticScopeTree() {
               onClick={() => {
                 if (isDeal) {
                   setOpenDeals((prev) => ({ ...prev, [node.id]: !(prev[node.id] ?? true) }));
-                  setScope(deriveScopeFromNode(node));
+                  setScope(rowScope);
                   return;
                 }
-                setScope(deriveScopeFromNode(node));
+                setScope(rowScope);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   if (isDeal) {
                     setOpenDeals((prev) => ({ ...prev, [node.id]: !(prev[node.id] ?? true) }));
-                    setScope(deriveScopeFromNode(node));
+                    setScope(rowScope);
                     return;
                   }
-                  setScope(deriveScopeFromNode(node));
+                  setScope(rowScope);
                 }
               }}
               aria-label={`${kindLabel(node.kind)} ${node.label}`}
@@ -176,9 +199,7 @@ export function AnalyticScopeTree() {
 
               <div className="min-w-0">
                 <div className="text-sm text-[var(--sapTextColor,#131e29)] truncate">{node.label}</div>
-                {node.kind !== 'root' && (
-                  <div className="text-[11px] text-[var(--sapContent_LabelColor)]">{kindLabel(node.kind)}</div>
-                )}
+                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">{kindLabel(node.kind)}</div>
               </div>
             </div>
           );
