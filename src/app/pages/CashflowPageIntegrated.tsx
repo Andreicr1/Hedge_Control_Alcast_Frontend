@@ -2,7 +2,7 @@
  * Cashflow Page - Institutional Matrix (Treasury view)
  *
  * Institutional requirement:
- * - Columns = settlement dates
+ * - Columns = settlement dates (expandable: Quarter → Month → Week → Day)
  * - Rows = Deal → SO / PO / Contract hierarchy
  * - Cell = expected settlement value (USD, signed)
  *
@@ -11,19 +11,40 @@
 
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+
 import { useCashflowAnalytic } from '../../hooks';
 import type { CashFlowLine, CashflowAnalyticQueryParams } from '../../types';
+
 import { ErrorState, EmptyState, LoadingState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
-import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import { UX_COPY } from '../ux/copy';
-import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
+import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
+
 import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 
+import { UX_COPY } from '../ux/copy';
+
 function parseIsoDateUtc(dateIso: string): Date {
   return new Date(`${dateIso}T00:00:00Z`);
+}
+
+function isoToday(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function addDaysIso(dateIso: string, days: number): string {
+  const base = new Date(`${dateIso}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() + days);
+  const yyyy = base.getUTCFullYear();
+  const mm = String(base.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(base.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function quarterKey(dateIso: string): { key: string; label: string } {
@@ -44,39 +65,23 @@ function monthKey(dateIso: string): { key: string; label: string } {
 
 function isoWeekKey(dateIso: string): { key: string; label: string } {
   const d = parseIsoDateUtc(dateIso);
-  // ISO week date weeks start on Monday, week 1 contains Jan 4th.
+
+  // ISO week: weeks start Monday; week 1 contains Jan 4.
   const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = tmp.getUTCDay() || 7;
   tmp.setUTCDate(tmp.getUTCDate() + 4 - day);
   const weekYear = tmp.getUTCFullYear();
   const yearStart = new Date(Date.UTC(weekYear, 0, 1));
-  const weekNo = Math.ceil((((tmp.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  const weekNo = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   const ww = String(weekNo).padStart(2, '0');
   return { key: `${weekYear}-W${ww}`, label: `W${ww} ${weekYear}` };
-}
-
-function isoToday(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function addDaysIso(dateIso: string, days: number): string {
-  const base = new Date(`${dateIso}T00:00:00Z`);
-  base.setUTCDate(base.getUTCDate() + days);
-  const yyyy = base.getUTCFullYear();
-  const mm = String(base.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(base.getUTCDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 function formatIsoDate(dateIso?: string | null): string {
   if (!dateIso) return '—';
   const d = new Date(`${dateIso}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return String(dateIso);
-  return d.toLocaleDateString('pt-BR');
+  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 }
 
 function formatUsdSigned(value?: number | null): string {
@@ -87,11 +92,11 @@ function formatUsdSigned(value?: number | null): string {
 }
 
 function signedAmountUsd(line: CashFlowLine): number {
-  const s = line.direction === 'outflow' ? -1 : 1;
-  return s * Number(line.amount || 0);
+  return (line.direction === 'outflow' ? -1 : 1) * Number(line.amount || 0);
 }
 
 type MatrixRowKind = 'deal' | 'group' | 'so' | 'po' | 'contract';
+
 type MatrixRow = {
   key: string;
   kind: MatrixRowKind;
@@ -103,6 +108,7 @@ type MatrixRow = {
 };
 
 type TimeBucketLevel = 'quarter' | 'month' | 'week' | 'day';
+
 type TimeColumn = {
   key: string;
   label: string;
@@ -110,6 +116,20 @@ type TimeColumn = {
   dates: string[];
   canExpand: boolean;
   expanded: boolean;
+};
+
+type TimeTree = {
+  quarters: Array<{
+    key: string;
+    label: string;
+    dates: string[];
+    months: Array<{
+      key: string;
+      label: string;
+      dates: string[];
+      weeks: Array<{ key: string; label: string; dates: string[] }>;
+    }>;
+  }>;
 };
 
 export function CashflowPageIntegrated() {
@@ -128,13 +148,13 @@ export function CashflowPageIntegrated() {
 
   const matrixQuery: CashflowAnalyticQueryParams | null = useMemo(() => {
     if (scope.kind === 'none') return null;
-    if (scope.kind === 'all') return { ...queryBase };
+    if (scope.kind === 'all') return queryBase;
     return { ...queryBase, deal_id: scope.dealId };
   }, [queryBase, scope]);
 
   const cashflow = useCashflowAnalytic(matrixQuery);
-  const [collapsedDeals, setCollapsedDeals] = useState<Record<string, boolean>>({});
 
+  const [collapsedDeals, setCollapsedDeals] = useState<Record<string, boolean>>({});
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({});
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
@@ -142,7 +162,10 @@ export function CashflowPageIntegrated() {
   const lines: CashFlowLine[] = useMemo(() => cashflow.data || [], [cashflow.data]);
 
   const dealIdOfLine = (l: CashFlowLine): string | null => {
-    if (l.entity_type === 'deal') return String(l.entity_id || '').trim() || null;
+    if (l.entity_type === 'deal') {
+      const id = String(l.entity_id || '').trim();
+      return id || null;
+    }
     const pid = String(l.parent_id || '').trim();
     return pid || null;
   };
@@ -153,129 +176,118 @@ export function CashflowPageIntegrated() {
     return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
   }, [lines]);
 
-  const timeTree = useMemo(() => {
-    type WeekNode = { label: string; dates: string[] };
-    type MonthNode = { label: string; dates: string[]; weeks: Map<string, WeekNode> };
-    type QuarterNode = { label: string; dates: string[]; months: Map<string, MonthNode> };
-
-    const quarters = new Map<string, QuarterNode>();
-
-    for (const dateIso of allDates) {
-      const q = quarterKey(dateIso);
-      const m = monthKey(dateIso);
-      const w = isoWeekKey(dateIso);
-
-      const qNode = quarters.get(q.key) || { label: q.label, dates: [], months: new Map<string, MonthNode>() };
-      qNode.dates.push(dateIso);
-
-      const mNode = qNode.months.get(m.key) || { label: m.label, dates: [], weeks: new Map<string, WeekNode>() };
-      mNode.dates.push(dateIso);
-
-      const wNode = mNode.weeks.get(w.key) || { label: w.label, dates: [] };
-      wNode.dates.push(dateIso);
-
-      mNode.weeks.set(w.key, wNode);
-      qNode.months.set(m.key, mNode);
-      quarters.set(q.key, qNode);
-    }
-
-    // Normalize ordering.
-    for (const qNode of quarters.values()) {
-      qNode.dates.sort((a, b) => a.localeCompare(b));
-      for (const mNode of qNode.months.values()) {
-        mNode.dates.sort((a, b) => a.localeCompare(b));
-        for (const wNode of mNode.weeks.values()) {
-          wNode.dates.sort((a, b) => a.localeCompare(b));
-        }
+  const timeTree: TimeTree = useMemo(() => {
+    const quarterMap = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        dates: string[];
+        monthMap: Map<
+          string,
+          {
+            key: string;
+            label: string;
+            dates: string[];
+            weekMap: Map<string, { key: string; label: string; dates: string[] }>;
+          }
+        >;
       }
+    >();
+
+    for (const d of allDates) {
+      const q = quarterKey(d);
+      const m = monthKey(d);
+      const w = isoWeekKey(d);
+
+      let qNode = quarterMap.get(q.key);
+      if (!qNode) {
+        qNode = { key: q.key, label: q.label, dates: [], monthMap: new Map() };
+        quarterMap.set(q.key, qNode);
+      }
+      qNode.dates.push(d);
+
+      let mNode = qNode.monthMap.get(m.key);
+      if (!mNode) {
+        mNode = { key: m.key, label: m.label, dates: [], weekMap: new Map() };
+        qNode.monthMap.set(m.key, mNode);
+      }
+      mNode.dates.push(d);
+
+      let wNode = mNode.weekMap.get(w.key);
+      if (!wNode) {
+        wNode = { key: w.key, label: w.label, dates: [] };
+        mNode.weekMap.set(w.key, wNode);
+      }
+      wNode.dates.push(d);
     }
 
-    return quarters;
+    const quarters = Array.from(quarterMap.values()).sort((a, b) => a.key.localeCompare(b.key));
+
+    return {
+      quarters: quarters.map((q) => {
+        const months = Array.from(q.monthMap.values()).sort((a, b) => a.key.localeCompare(b.key));
+        return {
+          key: q.key,
+          label: q.label,
+          dates: q.dates.slice().sort((a, b) => a.localeCompare(b)),
+          months: months.map((m) => {
+            const weeks = Array.from(m.weekMap.values()).sort((a, b) => a.key.localeCompare(b.key));
+            return {
+              key: m.key,
+              label: m.label,
+              dates: m.dates.slice().sort((a, b) => a.localeCompare(b)),
+              weeks: weeks.map((w) => ({
+                key: w.key,
+                label: w.label,
+                dates: w.dates.slice().sort((a, b) => a.localeCompare(b)),
+              })),
+            };
+          }),
+        };
+      }),
+    };
   }, [allDates]);
 
   const timeColumns: TimeColumn[] = useMemo(() => {
-    const quarterKeys = Array.from(timeTree.keys()).sort((a, b) => {
-      const [ay, aq] = a.split('-Q');
-      const [by, bq] = b.split('-Q');
-      const na = Number(ay) * 10 + Number(aq);
-      const nb = Number(by) * 10 + Number(bq);
-      return na - nb;
-    });
-
     const cols: TimeColumn[] = [];
 
-    for (const qKey of quarterKeys) {
-      const qNode = timeTree.get(qKey);
-      if (!qNode) continue;
-      const hasMonths = qNode.months.size > 0;
-      const qExpanded = !!expandedQuarters[qKey] && hasMonths;
+    for (const q of timeTree.quarters) {
+      const qExpanded = !!expandedQuarters[q.key];
+      const qCanExpand = q.months.length > 0;
 
-      if (!qExpanded) {
-        cols.push({
-          key: qKey,
-          label: qNode.label,
-          level: 'quarter',
-          dates: qNode.dates,
-          canExpand: hasMonths,
-          expanded: qExpanded,
-        });
+      if (!qCanExpand || !qExpanded) {
+        cols.push({ key: q.key, label: q.label, level: 'quarter', dates: q.dates, canExpand: qCanExpand, expanded: qExpanded });
         continue;
       }
 
-      const monthKeys = Array.from(qNode.months.keys()).sort((a, b) => a.localeCompare(b));
-      for (const mKey of monthKeys) {
-        const mNode = qNode.months.get(mKey);
-        if (!mNode) continue;
-        const hasWeeks = mNode.weeks.size > 0;
-        const mExpanded = !!expandedMonths[mKey] && hasWeeks;
+      for (const m of q.months) {
+        const mExpanded = !!expandedMonths[m.key];
+        const mCanExpand = m.weeks.length > 0;
 
-        if (!mExpanded) {
-          cols.push({
-            key: mKey,
-            label: mNode.label,
-            level: 'month',
-            dates: mNode.dates,
-            canExpand: hasWeeks,
-            expanded: mExpanded,
-          });
+        if (!mCanExpand || !mExpanded) {
+          cols.push({ key: m.key, label: m.label, level: 'month', dates: m.dates, canExpand: mCanExpand, expanded: mExpanded });
           continue;
         }
 
-        const weekKeys = Array.from(mNode.weeks.keys()).sort((a, b) => a.localeCompare(b));
-        for (const wKey of weekKeys) {
-          const wNode = mNode.weeks.get(wKey);
-          if (!wNode) continue;
-          const hasDays = wNode.dates.length > 1;
-          const wExpanded = !!expandedWeeks[wKey] && hasDays;
+        for (const w of m.weeks) {
+          const wExpanded = !!expandedWeeks[w.key];
+          const wCanExpand = w.dates.length > 1;
 
-          if (!wExpanded) {
-            cols.push({
-              key: wKey,
-              label: wNode.label,
-              level: 'week',
-              dates: wNode.dates,
-              canExpand: hasDays,
-              expanded: wExpanded,
-            });
+          if (!wCanExpand || !wExpanded) {
+            cols.push({ key: w.key, label: w.label, level: 'week', dates: w.dates, canExpand: wCanExpand, expanded: wExpanded });
             continue;
           }
 
-          for (const d of wNode.dates) {
-            cols.push({
-              key: d,
-              label: formatIsoDate(d),
-              level: 'day',
-              dates: [d],
-              canExpand: false,
-              expanded: false,
-            });
+          for (const d of w.dates) {
+            cols.push({ key: d, label: formatIsoDate(d), level: 'day', dates: [d], canExpand: false, expanded: false });
           }
         }
       }
     }
 
     return cols;
-  }, [timeTree, expandedQuarters, expandedMonths, expandedWeeks]);
+  }, [expandedMonths, expandedQuarters, expandedWeeks, timeTree.quarters]);
 
   const sumRowForDates = (r: MatrixRow, dates: string[]): number => {
     let acc = 0;
@@ -286,11 +298,11 @@ export function CashflowPageIntegrated() {
   const rows: MatrixRow[] = useMemo(() => {
     const byDeal = new Map<string, CashFlowLine[]>();
     for (const l of lines) {
-      const dealId = dealIdOfLine(l);
-      if (!dealId) continue;
-      const list = byDeal.get(dealId) || [];
+      const did = dealIdOfLine(l);
+      if (!did) continue;
+      const list = byDeal.get(did) || [];
       list.push(l);
-      byDeal.set(dealId, list);
+      byDeal.set(did, list);
     }
 
     const dealIds = Array.from(byDeal.keys()).sort((a, b) => {
@@ -309,8 +321,7 @@ export function CashflowPageIntegrated() {
     for (const dealId of dealIds) {
       const dealLines = byDeal.get(dealId) || [];
       const dealIdNum = Number(dealId);
-      const dealLabel =
-        Number.isFinite(dealIdNum) && dealIdNum > 0 ? `Deal #${dealIdNum}` : `Deal ${dealId}`;
+      const dealLabel = Number.isFinite(dealIdNum) && dealIdNum > 0 ? `Deal #${dealIdNum}` : `Deal ${dealId}`;
 
       const dealRow: MatrixRow = {
         key: `deal:${dealId}`,
@@ -321,12 +332,7 @@ export function CashflowPageIntegrated() {
         valuesByDate: {},
       };
 
-      const groupTotals: Record<'so' | 'po' | 'contract', Record<string, number>> = {
-        so: {},
-        po: {},
-        contract: {},
-      };
-
+      const groupTotals: Record<'so' | 'po' | 'contract', Record<string, number>> = { so: {}, po: {}, contract: {} };
       const riskTotals: Record<string, number> = {};
 
       const itemRowsByType: Record<'so' | 'po' | 'contract', Map<string, MatrixRow>> = {
@@ -336,64 +342,55 @@ export function CashflowPageIntegrated() {
       };
 
       for (const l of dealLines) {
+        const date = String(l.date);
         const v = signedAmountUsd(l);
 
-        add(dealRow.valuesByDate, l.date, v);
+        add(dealRow.valuesByDate, date, v);
 
-        // Keep the hierarchy (SO/PO/Contrato) but also include risk in the consolidated view.
-        if (l.cashflow_type === 'risk' || l.confidence === 'risk' || l.entity_type === 'exposure') {
-          add(riskTotals, l.date, v);
+        const cashflowType = String(l.cashflow_type || '').toLowerCase();
+        const confidence = String(l.confidence || '').toLowerCase();
+        const entityType = String(l.entity_type || '').toLowerCase();
+
+        if (cashflowType === 'risk' || confidence === 'risk' || entityType === 'exposure') {
+          add(riskTotals, date, v);
           continue;
         }
 
-        if (l.entity_type !== 'so' && l.entity_type !== 'po' && l.entity_type !== 'contract') continue;
+        if (entityType !== 'so' && entityType !== 'po' && entityType !== 'contract') continue;
+        const type = entityType as 'so' | 'po' | 'contract';
 
-        const type = l.entity_type;
-        add(groupTotals[type], l.date, v);
+        add(groupTotals[type], date, v);
 
-        const key = `${type}:${l.entity_id}`;
+        const entityId = String(l.entity_id);
+        const key = `${type}:${entityId}`;
+
         const map = itemRowsByType[type];
         const existing = map.get(key);
 
+        const sourceReference = String(l.source_reference || '').trim();
         const label =
           type === 'so'
-            ? `SO ${l.source_reference || `#${l.entity_id}`}`
+            ? `SO ${sourceReference || `#${entityId}`}`
             : type === 'po'
-              ? `PO ${l.source_reference || `#${l.entity_id}`}`
-              : `Contrato ${l.entity_id}`;
+              ? `PO ${sourceReference || `#${entityId}`}`
+              : `Contrato ${entityId}`;
 
         const row: MatrixRow =
           existing ||
-          ({
-            key,
-            kind: type,
-            level: 2,
-            dealId,
-            label,
-            entityId: l.entity_id,
-            valuesByDate: {},
-          } as MatrixRow);
+          ({ key, kind: type, level: 2, dealId, label, entityId, valuesByDate: {} } as MatrixRow);
 
-        add(row.valuesByDate, l.date, v);
+        add(row.valuesByDate, date, v);
         map.set(key, row);
       }
 
       out.push(dealRow);
-
       if (collapsedDeals[dealId]) continue;
 
       const pushGroup = (kind: 'so' | 'po' | 'contract', title: string) => {
         const items = Array.from(itemRowsByType[kind].values());
         if (!items.length) return;
 
-        out.push({
-          key: `group:${dealId}:${kind}`,
-          kind: 'group',
-          level: 1,
-          dealId,
-          label: title,
-          valuesByDate: groupTotals[kind],
-        });
+        out.push({ key: `group:${dealId}:${kind}`, kind: 'group', level: 1, dealId, label: title, valuesByDate: groupTotals[kind] });
 
         items.sort((a, b) => a.label.localeCompare(b.label));
         out.push(...items);
@@ -404,19 +401,12 @@ export function CashflowPageIntegrated() {
       pushGroup('contract', 'Contratos');
 
       if (Object.keys(riskTotals).length > 0) {
-        out.push({
-          key: `group:${dealId}:risk`,
-          kind: 'group',
-          level: 1,
-          dealId,
-          label: 'Risco (estimado)',
-          valuesByDate: riskTotals,
-        });
+        out.push({ key: `group:${dealId}:risk`, kind: 'group', level: 1, dealId, label: 'Risco (estimado)', valuesByDate: riskTotals });
       }
     }
 
     return out;
-  }, [lines, collapsedDeals]);
+  }, [collapsedDeals, lines]);
 
   const selectedLines: CashFlowLine[] = useMemo(() => {
     if (scope.kind === 'none') return [];
@@ -437,7 +427,6 @@ export function CashflowPageIntegrated() {
       return lines.filter((l) => l.entity_type === 'po' && String(l.entity_id) === id);
     }
 
-    // contract
     const id = String(scope.contractId);
     return lines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === id);
   }, [lines, scope]);
@@ -448,7 +437,7 @@ export function CashflowPageIntegrated() {
     if (scope.kind === 'deal') return `Deal #${scope.dealId}`;
     if (scope.kind === 'so') return `SO #${scope.soId} · Deal #${scope.dealId}`;
     if (scope.kind === 'po') return `PO #${scope.poId} · Deal #${scope.dealId}`;
-    return `Contrato ${scope.contractId} (Deal #${scope.dealId})`;
+    return `Contrato ${scope.contractId} · Deal #${scope.dealId}`;
   }, [scope]);
 
   const totals = useMemo(() => {
@@ -459,11 +448,7 @@ export function CashflowPageIntegrated() {
       if (v >= 0) inflow += v;
       else outflow += -v;
     }
-    return {
-      inflow,
-      outflow,
-      net: inflow - outflow,
-    };
+    return { inflow, outflow, net: inflow - outflow };
   }, [selectedLines]);
 
   const confidenceTotals = useMemo(() => {
@@ -473,8 +458,9 @@ export function CashflowPageIntegrated() {
 
     for (const l of selectedLines) {
       const v = signedAmountUsd(l);
-      if (l.confidence === 'deterministic') deterministic += v;
-      else if (l.confidence === 'estimated') estimated += v;
+      const c = String(l.confidence || '').toLowerCase();
+      if (c === 'deterministic') deterministic += v;
+      else if (c === 'estimated') estimated += v;
       else risk += v;
     }
 
@@ -485,10 +471,12 @@ export function CashflowPageIntegrated() {
   const showInitialLoading = cashflow.isLoading && !cashflow.data;
 
   return (
-    <AnalyticTwoPaneLayout
-      left={<AnalyticScopeTree />}
-      right={
-        <div className="sap-fiori-page">
+    <FioriFlexibleColumnLayout
+      masterTitle="Escopo"
+      masterContent={<AnalyticScopeTree />}
+      masterWidth={340}
+      detailContent={
+        <div className="sap-fiori-page h-full overflow-y-auto">
           <div className="bg-[var(--sapPageHeader_Background)] border-b border-[var(--sapPageHeader_BorderColor)] -mx-4 -mt-4 px-4 py-4 mb-4">
             <div className="flex items-center justify-between">
               <div>
@@ -500,12 +488,7 @@ export function CashflowPageIntegrated() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <FioriButton
-                  variant="ghost"
-                  icon={<RefreshCw className="w-4 h-4" />}
-                  onClick={cashflow.refetch}
-                  disabled={scope.kind === 'none'}
-                >
+                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch} disabled={scope.kind === 'none'}>
                   Atualizar
                 </FioriButton>
               </div>
@@ -517,27 +500,25 @@ export function CashflowPageIntegrated() {
                 <input
                   className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
                   type="date"
-                  value={queryBase.start_date || ''}
+                  value={String(queryBase.start_date || '')}
                   onChange={(e) => setQueryBase((prev) => ({ ...prev, start_date: e.target.value || undefined }))}
                 />
               </label>
-
               <label className="text-xs text-[var(--sapContent_LabelColor)]">
                 Período (até)
                 <input
                   className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
                   type="date"
-                  value={queryBase.end_date || ''}
+                  value={String(queryBase.end_date || '')}
                   onChange={(e) => setQueryBase((prev) => ({ ...prev, end_date: e.target.value || undefined }))}
                 />
               </label>
-
               <label className="text-xs text-[var(--sapContent_LabelColor)]">
                 Data de corte
                 <input
                   className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
                   type="date"
-                  value={queryBase.as_of || ''}
+                  value={String(queryBase.as_of || '')}
                   onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
                 />
               </label>
@@ -554,171 +535,157 @@ export function CashflowPageIntegrated() {
               </div>
               <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
                 <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Estimado + Risco (USD)</div>
-                <div className="text-sm font-['72:Bold',sans-serif]">
-                  {formatUsdSigned(confidenceTotals.estimated + confidenceTotals.risk)}
-                </div>
+                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(confidenceTotals.estimated + confidenceTotals.risk)}</div>
               </div>
             </div>
           </div>
 
           {scope.kind === 'none' ? (
             <div className="p-6">
-              <EmptyState
-                title="Sem seleção"
-                description="Selecione um deal para visualizar." 
-              />
+              <EmptyState title="Sem seleção" description="Selecione um deal para visualizar." />
             </div>
           ) : (
-            <>
-              {showInitialLoading ? <LoadingState message="Carregando cashflow..." /> : null}
-              {cashflow.isError ? <ErrorState error={cashflow.error || null} onRetry={cashflow.refetch} /> : null}
+            <div className="sap-fiori-section">
+              <div className="sap-fiori-section-content">
+                {showInitialLoading ? (
+                  <LoadingState message="Carregando fluxo de caixa..." />
+                ) : cashflow.isError ? (
+                  <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
+                ) : rows.length === 0 ? (
+                  <EmptyState title={UX_COPY.pages.cashflow.empty} description="Nenhuma linha encontrada no período." />
+                ) : (
+                  <>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="text-xs text-[var(--sapContent_LabelColor)]">
+                        Preço variável (AVG/AVGInter/C2R) ⇒ exposição ⇒ hedge. Preço fixo ⇒ sem exposição.
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <FioriButton
+                          variant="ghost"
+                          onClick={() => {
+                            setExpandedQuarters({});
+                            setExpandedMonths({});
+                            setExpandedWeeks({});
+                          }}
+                        >
+                          Recolher colunas
+                        </FioriButton>
+                      </div>
+                    </div>
 
-              {!showInitialLoading && !cashflow.isError ? (
-                <div className="sap-fiori-section">
-                  <div className="sap-fiori-section-content">
-                    {selectedLines.length === 0 ? (
-                      <EmptyState title={UX_COPY.pages.cashflow.empty} description="Nenhuma linha encontrada no período." />
-                    ) : (
-                      <>
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                            Preço variável (AVG/AVGInter/C2R) ⇒ exposição ⇒ hedge. Preço fixo ⇒ sem exposição.
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <FioriButton
-                              variant="ghost"
-                              onClick={() => {
-                                setExpandedQuarters({});
-                                setExpandedMonths({});
-                                setExpandedWeeks({});
-                              }}
-                            >
-                              Recolher colunas
-                            </FioriButton>
-                          </div>
-                        </div>
+                    <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
+                      <div className="overflow-auto">
+                        <table className="min-w-[900px] w-full">
+                          <thead>
+                            <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                              <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Entidade</th>
+                              {timeColumns.map((c) => {
+                                const canExpand = c.canExpand;
+                                const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
 
-                        <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
-                          <div className="overflow-auto">
-                            <table className="min-w-[900px] w-full">
-                              <thead>
-                                <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                                  <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Entidade</th>
-                                  {timeColumns.map((c) => {
-                                    const canExpand = c.canExpand;
-                                    const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
-                                    const toggle = () => {
-                                      if (!c.canExpand) return;
-                                      if (c.level === 'quarter') {
-                                        setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                        if (c.expanded) {
-                                          setExpandedMonths({});
-                                          setExpandedWeeks({});
-                                        }
-                                        return;
-                                      }
-                                      if (c.level === 'month') {
-                                        setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                        if (c.expanded) setExpandedWeeks({});
-                                        return;
-                                      }
-                                      if (c.level === 'week') {
-                                        setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                      }
-                                    };
+                                const toggle = () => {
+                                  if (!c.canExpand) return;
+                                  if (c.level === 'quarter') {
+                                    setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                    if (c.expanded) {
+                                      setExpandedMonths({});
+                                      setExpandedWeeks({});
+                                    }
+                                    return;
+                                  }
+                                  if (c.level === 'month') {
+                                    setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                    if (c.expanded) setExpandedWeeks({});
+                                    return;
+                                  }
+                                  if (c.level === 'week') {
+                                    setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                  }
+                                };
 
-                                    return (
-                                      <th key={c.key} className="text-right p-3 text-xs whitespace-nowrap">
-                                        {canExpand ? (
-                                          <button
-                                            type="button"
-                                            className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              toggle();
-                                            }}
-                                            title="Expandir/recolher"
-                                          >
-                                            <span>{c.label}</span>
-                                            {icon}
-                                          </button>
+                                return (
+                                  <th key={c.key} className="text-right p-3 text-xs whitespace-nowrap">
+                                    {canExpand ? (
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggle();
+                                        }}
+                                        title="Expandir/recolher"
+                                      >
+                                        <span>{c.label}</span>
+                                        {icon}
+                                      </button>
+                                    ) : (
+                                      <span>{c.label}</span>
+                                    )}
+                                  </th>
+                                );
+                              })}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((r) => {
+                              const isDeal = r.kind === 'deal';
+                              const isGroup = r.kind === 'group';
+                              const collapsed = !!collapsedDeals[r.dealId];
+                              const isNegative = (v: number) => typeof v === 'number' && v < 0;
+
+                              if (scope.kind !== 'all' && String(scope.dealId) !== r.dealId) return null;
+
+                              return (
+                                <tr
+                                  key={r.key}
+                                  className={`border-b border-[var(--sapList_BorderColor)] ${
+                                    isDeal ? 'bg-[var(--sapGroup_ContentBackground)] cursor-pointer hover:bg-[var(--sapList_HoverBackground)]' : 'bg-white'
+                                  }`}
+                                  onClick={() => {
+                                    if (r.kind === 'deal' && scope.kind === 'all') {
+                                      setCollapsedDeals((prev) => ({ ...prev, [r.dealId]: !prev[r.dealId] }));
+                                      return;
+                                    }
+                                    if (r.kind === 'contract' && r.entityId) {
+                                      navigate(`/financeiro/contratos?id=${encodeURIComponent(String(r.entityId))}`);
+                                    }
+                                  }}
+                                >
+                                  <td
+                                    className={`p-3 text-sm sticky left-0 z-10 ${isDeal ? 'bg-[var(--sapGroup_ContentBackground)]' : 'bg-white'}`}
+                                    style={{ paddingLeft: `${r.level * 16 + 12}px` }}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {isDeal && scope.kind === 'all' ? (
+                                        collapsed ? (
+                                          <ChevronRight className="w-4 h-4" />
                                         ) : (
-                                          <span>{c.label}</span>
-                                        )}
-                                      </th>
+                                          <ChevronDown className="w-4 h-4" />
+                                        )
+                                      ) : null}
+                                      <span className={isDeal || isGroup ? "font-['72:Bold',sans-serif]" : ''}>{r.label}</span>
+                                    </div>
+                                  </td>
+
+                                  {timeColumns.map((c) => {
+                                    const v = sumRowForDates(r, c.dates);
+                                    return (
+                                      <td key={`${r.key}:${c.key}`} className="p-3 text-xs text-right whitespace-nowrap">
+                                        <span className={isNegative(v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(v)}</span>
+                                      </td>
                                     );
                                   })}
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {rows.map((r) => {
-                                  const isDeal = r.kind === 'deal';
-                                  const isGroup = r.kind === 'group';
-                                  const collapsed = !!collapsedDeals[r.dealId];
-                                  const isNegative = (v: number) => typeof v === 'number' && v < 0;
-
-                                  // When scope is narrowed, avoid showing other deals.
-                                  if (scope.kind !== 'all' && String(scope.dealId) !== r.dealId) return null;
-
-                                  return (
-                                    <tr
-                                      key={r.key}
-                                      className={`border-b border-[var(--sapList_BorderColor)] ${
-                                        isDeal
-                                          ? 'bg-[var(--sapGroup_ContentBackground)] cursor-pointer hover:bg-[var(--sapList_HoverBackground)]'
-                                          : 'bg-white'
-                                      }`}
-                                      onClick={() => {
-                                        if (r.kind === 'deal' && scope.kind === 'all') {
-                                          setCollapsedDeals((prev) => ({ ...prev, [r.dealId]: !prev[r.dealId] }));
-                                          return;
-                                        }
-                                        if (r.kind === 'contract' && r.entityId) {
-                                          navigate(`/financeiro/contratos?id=${encodeURIComponent(String(r.entityId))}`);
-                                        }
-                                      }}
-                                    >
-                                      <td
-                                        className={`p-3 text-sm sticky left-0 z-10 ${
-                                          isDeal ? 'bg-[var(--sapGroup_ContentBackground)]' : 'bg-white'
-                                        }`}
-                                        style={{ paddingLeft: `${r.level * 16 + 12}px` }}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          {isDeal && scope.kind === 'all' ? (
-                                            collapsed ? (
-                                              <ChevronRight className="w-4 h-4" />
-                                            ) : (
-                                              <ChevronDown className="w-4 h-4" />
-                                            )
-                                          ) : null}
-                                          <span className={isDeal || isGroup ? "font-['72:Bold',sans-serif]" : ''}>{r.label}</span>
-                                        </div>
-                                      </td>
-
-                                      {timeColumns.map((c) => {
-                                        const v = sumRowForDates(r, c.dates);
-                                        return (
-                                          <td key={`${r.key}:${c.key}`} className="p-3 text-xs text-right whitespace-nowrap">
-                                            <span className={isNegative(v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>
-                                              {formatUsdSigned(v)}
-                                            </span>
-                                          </td>
-                                        );
-                                      })}
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           )}
         </div>
       }
@@ -726,3 +693,4 @@ export function CashflowPageIntegrated() {
   );
 }
 
+export default CashflowPageIntegrated;

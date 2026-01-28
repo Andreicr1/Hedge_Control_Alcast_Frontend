@@ -11,8 +11,6 @@ import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColu
 import { FioriTile } from '../components/fiori/FioriTile';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { UX_COPY } from '../ux/copy';
-import { AnalyticTwoPaneLayout } from '../analytics/AnalyticTwoPaneLayout';
-import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 import { 
@@ -760,16 +758,11 @@ export function ContractsPageIntegrated() {
   );
 
   return (
-    <AnalyticTwoPaneLayout
-      left={<AnalyticScopeTree />}
-      right={
-        <FioriFlexibleColumnLayout
-          masterTitle={UX_COPY.pages.contracts.title}
-          masterContent={masterContent}
-          masterWidth={340}
-          detailContent={detailContent}
-        />
-      }
+    <FioriFlexibleColumnLayout
+      masterTitle={UX_COPY.pages.contracts.title}
+      masterContent={masterContent}
+      masterWidth={340}
+      detailContent={detailContent}
     />
   );
 }
