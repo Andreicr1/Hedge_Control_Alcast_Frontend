@@ -8,7 +8,6 @@ import { extractTradeLegs, calculateNotional } from '../../services/contracts.se
 import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
-import { FioriTile } from '../components/fiori/FioriTile';
 import { ContractDocumentsPanel } from '../components/contracts/ContractDocumentsPanel';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { UX_COPY } from '../ux/copy';
@@ -17,9 +16,6 @@ import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 import { 
   Search, 
   FileText, 
-  Calendar,
-  Building2,
-  ArrowRightLeft,
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
@@ -331,66 +327,6 @@ export function ContractsPageIntegrated() {
     return t || '—';
   };
 
-  const renderLegDetailCards = (contract: Contract) => {
-    const legs = contract.legs || [];
-    if (!legs.length) return null;
-
-    return (
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
-          Detalhe das legs
-        </h3>
-
-        <div className="space-y-3">
-          {legs.map((leg, idx) => {
-            const side = (leg.side || '').toLowerCase();
-            const sideLabel = side === 'buy' ? 'Compra' : side === 'sell' ? 'Venda' : leg.side || '—';
-            const qty = leg.quantity_mt ?? 0;
-            const price = leg.price;
-
-            const timeHint =
-              leg.price_type?.toLowerCase() === 'avg'
-                ? (leg.month_name && leg.year ? `${leg.month_name} ${leg.year}` : null)
-                : leg.price_type?.toLowerCase() === 'avginter'
-                  ? (leg.start_date && leg.end_date ? `${new Date(leg.start_date).toLocaleDateString('pt-BR')} → ${new Date(leg.end_date).toLocaleDateString('pt-BR')}` : null)
-                  : leg.price_type?.toLowerCase() === 'c2r'
-                    ? (leg.fixing_date ? `Fixing: ${new Date(leg.fixing_date).toLocaleDateString('pt-BR')}` : null)
-                    : null;
-
-            return (
-              <div
-                key={`${leg.side}-${idx}`}
-                className="p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)]"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                      {sideLabel}
-                    </div>
-                    <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                      {formatPriceTypeLabel(leg.price_type || null)}
-                      {timeHint ? ` • ${timeHint}` : ''}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                      {qty.toLocaleString('pt-BR')} t
-                    </div>
-                    <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                      {price !== null && price !== undefined
-                        ? price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-                        : '—'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
   const renderExposureCoverage = (links: ContractExposureLink[]) => {
     if (!links.length) return null;
 
@@ -479,16 +415,29 @@ export function ContractsPageIntegrated() {
       ? new Date(contract.maturity_date).toLocaleDateString('pt-BR')
       : null;
     
+    const legs = contract.legs || [];
+
+    const renderLegTimeHint = (leg: (typeof legs)[number]) => {
+      const k = (leg.price_type || '').toLowerCase();
+      if (k === 'avg' && leg.month_name && leg.year) return `${leg.month_name} ${leg.year}`;
+      if (k === 'avginter' && leg.start_date && leg.end_date) {
+        return `${new Date(leg.start_date).toLocaleDateString('pt-BR')} → ${new Date(leg.end_date).toLocaleDateString('pt-BR')}`;
+      }
+      if (k === 'c2r' && leg.fixing_date) return `Fixing: ${new Date(leg.fixing_date).toLocaleDateString('pt-BR')}`;
+      return null;
+    };
+
     return (
       <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
-          Estrutura econômica
-        </h3>
+        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-1">Estrutura Econômica</h3>
+        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
+          Base financeira do contrato (legs, nocional, diferença, janelas e vencimento).
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
             <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Preço fixado</div>
-            <div className="font-['72:Bold',sans-serif] text-lg text-[#131e29]">
+            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29] tabular-nums">
               {fixedPrice !== null
                 ? fixedPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
                 : '—'}
@@ -499,8 +448,8 @@ export function ContractsPageIntegrated() {
           </div>
 
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Preço variável</div>
-            <div className="font-['72:Bold',sans-serif] text-lg text-[#131e29]">
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Referência variável</div>
+            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
               {variableLabel || formatPriceTypeLabel(contract.variable_leg?.price_type || undefined)}
             </div>
             <div className="text-xs text-[var(--sapContent_LabelColor)]">
@@ -508,97 +457,92 @@ export function ContractsPageIntegrated() {
             </div>
           </div>
         </div>
-        
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          {/* Buy Leg */}
-          <div className="p-3 bg-[var(--sapSuccessBackground,#f1fdf6)] rounded border border-[var(--sapSuccessBorderColor,#107e3e)]">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-[var(--sapPositiveColor)]"></div>
-              <span className="font-['72:Bold',sans-serif] text-sm text-[var(--sapPositiveColor)]">Compra</span>
-            </div>
-            {buyLeg ? (
-              <>
-                <div className="text-2xl font-['72:Bold',sans-serif] text-[#131e29]">
-                  {formatNumber(buyLeg.price, { minimumFractionDigits: 2 })}
-                </div>
-                <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                  {buyLeg.volume_mt?.toLocaleString('pt-BR')} t
-                </div>
-                {buyLeg.price_type && (
-                  <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                    {formatPriceTypeLabel(buyLeg.price_type)}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-sm text-[var(--sapContent_LabelColor)]">—</div>
-            )}
-          </div>
-          
-          {/* Sell Leg */}
-          <div className="p-3 bg-[var(--sapErrorBackground,#ffebeb)] rounded border border-[var(--sapErrorBorderColor,#b00)]">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-[var(--sapNegativeColor)]"></div>
-              <span className="font-['72:Bold',sans-serif] text-sm text-[var(--sapNegativeColor)]">Venda</span>
-            </div>
-            {sellLeg ? (
-              <>
-                <div className="text-2xl font-['72:Bold',sans-serif] text-[#131e29]">
-                  {formatNumber(sellLeg.price, { minimumFractionDigits: 2 })}
-                </div>
-                <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                  {sellLeg.volume_mt?.toLocaleString('pt-BR')} t
-                </div>
-                {sellLeg.price_type && (
-                  <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                    {formatPriceTypeLabel(sellLeg.price_type)}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-sm text-[var(--sapContent_LabelColor)]">—</div>
-            )}
-          </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border border-[var(--sapList_BorderColor)]">
+            <thead className="bg-[var(--sapList_HeaderBackground)]">
+              <tr>
+                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Leg</th>
+                <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Preço</th>
+                <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Quantidade (t)</th>
+                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Tipo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-[var(--sapList_BorderColor)]">
+                <td className="px-3 py-2 font-['72:Bold',sans-serif] text-[#131e29]">Compra</td>
+                <td className="px-3 py-2 text-right tabular-nums">{buyLeg ? formatNumber(buyLeg.price, { minimumFractionDigits: 2 }) : '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{buyLeg ? formatNumber(buyLeg.volume_mt, { maximumFractionDigits: 0 }) : '—'}</td>
+                <td className="px-3 py-2">{buyLeg?.price_type ? formatPriceTypeLabel(buyLeg.price_type) : '—'}</td>
+              </tr>
+              <tr className="border-t border-[var(--sapList_BorderColor)]">
+                <td className="px-3 py-2 font-['72:Bold',sans-serif] text-[#131e29]">Venda</td>
+                <td className="px-3 py-2 text-right tabular-nums">{sellLeg ? formatNumber(sellLeg.price, { minimumFractionDigits: 2 }) : '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{sellLeg ? formatNumber(sellLeg.volume_mt, { maximumFractionDigits: 0 }) : '—'}</td>
+                <td className="px-3 py-2">{sellLeg?.price_type ? formatPriceTypeLabel(sellLeg.price_type) : '—'}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        
-        {/* Spread & Notional */}
-        <div className="grid grid-cols-2 gap-4 pt-3 border-t border-[var(--sapGroup_ContentBorderColor)]">
-          <div>
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Diferença</div>
-            <div className={`font-['72:Bold',sans-serif] text-lg ${
-              spread != null && spread < 0 ? 'text-[var(--sapPositiveColor)]' : 'text-[#131e29]'
-            }`}>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Diferença (Compra − Venda)</div>
+            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29] tabular-nums">
               {spread != null ? formatNumber(spread, { minimumFractionDigits: 2 }) : '—'}
             </div>
           </div>
-          <div>
+          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
             <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Valor nocional</div>
-            <div className="font-['72:Bold',sans-serif] text-lg text-[#131e29]">
+            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29] tabular-nums">
               {formatNumber(notional, { minimumFractionDigits: 2 })}
             </div>
           </div>
-        </div>
-
-        <div className="pt-3 mt-3 border-t border-[var(--sapGroup_ContentBorderColor)]">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Vencimento</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                {maturity || '—'}
-              </div>
+          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Status pós-vencimento</div>
+            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
+              {display.label}
             </div>
-            <div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Status pós-vencimento</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                {display.label}
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-3 mt-3 border-t border-[var(--sapGroup_ContentBorderColor)] text-xs text-[var(--sapContent_LabelColor)]">
-            {obsStart && obsEnd ? `Janela de observação: ${obsStart} → ${obsEnd}` : '—'}
+            <div className="text-xs text-[var(--sapContent_LabelColor)]">Vencimento: {maturity || '—'}</div>
           </div>
         </div>
+
+        {legs.length > 0 && (
+          <div className="mt-4">
+            <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] mb-2">
+              Leitura técnica (detalhe das legs)
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border border-[var(--sapList_BorderColor)]">
+                <thead className="bg-[var(--sapList_HeaderBackground)]">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Side</th>
+                    <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Qtd (t)</th>
+                    <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Preço</th>
+                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Tipo</th>
+                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Período/Regra</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {legs.map((leg, idx) => {
+                    const side = (leg.side || '').toLowerCase();
+                    const sideLabel = side === 'buy' ? 'Compra' : side === 'sell' ? 'Venda' : leg.side || '—';
+                    const timeHint = renderLegTimeHint(leg);
+                    return (
+                      <tr key={`${leg.side}-${idx}`} className="border-t border-[var(--sapList_BorderColor)]">
+                        <td className="px-3 py-2 font-['72:Bold',sans-serif] text-[#131e29]">{sideLabel}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(leg.quantity_mt, { maximumFractionDigits: 0 })}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{leg.price != null ? formatNumber(leg.price, { minimumFractionDigits: 2 }) : '—'}</td>
+                        <td className="px-3 py-2">{formatPriceTypeLabel(leg.price_type || null)}</td>
+                        <td className="px-3 py-2 text-[var(--sapContent_LabelColor)]">{timeHint || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -612,18 +556,21 @@ export function ContractsPageIntegrated() {
 
     return (
       <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">Liquidação</h3>
+        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-1">Liquidação e Impacto Financeiro</h3>
+        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
+          Data de settlement, ajuste final (USD) e critério utilizado.
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Settlement Date</div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Data de liquidação</div>
             <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
               {settlementDate || '—'}
             </div>
           </div>
 
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Ajuste (USD)</div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Ajuste final (USD)</div>
             <div
               className={`font-['72:Black',sans-serif] text-lg ${
                 (adj ?? 0) >= 0
@@ -635,12 +582,23 @@ export function ContractsPageIntegrated() {
             </div>
             {contract.settlement_adjustment_methodology && (
               <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                {contract.settlement_adjustment_methodology}
-                {contract.settlement_adjustment_locked ? ' (locked)' : ''}
+                Critério: {contract.settlement_adjustment_methodology}
+                {contract.settlement_adjustment_locked ? ' • bloqueado' : ''}
               </div>
             )}
           </div>
         </div>
+
+        {contract.settlement_meta && (
+          <details className="mt-3">
+            <summary className="text-sm text-[#0064d9] cursor-pointer select-none">
+              Ver metadados de liquidação
+            </summary>
+            <pre className="mt-2 text-xs p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)] overflow-auto">
+              {JSON.stringify(contract.settlement_meta, null, 2)}
+            </pre>
+          </details>
+        )}
       </div>
     );
   };
@@ -668,74 +626,94 @@ export function ContractsPageIntegrated() {
           </FioriButton>
         </div>
 
-        {/* (1) Identidade e rastreabilidade */}
+        {/* (1) Identidade, rastreabilidade e vínculos */}
         <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-3">Identidade e rastreabilidade</h3>
-
-          <div className="bg-[var(--sapGroup_ContentBackground)] rounded p-3 border border-[var(--sapGroup_ContentBorderColor)] mb-3">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Identificador do contrato</div>
-            <div className="font-['72:Regular',sans-serif] text-sm text-[#131e29] break-all">{selectedContract.contract_id}</div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <FioriTile
-              title="Estrutura"
-              value={`#${selectedContract.trade_index ?? 0}`}
-              icon={<ArrowRightLeft className="w-4 h-4" />}
-            />
-            <FioriTile
-              title="Liquidação"
-              value={selectedContract.settlement_date 
-                ? new Date(selectedContract.settlement_date).toLocaleDateString('pt-BR')
-                : '—'}
-              icon={<Calendar className="w-4 h-4" />}
-            />
-            <FioriTile
-              title="Operação"
-              value={`#${selectedContract.deal_id}`}
-              icon={<FileText className="w-4 h-4" />}
-            />
-            <FioriTile
-              title="Cotação"
-              value={`#${selectedContract.rfq_id}`}
-              icon={<FileText className="w-4 h-4" />}
-            />
-          </div>
-        </div>
-
-        {/* Counterparty */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-2">
-            Contraparte
+          <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-1">
+            Identidade e Rastreabilidade
           </h3>
-          <div className="flex items-center gap-2 text-sm text-[#131e29]">
-            <Building2 className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-            <span>
-              {selectedContract.counterparty?.name ||
-                selectedContract.counterparty_name ||
-                (selectedContract.counterparty_id
-                  ? `Contraparte #${selectedContract.counterparty_id}`
-                  : '—')}
-            </span>
+          <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
+            Registro operacional derivado de RFQ/Deal, com chaves de auditoria e vínculo com contraparte.
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Contrato (ID)</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] break-all">
+                {selectedContract.contract_id}
+              </div>
+            </div>
+
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Contraparte</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
+                {selectedContract.counterparty?.name ||
+                  selectedContract.counterparty_name ||
+                  (selectedContract.counterparty_id
+                    ? `Contraparte #${selectedContract.counterparty_id}`
+                    : '—')}
+              </div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)]">
+                {selectedContract.counterparty_id ? `ID: ${selectedContract.counterparty_id}` : '—'}
+              </div>
+            </div>
+
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Operação (Deal)</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">#{selectedContract.deal_id}</div>
+            </div>
+
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">RFQ</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">#{selectedContract.rfq_id}</div>
+            </div>
+
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Estrutura (trade_index)</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">#{selectedContract.trade_index ?? 0}</div>
+            </div>
+
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Quote group</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] break-all">
+                {selectedContract.quote_group_id || '—'}
+              </div>
+            </div>
+
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Data de liquidação</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
+                {selectedContract.settlement_date
+                  ? new Date(selectedContract.settlement_date).toLocaleDateString('pt-BR')
+                  : '—'}
+              </div>
+            </div>
+
+            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Criado em</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
+                {selectedContract.created_at
+                  ? new Date(selectedContract.created_at).toLocaleString('pt-BR')
+                  : '—'}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* (2) Estrutura econômica */}
+        {/* (2) Estrutura econômica (bloco dominante) */}
         {renderEconomicStructure(selectedContract)}
 
-        {/* (3) Leitura técnica das legs */}
-        {renderLegDetailCards(selectedContract)}
-
-        {/* (4) Liquidação */}
+        {/* (3) Liquidação e impacto financeiro */}
         {renderSettlementSummary(selectedContract)}
 
-        {/* (5) Cobertura de exposição */}
+        {/* (4) Cobertura de exposição */}
         {renderExposureCoverage(selectedContractExposures)}
 
-        {/* (6) Documentos do contrato */}
-        <ContractDocumentsPanel contract={selectedContract} />
+        {/* (5) Documentos do contrato (repositório central) */}
+        <div className="rounded-lg border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)] p-1">
+          <ContractDocumentsPanel contract={selectedContract} />
+        </div>
 
-        {/* Links */}
+        {/* (6) Links relacionados (discreto) */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
             Links Relacionados
@@ -763,11 +741,11 @@ export function ContractsPageIntegrated() {
             </button>
             {selectedContract.counterparty_id && (
               <div className="flex items-center gap-2 p-3 bg-[var(--sapGroup_ContentBackground)] rounded">
-                <Building2 className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
+                <FileText className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
                 <span className="text-sm">
-                  {selectedContract.counterparty?.name ||
+                  Contraparte: {selectedContract.counterparty?.name ||
                     selectedContract.counterparty_name ||
-                    `Contraparte #${selectedContract.counterparty_id}`}
+                    `#${selectedContract.counterparty_id}`}
                 </span>
               </div>
             )}

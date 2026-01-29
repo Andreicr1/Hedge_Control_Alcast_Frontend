@@ -30,6 +30,43 @@ export interface ContractDocumentsPanelProps {
   contract: Contract;
 }
 
+function toInstitutionalError(err: unknown, action: 'upload' | 'view' | 'download'): string {
+  const genericByAction: Record<'upload' | 'view' | 'download', string> = {
+    upload: 'Falha ao enviar o documento. Tente novamente. Se o erro persistir, contate o suporte.',
+    view: 'Falha ao abrir o documento. Tente novamente. Se o erro persistir, contate o suporte.',
+    download: 'Falha ao baixar o documento. Tente novamente. Se o erro persistir, contate o suporte.',
+  };
+
+  const statusCode = (() => {
+    if (typeof err === 'object' && err) {
+      const anyErr = err as any;
+      if (typeof anyErr.status_code === 'number') return anyErr.status_code as number;
+      if (typeof anyErr.status === 'number') return anyErr.status as number;
+    }
+    if (err instanceof Error) {
+      const m = err.message || '';
+      const match = m.match(/\bHTTP\s+(\d{3})\b/i);
+      if (match) return Number(match[1]);
+    }
+    return null;
+  })();
+
+  if (statusCode === 401) return 'Sessão expirada. Faça login novamente e repita a operação.';
+  if (statusCode === 403) return 'Acesso negado para este contrato/documento.';
+  if (statusCode === 404) return 'Documento não encontrado (pode ter sido removido ou substituído).';
+  if (statusCode === 413) return 'Arquivo excede o limite aceito pelo servidor. Reduza o tamanho e tente novamente.';
+  if (statusCode === 415) return 'Tipo de arquivo não suportado. Envie um PDF.';
+  if (statusCode === 422) return 'Arquivo inválido ou metadados inconsistentes. Verifique o PDF e tente novamente.';
+
+  if (typeof err === 'object' && err) {
+    const anyErr = err as any;
+    const detail = typeof anyErr.detail === 'string' ? anyErr.detail : null;
+    if (detail && detail.trim()) return detail;
+  }
+
+  return genericByAction[action];
+}
+
 export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps) {
   const contractId = contract.contract_id;
 
@@ -76,8 +113,8 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
       setUploading(true);
       try {
         await upload(file);
-      } catch {
-        setLocalError('Não foi possível enviar o documento.');
+      } catch (err) {
+        setLocalError(toInstitutionalError(err, 'upload'));
       } finally {
         setUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -98,8 +135,8 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
         setViewerTitle(`Contrato assinado • v${doc.version}`);
         setViewerUrl(url);
         setViewerOpen(true);
-      } catch {
-        setLocalError('Não foi possível abrir o documento.');
+      } catch (err) {
+        setLocalError(toInstitutionalError(err, 'view'));
       }
     },
     [contractId, viewerUrl],
@@ -118,8 +155,8 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-      } catch {
-        setLocalError('Não foi possível baixar o documento.');
+      } catch (err) {
+        setLocalError(toInstitutionalError(err, 'download'));
       }
     },
     [contractId],
@@ -151,7 +188,7 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
               if (f) void handleUploadSelected(f);
             }}
           />
-          <FioriButton variant="primary" onClick={handlePickFile} disabled={uploading}>
+          <FioriButton variant="emphasized" onClick={handlePickFile} disabled={uploading}>
             {uploading ? 'Enviando…' : 'Upload (PDF)'}
           </FioriButton>
           <FioriButton variant="ghost" onClick={refetch}>
