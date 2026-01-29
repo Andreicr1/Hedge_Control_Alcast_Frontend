@@ -129,6 +129,19 @@ type DealCompositionNode = {
   dealId: number;
 };
 
+type GridRowKind = 'deal' | 'group-physical' | 'so' | 'po' | 'group-financial' | 'contract' | 'total';
+
+type GridRow = {
+  key: string;
+  dealId?: number;
+  kind: GridRowKind;
+  label: string;
+  level: number;
+  soId?: string;
+  poId?: string;
+  contractId?: string;
+};
+
 function isNegative(value: number): boolean {
   return typeof value === 'number' && value < 0;
 }
@@ -254,6 +267,27 @@ function sumByConfidenceForDates(lines: CashFlowLine[], dates: string[]): Record
     out[k] += signedAmountUsd(l);
   }
   return out;
+}
+
+function sumContractSettlementByConfidenceForDates(dealLines: CashFlowLine[], contractId: string, dates: string[]): Record<CashflowConfidenceBucket, number> {
+  const dateSet = new Set(dates);
+  const out: Record<CashflowConfidenceBucket, number> = { deterministic: 0, estimated: 0, risk: 0 };
+  for (const l of dealLines) {
+    if (String(l.entity_type || '').toLowerCase() !== 'contract') continue;
+    if (String(l.entity_id) !== contractId) continue;
+    const d = String(l.date);
+    if (!dateSet.has(d)) continue;
+    const k = classifyConfidence(l);
+    // Net settlement adjustment: Leg Vendida − Leg Comprada.
+    out[k] += signedAmountUsd(l);
+  }
+  return out;
+}
+
+function parseSelectedLeafKey(key: SelectionLeafKey): { dealId: number; kind: 'so' | 'po' | 'contract'; id: string } | null {
+  const m = /^deal:(\d+):(so|po|contract):(.+)$/.exec(key);
+  if (!m) return null;
+  return { dealId: Number(m[1]), kind: m[2] as 'so' | 'po' | 'contract', id: String(m[3]) };
 }
 
 function groupDealsByCompany(deals: Deal[]): Array<{ company: string; deals: Deal[] }> {
@@ -594,13 +628,139 @@ export function CashflowPageIntegrated() {
         continue;
       }
 
-      // Deal summary lines: include when any selection exists for that deal.
-      if (entityType === 'deal' && (hasPhysicalSelectionByDeal.get(did) || hasFinancialSelectionByDeal.get(did))) {
-        out.push(l);
-      }
+      // Do not include deal-summary lines to avoid double counting in detailed view.
     }
     return out;
   }, [lines, selectedDealIds, selectedLeafKeys]);
+
+  const selectedStructureByDeal = useMemo(() => {
+    const map = new Map<
+      number,
+      {
+        soIds: Set<string>;
+        poIds: Set<string>;
+        contractIds: Set<string>;
+      }
+    >();
+
+    for (const k of selectedLeafKeys) {
+      const parsed = parseSelectedLeafKey(k);
+      if (!parsed) continue;
+      if (!selectedDealIds.has(parsed.dealId)) continue;
+      const entry = map.get(parsed.dealId) || { soIds: new Set<string>(), poIds: new Set<string>(), contractIds: new Set<string>() };
+      if (parsed.kind === 'so') entry.soIds.add(parsed.id);
+      if (parsed.kind === 'po') entry.poIds.add(parsed.id);
+      if (parsed.kind === 'contract') entry.contractIds.add(parsed.id);
+      map.set(parsed.dealId, entry);
+    }
+
+    return map;
+  }, [selectedDealIds, selectedLeafKeys]);
+
+  const gridRows: GridRow[] = useMemo(() => {
+    const rows: GridRow[] = [];
+
+    for (const d of selectedDeals) {
+      const did = d.id;
+      const sel = selectedStructureByDeal.get(did);
+      if (!sel) continue;
+
+      const soIds = Array.from(sel.soIds.values()).sort((a, b) => a.localeCompare(b));
+      const poIds = Array.from(sel.poIds.values()).sort((a, b) => a.localeCompare(b));
+      const contractIds = Array.from(sel.contractIds.values()).sort((a, b) => a.localeCompare(b));
+
+      const hasPhysical = soIds.length + poIds.length > 0;
+      const hasFinancial = contractIds.length > 0;
+      const hasAny = hasPhysical || hasFinancial;
+      if (!hasAny) continue;
+
+      rows.push({ key: `deal:${did}:row`, dealId: did, kind: 'deal', label: dealLabel(d), level: 0 });
+
+      if (hasPhysical) {
+        rows.push({ key: `deal:${did}:row:physical`, dealId: did, kind: 'group-physical', label: 'Físico', level: 1 });
+        for (const soId of soIds) rows.push({ key: soLeafKey(did, soId), dealId: did, kind: 'so', label: `SO ${soId}`, level: 2, soId });
+        for (const poId of poIds) rows.push({ key: poLeafKey(did, poId), dealId: did, kind: 'po', label: `PO ${poId}`, level: 2, poId });
+      }
+
+      if (hasFinancial) {
+        rows.push({ key: `deal:${did}:row:financial`, dealId: did, kind: 'group-financial', label: 'Financeiro', level: 1 });
+        for (const cid of contractIds) rows.push({ key: contractLeafKey(did, cid), dealId: did, kind: 'contract', label: `Contrato Hedge ${cid}`, level: 2, contractId: cid });
+      }
+    }
+
+    // Total geral (selected scope)
+    if (rows.length) rows.push({ key: 'total:row', kind: 'total', label: 'Total geral', level: 0 });
+    return rows;
+  }, [selectedDeals, selectedStructureByDeal]);
+
+  const rowSumsForDates = useCallback(
+    (row: GridRow, dates: string[]) => {
+      if (row.kind === 'total') return sumByConfidenceForDates(filteredLines, dates);
+      if (!row.dealId) return { deterministic: 0, estimated: 0, risk: 0 };
+
+      const dealLines = linesByDeal.get(row.dealId) || [];
+      const sel = selectedStructureByDeal.get(row.dealId);
+      if (!sel) return { deterministic: 0, estimated: 0, risk: 0 };
+
+      if (row.kind === 'deal') {
+        // Deal totals over the selected components only.
+        const subset: CashFlowLine[] = [];
+        for (const l of dealLines) {
+          const et = String(l.entity_type || '').toLowerCase();
+          const eid = String(l.entity_id);
+          if (et === 'so' && sel.soIds.has(eid)) subset.push(l);
+          else if (et === 'po' && sel.poIds.has(eid)) subset.push(l);
+          else if (et === 'contract' && sel.contractIds.has(eid)) subset.push(l);
+          else {
+            const isRiskish = classifyConfidence(l) === 'risk';
+            if (isRiskish && sel.contractIds.size > 0) subset.push(l);
+          }
+        }
+        return sumByConfidenceForDates(subset, dates);
+      }
+
+      if (row.kind === 'group-physical') {
+        const subset = dealLines.filter((l) => {
+          const et = String(l.entity_type || '').toLowerCase();
+          const eid = String(l.entity_id);
+          return (et === 'so' && sel.soIds.has(eid)) || (et === 'po' && sel.poIds.has(eid));
+        });
+        return sumByConfidenceForDates(subset, dates);
+      }
+
+      if (row.kind === 'so' && row.soId) {
+        const subset = dealLines.filter((l) => String(l.entity_type || '').toLowerCase() === 'so' && String(l.entity_id) === row.soId);
+        return sumByConfidenceForDates(subset, dates);
+      }
+
+      if (row.kind === 'po' && row.poId) {
+        const subset = dealLines.filter((l) => String(l.entity_type || '').toLowerCase() === 'po' && String(l.entity_id) === row.poId);
+        return sumByConfidenceForDates(subset, dates);
+      }
+
+      if (row.kind === 'group-financial') {
+        const subset: CashFlowLine[] = [];
+        for (const l of dealLines) {
+          const et = String(l.entity_type || '').toLowerCase();
+          const eid = String(l.entity_id);
+          if (et === 'contract' && sel.contractIds.has(eid)) subset.push(l);
+          else {
+            const isRiskish = classifyConfidence(l) === 'risk';
+            if (isRiskish && sel.contractIds.size > 0) subset.push(l);
+          }
+        }
+        return sumByConfidenceForDates(subset, dates);
+      }
+
+      if (row.kind === 'contract' && row.contractId) {
+        // One row per contract with net settlement adjustment (vendida − comprada).
+        return sumContractSettlementByConfidenceForDates(dealLines, row.contractId, dates);
+      }
+
+      return { deterministic: 0, estimated: 0, risk: 0 };
+    },
+    [filteredLines, linesByDeal, selectedStructureByDeal]
+  );
 
   const allDates = useMemo(() => {
     const set = new Set<string>();
@@ -922,8 +1082,8 @@ export function CashflowPageIntegrated() {
                       <LoadingState message="Carregando fluxo de caixa..." />
                     ) : cashflow.isError ? (
                       <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
-                    ) : filteredLines.length === 0 ? (
-                      <EmptyState title="Sem dados" description="Sem dados para o período." />
+                    ) : gridRows.length === 0 ? (
+                      <EmptyState title="Sem dados" description="Sem itens selecionados para o período." />
                     ) : timeColumns.length === 0 ? (
                       <EmptyState title="Sem dados" description="Sem dados para o período." />
                     ) : (
@@ -1000,36 +1160,52 @@ export function CashflowPageIntegrated() {
                               </tr>
                             </thead>
                             <tbody>
-                              <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                                <td className="p-3 text-sm sticky left-0 z-10 bg-white font-['72:Bold',sans-serif]">Total</td>
-                                {timeColumns.flatMap((c) => {
-                                  const sums = sumByConfidenceForDates(filteredLines, c.dates);
-                                  const cells: Array<{ key: string; v: number }> = [
-                                    { key: `${c.key}:det`, v: sums.deterministic },
-                                    { key: `${c.key}:est`, v: sums.estimated },
-                                    { key: `${c.key}:risk`, v: sums.risk },
-                                  ];
-                                  return cells.map((cell) => (
-                                    <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap">
-                                      <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
-                                    </td>
-                                  ));
-                                })}
+                              {gridRows.map((row) => {
+                                const isTotal = row.kind === 'total';
+                                const isDeal = row.kind === 'deal';
+                                const isGroup = row.kind === 'group-physical' || row.kind === 'group-financial';
 
-                                {(() => {
-                                  const totalSums = sumByConfidenceForDates(filteredLines, allDates);
-                                  const cells: Array<{ key: string; v: number }> = [
-                                    { key: 'total:det', v: totalSums.deterministic },
-                                    { key: 'total:est', v: totalSums.estimated },
-                                    { key: 'total:risk', v: totalSums.risk },
-                                  ];
-                                  return cells.map((cell) => (
-                                    <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap bg-[var(--sapList_HeaderBackground)]">
-                                      <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
+                                const leftCellClass = isTotal || isDeal || isGroup ? "font-['72:Bold',sans-serif]" : '';
+                                const leftBg = isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-white';
+
+                                return (
+                                  <tr key={row.key} className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                                    <td className={`p-3 text-sm sticky left-0 z-10 ${leftBg} ${leftCellClass}`}>
+                                      <div style={{ paddingLeft: `${row.level * 14}px` }}>
+                                        {isDeal ? row.label : row.kind === 'group-physical' ? `${row.label}` : row.kind === 'group-financial' ? `${row.label}` : row.label}
+                                      </div>
                                     </td>
-                                  ));
-                                })()}
-                              </tr>
+
+                                    {timeColumns.flatMap((c) => {
+                                      const sums = rowSumsForDates(row, c.dates);
+                                      const cells: Array<{ key: string; v: number }> = [
+                                        { key: `${row.key}:${c.key}:det`, v: sums.deterministic },
+                                        { key: `${row.key}:${c.key}:est`, v: sums.estimated },
+                                        { key: `${row.key}:${c.key}:risk`, v: sums.risk },
+                                      ];
+                                      return cells.map((cell) => (
+                                        <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap">
+                                          <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
+                                        </td>
+                                      ));
+                                    })}
+
+                                    {(() => {
+                                      const totalSums = rowSumsForDates(row, allDates);
+                                      const cells: Array<{ key: string; v: number }> = [
+                                        { key: `${row.key}:total:det`, v: totalSums.deterministic },
+                                        { key: `${row.key}:total:est`, v: totalSums.estimated },
+                                        { key: `${row.key}:total:risk`, v: totalSums.risk },
+                                      ];
+                                      return cells.map((cell) => (
+                                        <td key={cell.key} className={`p-2 text-xs text-right whitespace-nowrap ${isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-[var(--sapList_HeaderBackground)]'}`}>
+                                          <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
+                                        </td>
+                                      ));
+                                    })()}
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
