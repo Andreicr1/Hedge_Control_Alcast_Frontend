@@ -11,8 +11,9 @@
  * - GET /deals (scope list)
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { flexRender, getCoreRowModel, type ColumnDef, useReactTable } from '@tanstack/react-table';
 
 import type { ApiError, CashFlowLine, CashflowAnalyticQueryParams, Deal } from '../../types';
 import { getCashflowAnalytic } from '../../services/cashflow.service';
@@ -21,6 +22,8 @@ import { listDeals } from '../../services/deals.service';
 import { ErrorState, EmptyState, LoadingState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
+import { TreeNode as TreeNodeView } from '../components/tree/TreeNode';
+import { findNodeById, useCashflowScopeTreeStore, walkNodes, type TreeNode as ScopeTreeNode } from '../stores/cashflowScopeTree.store';
 
 import { UX_COPY } from '../ux/copy';
 
@@ -107,7 +110,42 @@ function signedAmountUsd(line: CashFlowLine): number {
   return (line.direction === 'outflow' ? -1 : 1) * Number(line.amount || 0);
 }
 
-type SelectionLeafKey = string;
+function entityNodeId(entity: string): string {
+  return `entity:${entity}`;
+}
+
+function dealNodeId(dealId: number): string {
+  return `deal:${dealId}`;
+}
+
+function flowNodeId(dealId: number, flow: 'physical' | 'financial'): string {
+  return `flow:${dealId}:${flow}`;
+}
+
+function instrumentNodeId(dealId: number, instrumentType: 'SO' | 'PO' | 'Contract', instrumentId: string): string {
+  return `instrument:${dealId}:${instrumentType}:${instrumentId}`;
+}
+
+function parseDealIdFromNodeId(id: string): number | null {
+  const m = /^deal:(\d+)$/.exec(id);
+  if (!m) return null;
+  const v = Number(m[1]);
+  return Number.isFinite(v) ? v : null;
+}
+
+function parseFlowFromNodeId(id: string): { dealId: number; flow: 'physical' | 'financial' } | null {
+  const m = /^flow:(\d+):(physical|financial)$/.exec(id);
+  if (!m) return null;
+  return { dealId: Number(m[1]), flow: m[2] as 'physical' | 'financial' };
+}
+
+function parseInstrumentFromNodeId(
+  id: string
+): { dealId: number; instrumentType: 'SO' | 'PO' | 'Contract'; instrumentId: string } | null {
+  const m = /^instrument:(\d+):(SO|PO|Contract):(.+)$/.exec(id);
+  if (!m) return null;
+  return { dealId: Number(m[1]), instrumentType: m[2] as 'SO' | 'PO' | 'Contract', instrumentId: String(m[3]) };
+}
 
 type TimeBucketLevel = 'quarter' | 'month' | 'week' | 'day';
 
@@ -136,11 +174,13 @@ type TimeTree = {
 
 type CashflowConfidenceBucket = 'deterministic' | 'estimated' | 'risk';
 
-type DealCompositionNode = {
-  key: string;
-  label: string;
-  children?: DealCompositionNode[];
-  dealId: number;
+type DealScopeSelection = {
+  dealAll: boolean;
+  physicalAll: boolean;
+  financialAll: boolean;
+  soIds: Set<string>;
+  poIds: Set<string>;
+  contractIds: Set<string>;
 };
 
 type GridRowKind = 'deal' | 'group-physical' | 'so' | 'po' | 'group-financial' | 'contract' | 'total';
@@ -158,22 +198,6 @@ type GridRow = {
 
 function isNegative(value: number): boolean {
   return typeof value === 'number' && value < 0;
-}
-
-function dealLeafPrefix(dealId: number): string {
-  return `deal:${dealId}`;
-}
-
-function soLeafKey(dealId: number, soId: string): SelectionLeafKey {
-  return `${dealLeafPrefix(dealId)}:so:${soId}`;
-}
-
-function poLeafKey(dealId: number, poId: string): SelectionLeafKey {
-  return `${dealLeafPrefix(dealId)}:po:${poId}`;
-}
-
-function contractLeafKey(dealId: number, contractId: string): SelectionLeafKey {
-  return `${dealLeafPrefix(dealId)}:contract:${contractId}`;
 }
 
 function normalizeCompanyLabel(company?: string | null): string {
@@ -209,66 +233,75 @@ function uniqSortedStrings(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
-function collectLeafKeys(node: DealCompositionNode): SelectionLeafKey[] {
-  if (!node.children || node.children.length === 0) return [node.key];
-  return node.children.flatMap((c) => collectLeafKeys(c));
-}
+function buildDealChildren(dealId: number, dealLines: CashFlowLine[]): ScopeTreeNode[] {
+  const soIds = uniqSortedStrings(dealLines.filter((l) => String(l.entity_type || '').toLowerCase() === 'so').map((l) => String(l.entity_id)));
+  const poIds = uniqSortedStrings(dealLines.filter((l) => String(l.entity_type || '').toLowerCase() === 'po').map((l) => String(l.entity_id)));
+  const contractIds = uniqSortedStrings(dealLines.filter((l) => String(l.entity_type || '').toLowerCase() === 'contract').map((l) => String(l.entity_id)));
 
-function computeCheckState(node: DealCompositionNode, selected: Set<SelectionLeafKey>): { checked: boolean; indeterminate: boolean } {
-  const leaves = collectLeafKeys(node);
-  const selectedCount = leaves.reduce((acc, k) => acc + (selected.has(k) ? 1 : 0), 0);
-  if (selectedCount === 0) return { checked: false, indeterminate: false };
-  if (selectedCount === leaves.length) return { checked: true, indeterminate: false };
-  return { checked: false, indeterminate: true };
-}
-
-function toggleNodeLeaves(node: DealCompositionNode, selected: Set<SelectionLeafKey>, nextChecked: boolean): Set<SelectionLeafKey> {
-  const next = new Set(selected);
-  const leaves = collectLeafKeys(node);
-  if (nextChecked) {
-    for (const k of leaves) next.add(k);
-  } else {
-    for (const k of leaves) next.delete(k);
-  }
-  return next;
-}
-
-function buildCompositionTree(deal: Deal, dealLines: CashFlowLine[]): DealCompositionNode {
-  const did = deal.id;
-  const soIds = uniqSortedStrings(dealLines.filter((l) => l.entity_type === 'so').map((l) => String(l.entity_id)));
-  const poIds = uniqSortedStrings(dealLines.filter((l) => l.entity_type === 'po').map((l) => String(l.entity_id)));
-  const contractIds = uniqSortedStrings(dealLines.filter((l) => l.entity_type === 'contract').map((l) => String(l.entity_id)));
-
-  const physicalChildren: DealCompositionNode[] = [];
+  const physicalChildren: ScopeTreeNode[] = [];
   for (const id of soIds) {
-    const any = dealLines.find((l) => l.entity_type === 'so' && String(l.entity_id) === id);
+    const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'so' && String(l.entity_id) === id);
     const ref = String(any?.source_reference || '').trim();
-    physicalChildren.push({ key: soLeafKey(did, id), label: `SO ${ref || `#${id}`}`, dealId: did });
+    physicalChildren.push({
+      id: instrumentNodeId(dealId, 'SO', id),
+      type: 'instrument',
+      label: `SO ${ref || stripTechnicalPrefix(id)}`,
+      selectable: true,
+      dealId: String(dealId),
+      instrumentType: 'SO',
+    });
   }
   for (const id of poIds) {
-    const any = dealLines.find((l) => l.entity_type === 'po' && String(l.entity_id) === id);
+    const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'po' && String(l.entity_id) === id);
     const ref = String(any?.source_reference || '').trim();
-    physicalChildren.push({ key: poLeafKey(did, id), label: `PO ${ref || `#${id}`}`, dealId: did });
+    physicalChildren.push({
+      id: instrumentNodeId(dealId, 'PO', id),
+      type: 'instrument',
+      label: `PO ${ref || stripTechnicalPrefix(id)}`,
+      selectable: true,
+      dealId: String(dealId),
+      instrumentType: 'PO',
+    });
   }
   physicalChildren.sort((a, b) => a.label.localeCompare(b.label));
 
-  const financialChildren: DealCompositionNode[] = [];
+  const financialChildren: ScopeTreeNode[] = [];
   for (const cid of contractIds) {
-    const contractLines = dealLines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === cid);
+    const contractLines = dealLines.filter((l) => String(l.entity_type || '').toLowerCase() === 'contract' && String(l.entity_id) === cid);
     const ref = String(contractLines.find((l) => String(l.source_reference || '').trim())?.source_reference || '').trim();
-    financialChildren.push({ key: contractLeafKey(did, cid), label: `Contrato Hedge ${ref || shortenId(cid)}`, dealId: did });
+    financialChildren.push({
+      id: instrumentNodeId(dealId, 'Contract', cid),
+      type: 'instrument',
+      label: `Contrato Hedge ${ref || shortenId(cid)}`,
+      selectable: true,
+      dealId: String(dealId),
+      instrumentType: 'Contract',
+    });
   }
   financialChildren.sort((a, b) => a.label.localeCompare(b.label));
 
-  const rootChildren: DealCompositionNode[] = [];
+  const children: ScopeTreeNode[] = [];
   if (physicalChildren.length) {
-    rootChildren.push({ key: `${dealLeafPrefix(did)}:group:physical`, label: 'Físico', dealId: did, children: physicalChildren });
+    children.push({
+      id: flowNodeId(dealId, 'physical'),
+      type: 'flow',
+      label: 'Físico',
+      selectable: true,
+      dealId: String(dealId),
+      children: physicalChildren,
+    });
   }
   if (financialChildren.length) {
-    rootChildren.push({ key: `${dealLeafPrefix(did)}:group:financial`, label: 'Financeiro', dealId: did, children: financialChildren });
+    children.push({
+      id: flowNodeId(dealId, 'financial'),
+      type: 'flow',
+      label: 'Financeiro',
+      selectable: true,
+      dealId: String(dealId),
+      children: financialChildren,
+    });
   }
-
-  return { key: `${dealLeafPrefix(did)}:root`, label: dealLabel(deal), dealId: did, children: rootChildren };
+  return children;
 }
 
 function sumByConfidenceForDates(lines: CashFlowLine[], dates: string[]): Record<CashflowConfidenceBucket, number> {
@@ -296,12 +329,6 @@ function sumContractSettlementByConfidenceForDates(dealLines: CashFlowLine[], co
     out[k] += signedAmountUsd(l);
   }
   return out;
-}
-
-function parseSelectedLeafKey(key: SelectionLeafKey): { dealId: number; kind: 'so' | 'po' | 'contract'; id: string } | null {
-  const m = /^deal:(\d+):(so|po|contract):(.+)$/.exec(key);
-  if (!m) return null;
-  return { dealId: Number(m[1]), kind: m[2] as 'so' | 'po' | 'contract', id: String(m[3]) };
 }
 
 function groupDealsByCompany(deals: Deal[]): Array<{ company: string; deals: Deal[] }> {
@@ -352,105 +379,95 @@ function useCashflowAnalyticMulti(paramsBase: CashflowAnalyticQueryParams, dealI
   return { ...state, refetch: fetchLines };
 }
 
-function CashflowScopePanel({
-  groups,
-  selectedDealIds,
-  onToggleDeal,
-  onToggleAll,
-}: {
-  groups: Array<{ company: string; deals: Deal[] }>;
-  selectedDealIds: Set<number>;
-  onToggleDeal: (dealId: number) => void;
-  onToggleAll: () => void;
-}) {
-  const totalDeals = useMemo(() => groups.reduce((acc, g) => acc + g.deals.length, 0), [groups]);
-  const checkedAll = totalDeals > 0 && selectedDealIds.size === totalDeals;
-  const indeterminateAll = selectedDealIds.size > 0 && selectedDealIds.size < totalDeals;
-
-  return (
-    <div>
-      <label className="flex items-center gap-2 text-sm py-2">
-        <input
-          type="checkbox"
-          checked={checkedAll}
-          ref={(el) => {
-            if (el) el.indeterminate = indeterminateAll;
-          }}
-          onChange={onToggleAll}
-        />
-        <span className="font-['72:Bold',sans-serif]">Selecionar Todos</span>
-      </label>
-
-      <div className="mt-2 space-y-3">
-        {groups.map((g) => (
-          <div key={g.company}>
-            <div className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Bold',sans-serif] uppercase tracking-wide mb-1">{g.company}</div>
-            <div className="space-y-1">
-              {g.deals.map((d) => (
-                <label key={d.id} className="flex items-center gap-2 text-sm py-1">
-                  <input type="checkbox" checked={selectedDealIds.has(d.id)} onChange={() => onToggleDeal(d.id)} />
-                  <span>{dealLabel(d)}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+function buildScopeRootsFromDeals(deals: Deal[]): ScopeTreeNode[] {
+  const groups = groupDealsByCompany(deals);
+  return groups.map((g) => {
+    const entityLabel = g.company;
+    return {
+      id: entityNodeId(entityLabel),
+      type: 'entity',
+      label: entityLabel,
+      selectable: true,
+      expanded: true,
+      children: g.deals.map((d) => ({
+        id: dealNodeId(d.id),
+        type: 'deal',
+        label: dealLabel(d),
+        selectable: true,
+        dealId: String(d.id),
+        children: undefined,
+      })),
+    } satisfies ScopeTreeNode;
+  });
 }
 
-function CompositionTree({
-  nodes,
-  selected,
-  expanded,
-  onToggleExpanded,
-  onToggleSelected,
-}: {
-  nodes: DealCompositionNode[];
-  selected: Set<SelectionLeafKey>;
-  expanded: Set<string>;
-  onToggleExpanded: (key: string) => void;
-  onToggleSelected: (node: DealCompositionNode, nextChecked: boolean) => void;
-}) {
-  const renderNode = (n: DealCompositionNode, level: number) => {
-    const hasChildren = !!n.children && n.children.length > 0;
-    const isExpanded = expanded.has(n.key);
-    const { checked, indeterminate } = computeCheckState(n, selected);
+function hasAnySelection(node: ScopeTreeNode): boolean {
+  if (node.checked || node.indeterminate) return true;
+  if (!node.children) return false;
+  return node.children.some((c) => hasAnySelection(c));
+}
 
-    return (
-      <div key={n.key}>
-        <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${level * 14}px` }}>
-          {hasChildren ? (
-            <button
-              type="button"
-              className="w-5 h-5 inline-flex items-center justify-center text-[var(--sapContent_IconColor)]"
-              onClick={() => onToggleExpanded(n.key)}
-              title={isExpanded ? 'Recolher' : 'Expandir'}
-            >
-              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
-          ) : (
-            <span className="w-5" />
-          )}
+function computeScopeFromTree(roots: ScopeTreeNode[]): {
+  dealIds: number[];
+  byDeal: Map<number, DealScopeSelection>;
+} {
+  const byDeal = new Map<number, DealScopeSelection>();
 
-          <input
-            type="checkbox"
-            checked={checked}
-            ref={(el) => {
-              if (el) el.indeterminate = indeterminate;
-            }}
-            onChange={(e) => onToggleSelected(n, e.target.checked)}
-          />
-          <span className={level === 0 || (hasChildren && level === 1) ? "font-['72:Bold',sans-serif]" : ''}>{n.label}</span>
-        </div>
-
-        {hasChildren && isExpanded ? <div>{n.children!.map((c) => renderNode(c, level + 1))}</div> : null}
-      </div>
-    );
+  const ensure = (dealId: number) => {
+    const existing = byDeal.get(dealId);
+    if (existing) return existing;
+    const created: DealScopeSelection = {
+      dealAll: false,
+      physicalAll: false,
+      financialAll: false,
+      soIds: new Set<string>(),
+      poIds: new Set<string>(),
+      contractIds: new Set<string>(),
+    };
+    byDeal.set(dealId, created);
+    return created;
   };
 
-  return <div className="text-sm">{nodes.map((n) => renderNode(n, 0))}</div>;
+  walkNodes(roots, (n) => {
+    const dealId = n.type === 'deal' ? parseDealIdFromNodeId(n.id) : n.type === 'flow' ? parseFlowFromNodeId(n.id)?.dealId ?? null : n.type === 'instrument' ? parseInstrumentFromNodeId(n.id)?.dealId ?? null : null;
+    if (!dealId) return;
+
+    if (!hasAnySelection(n)) return;
+
+    const entry = ensure(dealId);
+
+    if (n.type === 'deal') {
+      if (n.checked) entry.dealAll = true;
+      return;
+    }
+
+    if (n.type === 'flow') {
+      const parsed = parseFlowFromNodeId(n.id);
+      if (!parsed) return;
+      if (n.checked) {
+        if (parsed.flow === 'physical') entry.physicalAll = true;
+        if (parsed.flow === 'financial') entry.financialAll = true;
+      }
+      return;
+    }
+
+    if (n.type === 'instrument') {
+      const parsed = parseInstrumentFromNodeId(n.id);
+      if (!parsed) return;
+      if (!n.checked) return;
+      if (parsed.instrumentType === 'SO') entry.soIds.add(parsed.instrumentId);
+      if (parsed.instrumentType === 'PO') entry.poIds.add(parsed.instrumentId);
+      if (parsed.instrumentType === 'Contract') entry.contractIds.add(parsed.instrumentId);
+    }
+  });
+
+  // Prune deals without any effective selection
+  for (const [did, sel] of Array.from(byDeal.entries())) {
+    const any = sel.dealAll || sel.physicalAll || sel.financialAll || sel.soIds.size + sel.poIds.size + sel.contractIds.size > 0;
+    if (!any) byDeal.delete(did);
+  }
+
+  return { dealIds: Array.from(byDeal.keys()).sort((a, b) => a - b), byDeal };
 }
 
 export function CashflowPageIntegrated() {
@@ -477,27 +494,14 @@ export function CashflowPageIntegrated() {
     fetchDeals();
   }, [fetchDeals]);
 
+  const { roots, setRoots, toggleExpanded, toggleChecked, hydrateChildren } = useCashflowScopeTreeStore();
   const groupedDeals = useMemo(() => groupDealsByCompany(deals), [deals]);
-  const allDealIds = useMemo(() => deals.map((d) => d.id).sort((a, b) => a - b), [deals]);
+  const rootBuildKey = useMemo(() => JSON.stringify(groupedDeals.map((g) => ({ company: g.company, ids: g.deals.map((d) => d.id) }))), [groupedDeals]);
 
-  const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
-
-  const toggleAllDeals = useCallback(() => {
-    setSelectedDealIds((prev) => {
-      const total = allDealIds.length;
-      if (total > 0 && prev.size === total) return new Set();
-      return new Set(allDealIds);
-    });
-  }, [allDealIds.join(',')]);
-
-  const toggleDeal = useCallback((dealId: number) => {
-    setSelectedDealIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(dealId)) next.delete(dealId);
-      else next.add(dealId);
-      return next;
-    });
-  }, []);
+  useEffect(() => {
+    // Build the base tree (Entity -> Deal). Deal children are hydrated lazily.
+    setRoots(buildScopeRootsFromDeals(deals));
+  }, [rootBuildKey]);
 
   const [queryBase, setQueryBase] = useState<CashflowAnalyticQueryParams>(() => ({
     as_of: today,
@@ -505,14 +509,11 @@ export function CashflowPageIntegrated() {
     end_date: addDaysIso(today, 90),
   }));
 
-  const selectedDealIdsList = useMemo(() => Array.from(selectedDealIds.values()).sort((a, b) => a - b), [selectedDealIds]);
-  const cashflow = useCashflowAnalyticMulti(queryBase, selectedDealIdsList);
+  const scope = useMemo(() => computeScopeFromTree(roots), [roots]);
+  const cashflow = useCashflowAnalyticMulti(queryBase, scope.dealIds);
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({});
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
-
-  const [expandedCompositionKeys, setExpandedCompositionKeys] = useState<Set<string>>(new Set());
-  const [selectedLeafKeys, setSelectedLeafKeys] = useState<Set<SelectionLeafKey>>(new Set());
 
   const [metricVisibility, setMetricVisibility] = useState<{ mtm: boolean; estimated: boolean; risk: boolean }>(() => ({ mtm: true, estimated: false, risk: false }));
 
@@ -569,196 +570,195 @@ export function CashflowPageIntegrated() {
     return map;
   }, [lines]);
 
-  const selectedDeals = useMemo(() => deals.filter((d) => selectedDealIds.has(d.id)), [deals, selectedDealIds]);
+  useEffect(() => {
+    // Hydrate deal children from already-fetched lines so the tree+grid reflect Deal → Flow → Instrument
+    // even when selection happened at entity/deal level (without manual expand).
+    for (const did of scope.dealIds) {
+      const node = findNodeById(roots, dealNodeId(did));
+      const hasChildren = !!node?.children && node.children.length > 0;
+      if (hasChildren) continue;
+      const dealLines = linesByDeal.get(did) || [];
+      if (dealLines.length === 0) continue;
+      hydrateChildren(dealNodeId(did), buildDealChildren(did, dealLines));
+    }
+  }, [hydrateChildren, linesByDeal, roots, scope.dealIds.join(',')]);
 
-  const compositionTrees = useMemo(() => {
-    return selectedDeals
-      .map((d) => {
-        const dealLines = linesByDeal.get(d.id) || [];
-        return buildCompositionTree(d, dealLines);
-      })
-      .filter((n) => (n.children || []).length > 0);
-  }, [selectedDeals, linesByDeal]);
+  const hydrationInFlightRef = useRef<Set<number>>(new Set());
+  const hydrationKeyRef = useRef<string>('');
+  const hydrationKey = useMemo(() => JSON.stringify({ ...queryBase }), [queryBase.as_of, queryBase.end_date, queryBase.start_date]);
 
   useEffect(() => {
-    // On selection changes, default-expand the deal roots only (children remain collapsed).
-    setExpandedCompositionKeys((prev) => {
-      const next = new Set(prev);
-      for (const n of compositionTrees) next.add(n.key);
-      return next;
-    });
-  }, [compositionTrees.length]);
+    // Invalidate lazy hydration on query changes.
+    if (hydrationKeyRef.current !== hydrationKey) {
+      hydrationKeyRef.current = hydrationKey;
+      hydrationInFlightRef.current = new Set();
+    }
+  }, [hydrationKey]);
 
-  useEffect(() => {
-    // When selecting a Deal in scope, auto-select all its components (granular selection remains editable).
-    setSelectedLeafKeys((prev) => {
-      const next = new Set(prev);
-
-      // 1) Remove leaf keys for deals that are no longer selected.
-      for (const k of Array.from(next)) {
-        const m = /^deal:(\d+):/.exec(k);
-        if (!m) continue;
-        const did = Number(m[1]);
-        if (!selectedDealIds.has(did)) next.delete(k);
+  const ensureDealHydrated = useCallback(
+    async (dealId: number) => {
+      if (hydrationInFlightRef.current.has(dealId)) return;
+      hydrationInFlightRef.current.add(dealId);
+      try {
+        const lines = await getCashflowAnalytic({ ...queryBase, deal_id: dealId });
+        const children = buildDealChildren(dealId, lines);
+        hydrateChildren(dealNodeId(dealId), children);
+      } finally {
+        hydrationInFlightRef.current.delete(dealId);
       }
+    },
+    [queryBase.as_of, queryBase.end_date, queryBase.start_date]
+  );
 
-      // 2) For each selected deal, if it has zero selection, default to all leaves.
-      const leafKeysByDeal = new Map<number, SelectionLeafKey[]>();
-      for (const tree of compositionTrees) {
-        leafKeysByDeal.set(tree.dealId, collectLeafKeys(tree));
+  const onToggleExpandedNode = useCallback(
+    (id: string) => {
+      const node = findNodeById(roots, id);
+      const willExpand = node ? !node.expanded : true;
+      toggleExpanded(id);
+
+      const did = parseDealIdFromNodeId(id);
+      if (did && willExpand) {
+        const current = node;
+        const hasChildren = !!current?.children && current.children.length > 0;
+        if (!hasChildren) void ensureDealHydrated(did);
       }
+    },
+    [ensureDealHydrated, roots, toggleExpanded]
+  );
 
-      for (const did of selectedDealIds) {
-        const dealLeaves = leafKeysByDeal.get(did) || [];
-        if (dealLeaves.length === 0) continue;
-        const hasAnyForDeal = dealLeaves.some((k) => next.has(k));
-        if (hasAnyForDeal) continue;
-        for (const k of dealLeaves) next.add(k);
+  const onToggleCheckedNode = useCallback(
+    (id: string, checked: boolean) => {
+      toggleChecked(id, checked);
+      const did = parseDealIdFromNodeId(id);
+      if (did && checked) {
+        const node = findNodeById(roots, id);
+        const hasChildren = !!node?.children && node.children.length > 0;
+        if (!hasChildren) void ensureDealHydrated(did);
       }
-
-      return next;
-    });
-  }, [compositionTrees, selectedDealIds]);
-
-  const toggleExpandedComposition = useCallback((key: string) => {
-    setExpandedCompositionKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-
-  const onToggleSelectedNode = useCallback((node: DealCompositionNode, nextChecked: boolean) => {
-    setSelectedLeafKeys((prev) => toggleNodeLeaves(node, prev, nextChecked));
-  }, []);
+    },
+    [ensureDealHydrated, roots, toggleChecked]
+  );
 
   const filteredLines: CashFlowLine[] = useMemo(() => {
-    if (selectedDealIds.size === 0) return [];
-    if (selectedLeafKeys.size === 0) return [];
-
-    const hasPhysicalSelectionByDeal = new Map<number, boolean>();
-    const hasFinancialSelectionByDeal = new Map<number, boolean>();
-    for (const k of selectedLeafKeys) {
-      const m = /^deal:(\d+):(so|po|contract):/.exec(k);
-      if (!m) continue;
-      const did = Number(m[1]);
-      const kind = m[2];
-      if (kind === 'so' || kind === 'po') hasPhysicalSelectionByDeal.set(did, true);
-      if (kind === 'contract') hasFinancialSelectionByDeal.set(did, true);
-    }
+    if (scope.dealIds.length === 0) return [];
 
     const out: CashFlowLine[] = [];
     for (const l of lines) {
       const did = dealIdOfLine(l);
       if (!did) continue;
-      if (!selectedDealIds.has(did)) continue;
+      if (!scope.byDeal.has(did)) continue;
+
+      const sel = scope.byDeal.get(did);
+      if (!sel) continue;
 
       const entityType = String(l.entity_type || '').toLowerCase();
       const entityId = String(l.entity_id);
 
+      if (sel.dealAll) {
+        out.push(l);
+        continue;
+      }
+
+      const hasPhysicalSelection = sel.physicalAll || sel.soIds.size + sel.poIds.size > 0;
+      const hasFinancialSelection = sel.financialAll || sel.contractIds.size > 0;
+
       if (entityType === 'so') {
-        if (selectedLeafKeys.has(soLeafKey(did, entityId))) out.push(l);
+        if (sel.physicalAll || sel.soIds.has(entityId)) out.push(l);
         continue;
       }
       if (entityType === 'po') {
-        if (selectedLeafKeys.has(poLeafKey(did, entityId))) out.push(l);
+        if (sel.physicalAll || sel.poIds.has(entityId)) out.push(l);
         continue;
       }
       if (entityType === 'contract') {
         // Hedge contracts: include both legs when the contract is selected.
-        if (selectedLeafKeys.has(contractLeafKey(did, entityId))) out.push(l);
+        if (sel.financialAll || sel.contractIds.has(entityId)) out.push(l);
         continue;
       }
 
       // Risk/exposure lines are part of the financial view.
       const isRiskish = classifyConfidence(l) === 'risk';
-      if (isRiskish && hasFinancialSelectionByDeal.get(did)) {
+      if (isRiskish && hasFinancialSelection) {
         out.push(l);
         continue;
       }
 
+      // If physical is selected, include only physical entities (already handled above).
+      if (hasPhysicalSelection) continue;
+
       // Do not include deal-summary lines to avoid double counting in detailed view.
     }
     return out;
-  }, [lines, selectedDealIds, selectedLeafKeys]);
+  }, [lines, scope.byDeal, scope.dealIds.join(',')]);
 
   const selectedStructureByDeal = useMemo(() => {
-    const map = new Map<
-      number,
-      {
-        soIds: Set<string>;
-        poIds: Set<string>;
-        contractIds: Set<string>;
+    const map = new Map<number, { soIds: Set<string>; poIds: Set<string>; contractIds: Set<string> }>();
+    for (const [did, sel] of scope.byDeal.entries()) {
+      const entry = { soIds: new Set(sel.physicalAll ? [] : Array.from(sel.soIds)), poIds: new Set(sel.physicalAll ? [] : Array.from(sel.poIds)), contractIds: new Set(sel.financialAll ? [] : Array.from(sel.contractIds)) };
+
+      // If selecting all under a flow, include all IDs discovered in the fetched lines.
+      const dealLines = linesByDeal.get(did) || [];
+      if (sel.dealAll || sel.physicalAll) {
+        for (const l of dealLines) {
+          const et = String(l.entity_type || '').toLowerCase();
+          const eid = String(l.entity_id);
+          if (et === 'so') entry.soIds.add(eid);
+          if (et === 'po') entry.poIds.add(eid);
+        }
       }
-    >();
+      if (sel.dealAll || sel.financialAll) {
+        for (const l of dealLines) {
+          const et = String(l.entity_type || '').toLowerCase();
+          const eid = String(l.entity_id);
+          if (et === 'contract') entry.contractIds.add(eid);
+        }
+      }
 
-    for (const k of selectedLeafKeys) {
-      const parsed = parseSelectedLeafKey(k);
-      if (!parsed) continue;
-      if (!selectedDealIds.has(parsed.dealId)) continue;
-      const entry = map.get(parsed.dealId) || { soIds: new Set<string>(), poIds: new Set<string>(), contractIds: new Set<string>() };
-      if (parsed.kind === 'so') entry.soIds.add(parsed.id);
-      if (parsed.kind === 'po') entry.poIds.add(parsed.id);
-      if (parsed.kind === 'contract') entry.contractIds.add(parsed.id);
-      map.set(parsed.dealId, entry);
+      map.set(did, entry);
     }
-
     return map;
-  }, [selectedDealIds, selectedLeafKeys]);
+  }, [linesByDeal, scope.byDeal]);
 
   const gridRows: GridRow[] = useMemo(() => {
     const rows: GridRow[] = [];
 
-    for (const d of selectedDeals) {
-      const did = d.id;
-      const sel = selectedStructureByDeal.get(did);
-      if (!sel) continue;
+    // Drive row hierarchy from the tree (single source of truth for scope)
+    for (const entity of roots) {
+      if (!entity.children) continue;
+      for (const dealNode of entity.children) {
+        const did = parseDealIdFromNodeId(dealNode.id);
+        if (!did) continue;
+        if (!hasAnySelection(dealNode)) continue;
 
-      const dealLines = linesByDeal.get(did) || [];
-      const soLabelOf = (soId: string) => {
-        const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'so' && String(l.entity_id) === soId);
-        const ref = String(any?.source_reference || '').trim();
-        return ref || stripTechnicalPrefix(soId);
-      };
-      const poLabelOf = (poId: string) => {
-        const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'po' && String(l.entity_id) === poId);
-        const ref = String(any?.source_reference || '').trim();
-        return ref || stripTechnicalPrefix(poId);
-      };
-      const contractLabelOf = (cid: string) => {
-        const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'contract' && String(l.entity_id) === cid);
-        const ref = String(any?.source_reference || '').trim();
-        return ref || shortenId(cid);
-      };
+        rows.push({ key: `deal:${did}:row`, dealId: did, kind: 'deal', label: dealNode.label, level: 0 });
 
-      const soIds = Array.from(sel.soIds.values()).sort((a, b) => a.localeCompare(b));
-      const poIds = Array.from(sel.poIds.values()).sort((a, b) => a.localeCompare(b));
-      const contractIds = Array.from(sel.contractIds.values()).sort((a, b) => a.localeCompare(b));
+        const dealChildren = dealNode.children || [];
+        for (const flowNode of dealChildren) {
+          if (flowNode.type !== 'flow') continue;
+          if (!hasAnySelection(flowNode)) continue;
+          const parsedFlow = parseFlowFromNodeId(flowNode.id);
+          if (!parsedFlow) continue;
+          const groupKind: GridRowKind = parsedFlow.flow === 'physical' ? 'group-physical' : 'group-financial';
+          rows.push({ key: `${flowNode.id}:row`, dealId: did, kind: groupKind, label: flowNode.label, level: 1 });
 
-      const hasPhysical = soIds.length + poIds.length > 0;
-      const hasFinancial = contractIds.length > 0;
-      const hasAny = hasPhysical || hasFinancial;
-      if (!hasAny) continue;
+          for (const inst of flowNode.children || []) {
+            if (inst.type !== 'instrument') continue;
+            if (!inst.checked) continue;
+            const parsedInst = parseInstrumentFromNodeId(inst.id);
+            if (!parsedInst) continue;
 
-      rows.push({ key: `deal:${did}:row`, dealId: did, kind: 'deal', label: dealLabel(d), level: 0 });
-
-      if (hasPhysical) {
-        rows.push({ key: `deal:${did}:row:physical`, dealId: did, kind: 'group-physical', label: 'Físico', level: 1 });
-        for (const soId of soIds) rows.push({ key: soLeafKey(did, soId), dealId: did, kind: 'so', label: soLabelOf(soId), level: 2, soId });
-        for (const poId of poIds) rows.push({ key: poLeafKey(did, poId), dealId: did, kind: 'po', label: poLabelOf(poId), level: 2, poId });
-      }
-
-      if (hasFinancial) {
-        rows.push({ key: `deal:${did}:row:financial`, dealId: did, kind: 'group-financial', label: 'Financeiro', level: 1 });
-        for (const cid of contractIds) rows.push({ key: contractLeafKey(did, cid), dealId: did, kind: 'contract', label: contractLabelOf(cid), level: 2, contractId: cid });
+            if (parsedInst.instrumentType === 'SO') rows.push({ key: inst.id, dealId: did, kind: 'so', label: inst.label, level: 2, soId: parsedInst.instrumentId });
+            if (parsedInst.instrumentType === 'PO') rows.push({ key: inst.id, dealId: did, kind: 'po', label: inst.label, level: 2, poId: parsedInst.instrumentId });
+            if (parsedInst.instrumentType === 'Contract') rows.push({ key: inst.id, dealId: did, kind: 'contract', label: inst.label, level: 2, contractId: parsedInst.instrumentId });
+          }
+        }
       }
     }
 
     // Total geral (selected scope)
     if (rows.length) rows.push({ key: 'total:row', kind: 'total', label: 'Total geral', level: 0 });
     return rows;
-  }, [selectedDeals, selectedStructureByDeal]);
+  }, [roots, selectedStructureByDeal]);
 
   const rowSumsForDates = useCallback(
     (row: GridRow, dates: string[]) => {
@@ -953,13 +953,13 @@ export function CashflowPageIntegrated() {
   const allWeekKeys = useMemo(() => timeTree.quarters.flatMap((q) => q.months.flatMap((m) => m.weeks.map((w) => w.key))), [timeTree.quarters]);
 
   const selectionTitle = useMemo(() => {
-    if (selectedDealIds.size === 0) return 'Nenhuma seleção';
-    if (selectedDealIds.size === 1) {
-      const only = selectedDeals[0];
+    if (scope.dealIds.length === 0) return 'Nenhuma seleção';
+    if (scope.dealIds.length === 1) {
+      const only = deals.find((d) => d.id === scope.dealIds[0]);
       return only ? dealLabel(only) : 'Selecionar Deal';
     }
-    return `${selectedDealIds.size} deals`;
-  }, [selectedDealIds.size, selectedDeals]);
+    return `${scope.dealIds.length} deals`;
+  }, [deals, scope.dealIds.join(',')]);
 
   const totals = useMemo(() => {
     let inflow = 0;
@@ -991,11 +991,11 @@ export function CashflowPageIntegrated() {
   const appliedAsOf = useMemo(() => (queryBase.as_of ? formatIsoDate(String(queryBase.as_of)) : '—'), [queryBase.as_of]);
   const showInitialLoading = cashflow.isLoading && !cashflow.data;
 
-  const showNoDealSelected = selectedDealIds.size === 0;
+  const showNoDealSelected = scope.dealIds.length === 0;
 
   return (
     <FioriFlexibleColumnLayout
-      masterTitle="Seleção"
+      masterTitle="Escopo"
       masterContent={
         isLoadingDeals ? (
           <div className="p-4">
@@ -1009,30 +1009,17 @@ export function CashflowPageIntegrated() {
           <div className="h-full overflow-y-auto">
             <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
               <div className="text-sm font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Escopo</div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Selecione para consolidar</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Seleção e consolidação por hierarquia</div>
             </div>
             <div className="p-3">
-              <CashflowScopePanel groups={groupedDeals} selectedDealIds={selectedDealIds} onToggleDeal={toggleDeal} onToggleAll={toggleAllDeals} />
-            </div>
-
-            <div className="border-t border-[var(--sapList_BorderColor)]" />
-            <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
-              <div className="text-sm font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Composição</div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Seleção automática ao marcar Deals; ajuste se necessário</div>
-            </div>
-            <div className="p-3">
-              {showNoDealSelected ? (
-                <EmptyState title="Nenhuma seleção" description="Selecione um ou mais Deals para ver a composição." />
-              ) : compositionTrees.length === 0 ? (
-                <EmptyState title="Sem dados" description="Não há itens para o período." />
+              {roots.length === 0 ? (
+                <EmptyState title="Sem dados" description="Nenhuma entidade/deal disponível." />
               ) : (
-                <CompositionTree
-                  nodes={compositionTrees}
-                  selected={selectedLeafKeys}
-                  expanded={expandedCompositionKeys}
-                  onToggleExpanded={toggleExpandedComposition}
-                  onToggleSelected={onToggleSelectedNode}
-                />
+                <div className="text-sm">
+                  {(roots || []).map((n) => (
+                    <TreeNodeView key={n.id} node={n} level={0} onToggleExpanded={onToggleExpandedNode} onToggleChecked={onToggleCheckedNode} />
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -1052,7 +1039,7 @@ export function CashflowPageIntegrated() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch} disabled={selectedDealIds.size === 0}>
+                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch} disabled={scope.dealIds.length === 0}>
                   Atualizar
                 </FioriButton>
               </div>
@@ -1173,102 +1160,32 @@ export function CashflowPageIntegrated() {
                 ) : timeColumns.length === 0 ? (
                   <EmptyState title="Sem dados" description="Sem dados para o período." />
                 ) : (
-                  <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
-                    <div className="overflow-auto">
-                      <table className="min-w-[760px] w-full">
-                        <thead>
-                          <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                            <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Resumo</th>
-                            {timeColumns.map((c) => {
-                              const canExpand = c.canExpand;
-                              const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
-
-                              const toggle = () => {
-                                if (!c.canExpand) return;
-                                if (c.level === 'quarter') {
-                                  setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                  if (c.expanded) {
-                                    setExpandedMonths({});
-                                    setExpandedWeeks({});
-                                  }
-                                  return;
-                                }
-                                if (c.level === 'month') {
-                                  setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                  if (c.expanded) setExpandedWeeks({});
-                                  return;
-                                }
-                                if (c.level === 'week') {
-                                  setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                }
-                              };
-
-                              return (
-                                <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
-                                  {canExpand ? (
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggle();
-                                      }}
-                                      title="Expandir/recolher"
-                                    >
-                                      <span>{c.label}</span>
-                                      {icon}
-                                    </button>
-                                  ) : (
-                                    <span>{c.label}</span>
-                                  )}
-                                </th>
-                              );
-                            })}
-
-                            <th className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
-                              Total acumulado
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {gridRows.map((row) => {
-                            const isTotal = row.kind === 'total';
-                            const isDeal = row.kind === 'deal';
-                            const isGroup = row.kind === 'group-physical' || row.kind === 'group-financial';
-
-                            const leftCellClass = isTotal || isDeal || isGroup ? "font-['72:Bold',sans-serif]" : '';
-                            const leftBg = isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-white';
-
-                            return (
-                              <tr key={row.key} className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                                <td className={`p-3 text-sm sticky left-0 z-10 ${leftBg} ${leftCellClass}`}>
-                                  <div style={{ paddingLeft: `${row.level * 14}px` }}>{row.label}</div>
-                                </td>
-
-                                {timeColumns.map((c) => {
-                                  const sums = rowSumsForDates(row, c.dates);
-                                  return (
-                                    <td key={`${row.key}:${c.key}`} className="p-2 text-xs text-right whitespace-nowrap align-top">
-                                      {renderSumsCell(sums)}
-                                    </td>
-                                  );
-                                })}
-
-                                {(() => {
-                                  const totalSums = rowSumsForDates(row, allDates);
-                                  return (
-                                    <td key={`${row.key}:total`} className={`p-2 text-xs text-right whitespace-nowrap align-top bg-[var(--sapList_HeaderBackground)]`}>
-                                      {renderSumsCell(totalSums)}
-                                    </td>
-                                  );
-                                })()}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  <CashflowTanStackTable
+                    rows={gridRows}
+                    timeColumns={timeColumns}
+                    allDates={allDates}
+                    onToggleColumnExpand={(c) => {
+                      if (!c.canExpand) return;
+                      if (c.level === 'quarter') {
+                        setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                        if (c.expanded) {
+                          setExpandedMonths({});
+                          setExpandedWeeks({});
+                        }
+                        return;
+                      }
+                      if (c.level === 'month') {
+                        setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                        if (c.expanded) setExpandedWeeks({});
+                        return;
+                      }
+                      if (c.level === 'week') {
+                        setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                      }
+                    }}
+                    renderSums={(row, dates) => renderSumsCell(rowSumsForDates(row, dates))}
+                    renderTotal={(row) => renderSumsCell(rowSumsForDates(row, allDates))}
+                  />
                 )}
               </div>
             </div>
@@ -1276,6 +1193,131 @@ export function CashflowPageIntegrated() {
         </div>
       }
     />
+  );
+}
+
+function CashflowTanStackTable({
+  rows,
+  timeColumns,
+  allDates,
+  onToggleColumnExpand,
+  renderSums,
+  renderTotal,
+}: {
+  rows: GridRow[];
+  timeColumns: TimeColumn[];
+  allDates: string[];
+  onToggleColumnExpand: (col: TimeColumn) => void;
+  renderSums: (row: GridRow, dates: string[]) => ReactNode;
+  renderTotal: (row: GridRow) => ReactNode;
+}) {
+  const columns: ColumnDef<GridRow>[] = useMemo(() => {
+    const cols: ColumnDef<GridRow>[] = [];
+
+    cols.push({
+      id: 'item',
+      header: () => <span>Item</span>,
+      cell: ({ row }) => {
+        const r = row.original;
+        const isTotal = r.kind === 'total';
+        const isDeal = r.kind === 'deal';
+        const isGroup = r.kind === 'group-physical' || r.kind === 'group-financial';
+        const leftCellClass = isTotal || isDeal || isGroup ? "font-['72:Bold',sans-serif]" : '';
+        const leftBg = isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-white';
+        return (
+          <div className={`p-3 text-sm ${leftBg} ${leftCellClass}`} style={{ paddingLeft: `${r.level * 14 + 12}px` }}>
+            {r.label}
+          </div>
+        );
+      },
+    });
+
+    for (const c of timeColumns) {
+      cols.push({
+        id: c.key,
+        header: () => {
+          const icon = c.canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
+          return (
+            <div className="text-center p-2 text-xs whitespace-nowrap">
+              {c.canExpand ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleColumnExpand(c);
+                  }}
+                  title="Expandir/recolher"
+                >
+                  <span>{c.label}</span>
+                  {icon}
+                </button>
+              ) : (
+                <span>{c.label}</span>
+              )}
+            </div>
+          );
+        },
+        cell: ({ row }) => <div className="p-2 text-xs text-right whitespace-nowrap align-top">{renderSums(row.original, c.dates)}</div>,
+      });
+    }
+
+    cols.push({
+      id: 'total',
+      header: () => <div className="text-center p-2 text-xs whitespace-nowrap">Total acumulado</div>,
+      cell: ({ row }) => <div className="p-2 text-xs text-right whitespace-nowrap align-top bg-[var(--sapList_HeaderBackground)]">{renderTotal(row.original)}</div>,
+    });
+
+    return cols;
+  }, [allDates.join(','), onToggleColumnExpand, renderSums, renderTotal, timeColumns]);
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  const lastColId = 'total';
+
+  return (
+    <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
+      <div className="overflow-auto max-h-[70vh]">
+        <table className="min-w-[1200px] w-full">
+          <thead>
+            {table.getHeaderGroups().map((hg) => (
+              <tr key={hg.id} className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                {hg.headers.map((h) => {
+                  const isFirst = h.column.id === 'item';
+                  const isLast = h.column.id === lastColId;
+                  const sticky = isFirst ? 'sticky left-0 z-20 bg-white' : isLast ? 'sticky right-0 z-20 bg-white' : '';
+                  return (
+                    <th key={h.id} className={`${sticky} align-top`}>
+                      {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((r) => (
+              <tr key={r.id} className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                {r.getVisibleCells().map((cell) => {
+                  const isFirst = cell.column.id === 'item';
+                  const isLast = cell.column.id === lastColId;
+                  const sticky = isFirst ? 'sticky left-0 z-10 bg-white' : isLast ? 'sticky right-0 z-10 bg-[var(--sapList_HeaderBackground)]' : '';
+                  return (
+                    <td key={cell.id} className={`${sticky} align-top`}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

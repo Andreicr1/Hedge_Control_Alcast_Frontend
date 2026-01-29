@@ -46,6 +46,7 @@
     "@radix-ui/react-toggle-group": "1.1.2",
     "@radix-ui/react-tooltip": "1.1.8",
     "@sap-theming/theming-base-content": "^11.32.3",
+    "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
@@ -68,7 +69,8 @@
     "sonner": "2.0.3",
     "tailwind-merge": "3.2.0",
     "tw-animate-css": "1.3.8",
-    "vaul": "1.1.2"
+    "vaul": "1.1.2",
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",
