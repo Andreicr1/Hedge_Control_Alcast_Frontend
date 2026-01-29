@@ -653,6 +653,18 @@ export interface ContractExposureLink {
   status: ExposureStatus;
 }
 
+export interface ContractDocument {
+  id: number;
+  contract_id: string;
+  version: number;
+  filename: string;
+  content_type?: string | null;
+  file_size_bytes: number;
+  sha256?: string | null;
+  uploaded_at: string;
+  metadata_json?: Record<string, unknown> | null;
+}
+
 // ============================================
 // Hedge
 // ============================================

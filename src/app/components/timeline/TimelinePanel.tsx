@@ -188,9 +188,16 @@ export interface TimelinePanelProps {
   subjectType: string;
   subjectId: number;
   limit?: number;
+  variant?: 'default' | 'audit';
 }
 
-export function TimelinePanel({ title = 'Histórico', subjectType, subjectId, limit = 50 }: TimelinePanelProps) {
+export function TimelinePanel({
+  title = 'Histórico',
+  subjectType,
+  subjectId,
+  limit = 50,
+  variant = 'default',
+}: TimelinePanelProps) {
   const { events, isLoading, isError, error, hasMore, refetch, loadMore } = useTimelineSubject(
     subjectType,
     subjectId,
@@ -214,6 +221,193 @@ export function TimelinePanel({ title = 'Histórico', subjectType, subjectId, li
   const [isCorrecting, setIsCorrecting] = useState(false);
 
   const correctedBy = useMemo(() => computeCorrectionMap(events), [events]);
+
+  const grouped = useMemo(() => {
+    if (variant !== 'audit') return null;
+    const manual: TimelineEvent[] = [];
+    const automatic: TimelineEvent[] = [];
+    for (const ev of events) {
+      if (ev.event_type.startsWith('human.')) manual.push(ev);
+      else automatic.push(ev);
+    }
+    return { manual, automatic };
+  }, [events, variant]);
+
+  const renderEvent = (ev: TimelineEvent) => {
+    const isSuperseded = correctedBy.has(ev.id);
+    const correctionId = correctedBy.get(ev.id);
+    const known = isKnownType(ev.event_type);
+
+    const payload = ev.payload || {};
+    const commentBody = safeString((payload as any).body);
+    const attachmentName = safeString((payload as any).file_name);
+    const commentAttachments = attachmentRefsFromPayload(payload);
+    const mention = safeString((payload as any).mention);
+    const mentionCommentId = safeNumber((payload as any).comment_event_id);
+
+    return (
+      <div
+        key={ev.id}
+        className={`p-3 rounded border ${
+          isSuperseded ? 'bg-[var(--sapGroup_ContentBackground)] opacity-75' : 'bg-white'
+        } border-[var(--sapGroup_ContentBorderColor)]`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-['72:Bold',sans-serif] text-sm text-[#131e29] truncate">
+                {eventTypeLabel(ev.event_type)}
+              </span>
+              {!known && (
+                <span className="text-xs px-2 py-0.5 rounded bg-[var(--sapErrorBackground,#ffebeb)] text-[var(--sapNegativeColor,#b00)]">
+                  tipo não reconhecido
+                </span>
+              )}
+              {ev.visibility === 'finance' && (
+                <span className="text-xs px-2 py-0.5 rounded bg-[var(--sapWarningBackground,#fff3b8)] text-[var(--sapWarningColor,#8d2a00)]">
+                  Financeiro
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">{formatDateTime(ev.occurred_at)}</div>
+
+            {isSuperseded && typeof correctionId === 'number' && (
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Comentário revisado</div>
+            )}
+
+            {commentBody && <div className="mt-2 text-sm text-[#131e29] whitespace-pre-wrap">{commentBody}</div>}
+
+            {commentAttachments.length > 0 && (
+              <div className="mt-2">
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Anexos</div>
+                <div className="flex flex-col gap-1">
+                  {commentAttachments.map((a) => (
+                    <div key={a.attachment_event_id} className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-[#131e29] truncate">{a.file_name}</span>
+                      <FioriButton variant="ghost" onClick={() => void triggerBrowserDownload(a.attachment_event_id)}>
+                        Baixar
+                      </FioriButton>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {ev.event_type === 'human.mentioned' && mention && typeof mentionCommentId === 'number' && (
+              <div className="mt-2 text-sm text-[#131e29]">
+                <span className="text-xs text-[var(--sapContent_LabelColor)]">Menção:</span> @{mention}
+              </div>
+            )}
+
+            {ev.event_type === 'human.attachment.added' && attachmentName && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm text-[#131e29]">{attachmentName}</span>
+                <FioriButton variant="ghost" onClick={() => void triggerBrowserDownload(ev.id)}>
+                  Baixar
+                </FioriButton>
+              </div>
+            )}
+          </div>
+
+          <div className="text-right">
+            {canWrite && ev.event_type.startsWith('human.comment') && !isSuperseded && (
+              <div className="mt-2">
+                <FioriButton
+                  variant="ghost"
+                  onClick={() => {
+                    setCorrectionTargetId(ev.id);
+                    setCorrectionBody(commentBody || '');
+                    setCorrectionVisibility(ev.visibility);
+                    setCorrectionAttachments(commentAttachments);
+                  }}
+                >
+                  Revisar
+                </FioriButton>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {canWrite && correctionTargetId === ev.id && (
+          <div className="mt-3 p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-white">
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Revisão do comentário</div>
+
+            {correctionAttachments.length > 0 && (
+              <div className="mb-2">
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Anexos vinculados</div>
+                <div className="flex flex-col gap-1">
+                  {correctionAttachments.map((a) => (
+                    <div key={a.attachment_event_id} className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-[#131e29] truncate">{a.file_name}</span>
+                      <div className="flex items-center gap-2">
+                        <FioriButton variant="ghost" onClick={() => void triggerBrowserDownload(a.attachment_event_id)}>
+                          Baixar
+                        </FioriButton>
+                        <FioriButton
+                          variant="ghost"
+                          onClick={() =>
+                            setCorrectionAttachments((prev) => prev.filter((x) => x.attachment_event_id !== a.attachment_event_id))
+                          }
+                        >
+                          Remover
+                        </FioriButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <textarea
+              className="w-full text-sm border rounded p-2"
+              value={correctionBody}
+              onChange={(e) => setCorrectionBody(e.target.value)}
+              aria-label="Texto de correção"
+              title="Texto de correção"
+              rows={3}
+              disabled={isCorrecting}
+            />
+
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <input
+                type="file"
+                className="text-xs"
+                aria-label="Adicionar anexo de correção"
+                title="Adicionar anexo de correção"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f)
+                    void onUploadAttachment(f, correctionVisibility, (a) =>
+                      setCorrectionAttachments((prev) => [...prev, a])
+                    );
+                  e.currentTarget.value = '';
+                }}
+                disabled={isCorrecting}
+              />
+              <div className="text-xs text-[var(--sapContent_LabelColor)]">Visibilidade: {visibilityLabel(correctionVisibility)}</div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <FioriButton
+                variant="ghost"
+                onClick={() => {
+                  setCorrectionTargetId(null);
+                  setCorrectionBody('');
+                  setCorrectionAttachments([]);
+                }}
+                disabled={isCorrecting}
+              >
+                Cancelar
+              </FioriButton>
+              <FioriButton variant="default" onClick={() => void onSubmitCorrection(ev.id)} disabled={isCorrecting}>
+                {isCorrecting ? 'Salvando...' : 'Salvar correção'}
+              </FioriButton>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   async function onSubmitComment() {
     const body = composerBody.trim();
@@ -293,10 +487,14 @@ export function TimelinePanel({ title = 'Histórico', subjectType, subjectId, li
     <div className="bg-white rounded-lg shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <History className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
+          {variant !== 'audit' && <History className="w-4 h-4 text-[var(--sapContent_IconColor)]" />}
           <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] m-0">{title}</h3>
         </div>
-        <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetch}>
+        <FioriButton
+          variant="ghost"
+          icon={variant !== 'audit' ? <RefreshCw className="w-4 h-4" /> : undefined}
+          onClick={refetch}
+        >
           Atualizar
         </FioriButton>
       </div>
@@ -397,217 +595,52 @@ export function TimelinePanel({ title = 'Histórico', subjectType, subjectId, li
       ) : isError ? (
         <ErrorState error={error} onRetry={refetch} />
       ) : events.length === 0 ? (
-        <EmptyState
-          title="Sem registros"
-          description="Ainda não há registros no histórico para este item."
-          icon={<History className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
-        />
+        variant === 'audit' ? (
+          <div className="py-4 text-sm text-[var(--sapContent_LabelColor)]">
+            Ainda não há registros para este item.
+          </div>
+        ) : (
+          <EmptyState
+            title="Sem registros"
+            description="Ainda não há registros no histórico para este item."
+            icon={<History className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
+          />
+        )
       ) : (
         <div className="space-y-2">
-          {events.map((ev) => {
-            const isSuperseded = correctedBy.has(ev.id);
-            const correctionId = correctedBy.get(ev.id);
-            const known = isKnownType(ev.event_type);
-
-            const payload = ev.payload || {};
-            const commentBody = safeString((payload as any).body);
-            const attachmentName = safeString((payload as any).file_name);
-            const commentAttachments = attachmentRefsFromPayload(payload);
-            const mention = safeString((payload as any).mention);
-            const mentionCommentId = safeNumber((payload as any).comment_event_id);
-
-            return (
-              <div
-                key={ev.id}
-                className={`p-3 rounded border ${
-                  isSuperseded ? 'bg-[var(--sapGroup_ContentBackground)] opacity-75' : 'bg-white'
-                } border-[var(--sapGroup_ContentBorderColor)]`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-['72:Bold',sans-serif] text-sm text-[#131e29] truncate">
-                        {eventTypeLabel(ev.event_type)}
-                      </span>
-                      {!known && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-[var(--sapErrorBackground,#ffebeb)] text-[var(--sapNegativeColor,#b00)]">
-                          tipo não reconhecido
-                        </span>
-                      )}
-                      {ev.visibility === 'finance' && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-[var(--sapWarningBackground,#fff3b8)] text-[var(--sapWarningColor,#8d2a00)]">
-                          Financeiro
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
-                      {formatDateTime(ev.occurred_at)}
-                    </div>
-
-                    {isSuperseded && typeof correctionId === 'number' && (
-                      <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
-                        Comentário revisado
-                      </div>
-                    )}
-
-                    {commentBody && (
-                      <div className="mt-2 text-sm text-[#131e29] whitespace-pre-wrap">{commentBody}</div>
-                    )}
-
-                    {commentAttachments.length > 0 && (
-                      <div className="mt-2">
-                        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Anexos</div>
-                        <div className="flex flex-col gap-1">
-                          {commentAttachments.map((a) => (
-                            <div key={a.attachment_event_id} className="flex items-center justify-between gap-2">
-                              <span className="text-sm text-[#131e29] truncate">{a.file_name}</span>
-                              <FioriButton
-                                variant="ghost"
-                                onClick={() => void triggerBrowserDownload(a.attachment_event_id)}
-                              >
-                                Baixar
-                              </FioriButton>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {ev.event_type === 'human.mentioned' && mention && typeof mentionCommentId === 'number' && (
-                      <div className="mt-2 text-sm text-[#131e29]">
-                        <span className="text-xs text-[var(--sapContent_LabelColor)]">Menção:</span> @{mention}
-                      </div>
-                    )}
-
-                    {ev.event_type === 'human.attachment.added' && attachmentName && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-sm text-[#131e29]">{attachmentName}</span>
-                        <FioriButton
-                          variant="ghost"
-                          onClick={() => void triggerBrowserDownload(ev.id)}
-                        >
-                          Baixar
-                        </FioriButton>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="text-right">
-                    {canWrite && ev.event_type.startsWith('human.comment') && !isSuperseded && (
-                      <div className="mt-2">
-                        <FioriButton
-                          variant="ghost"
-                          onClick={() => {
-                            setCorrectionTargetId(ev.id);
-                            setCorrectionBody(commentBody || '');
-                            setCorrectionVisibility(ev.visibility);
-                            setCorrectionAttachments(commentAttachments);
-                          }}
-                        >
-                          Revisar
-                        </FioriButton>
-                      </div>
-                    )}
-                  </div>
+          {variant === 'audit' && grouped ? (
+            <div className="space-y-4">
+              <div>
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">
+                  Eventos automáticos ({grouped.automatic.length})
                 </div>
-
-                {canWrite && correctionTargetId === ev.id && (
-                  <div className="mt-3 p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-white">
-                    <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Revisão do comentário</div>
-
-                    {correctionAttachments.length > 0 && (
-                      <div className="mb-2">
-                        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Anexos vinculados</div>
-                        <div className="flex flex-col gap-1">
-                          {correctionAttachments.map((a) => (
-                            <div key={a.attachment_event_id} className="flex items-center justify-between gap-2">
-                              <span className="text-sm text-[#131e29] truncate">{a.file_name}</span>
-                              <div className="flex items-center gap-2">
-                                <FioriButton
-                                  variant="ghost"
-                                  onClick={() => void triggerBrowserDownload(a.attachment_event_id)}
-                                >
-                                  Baixar
-                                </FioriButton>
-                                <FioriButton
-                                  variant="ghost"
-                                  onClick={() =>
-                                    setCorrectionAttachments((prev) =>
-                                      prev.filter((x) => x.attachment_event_id !== a.attachment_event_id)
-                                    )
-                                  }
-                                >
-                                  Remover
-                                </FioriButton>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <textarea
-                      className="w-full text-sm border rounded p-2"
-                      value={correctionBody}
-                      onChange={(e) => setCorrectionBody(e.target.value)}
-                      aria-label="Texto de correção"
-                      title="Texto de correção"
-                      rows={3}
-                      disabled={isCorrecting}
-                    />
-
-                    <div className="flex items-center justify-between gap-2 mt-2">
-                      <input
-                        type="file"
-                        className="text-xs"
-                        aria-label="Adicionar anexo de correção"
-                        title="Adicionar anexo de correção"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f)
-                            void onUploadAttachment(f, correctionVisibility, (a) =>
-                              setCorrectionAttachments((prev) => [...prev, a])
-                            );
-                          e.currentTarget.value = '';
-                        }}
-                        disabled={isCorrecting}
-                      />
-                      <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                        Visibilidade: {visibilityLabel(correctionVisibility)}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2 mt-2">
-                      <FioriButton
-                        variant="ghost"
-                        onClick={() => {
-                          setCorrectionTargetId(null);
-                          setCorrectionBody('');
-                          setCorrectionAttachments([]);
-                        }}
-                        disabled={isCorrecting}
-                      >
-                        Cancelar
-                      </FioriButton>
-                      <FioriButton
-                        variant="default"
-                        onClick={() => void onSubmitCorrection(ev.id)}
-                        disabled={isCorrecting}
-                      >
-                        {isCorrecting ? 'Salvando...' : 'Salvar correção'}
-                      </FioriButton>
-                    </div>
-                  </div>
+                {grouped.automatic.length === 0 ? (
+                  <div className="text-sm text-[var(--sapContent_LabelColor)]">Sem eventos automáticos.</div>
+                ) : (
+                  <div className="space-y-2">{grouped.automatic.map(renderEvent)}</div>
                 )}
               </div>
-            );
-          })}
+
+              <div>
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">
+                  Comentários e anexos ({grouped.manual.length})
+                </div>
+                {grouped.manual.length === 0 ? (
+                  <div className="text-sm text-[var(--sapContent_LabelColor)]">Sem comentários.</div>
+                ) : (
+                  <div className="space-y-2">{grouped.manual.map(renderEvent)}</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>{events.map(renderEvent)}</>
+          )}
 
           <div className="flex items-center justify-center pt-2">
             {hasMore ? (
               <FioriButton
                 variant="default"
-                icon={<ChevronDown className="w-4 h-4" />}
+                icon={variant !== 'audit' ? <ChevronDown className="w-4 h-4" /> : undefined}
                 onClick={loadMore}
                 disabled={isLoading}
               >

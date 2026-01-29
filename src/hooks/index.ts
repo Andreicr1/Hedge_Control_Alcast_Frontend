@@ -5,6 +5,7 @@
 export * from './useAuth';
 export * from './useRfqs';
 export * from './useContracts';
+export * from './useContractDocuments';
 export * from './useDeals';
 export * from './useCounterparties';
 export * from './useCustomers';

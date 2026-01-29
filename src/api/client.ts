@@ -495,6 +495,15 @@ export const endpoints = {
     exposures: (id: string) => `/contracts/${id}/exposures`,
     byRfq: (rfqId: number) => `/contracts?rfq_id=${rfqId}`,
     byDeal: (dealId: number) => `/contracts?deal_id=${dealId}`,
+
+    documents: {
+      list: (contractId: string) => `/contracts/${contractId}/documents`,
+      upload: (contractId: string) => `/contracts/${contractId}/documents`,
+      view: (contractId: string, documentId: number) =>
+        `/contracts/${contractId}/documents/${documentId}/view`,
+      download: (contractId: string, documentId: number) =>
+        `/contracts/${contractId}/documents/${documentId}/download`,
+    },
   },
 
   // Exposures

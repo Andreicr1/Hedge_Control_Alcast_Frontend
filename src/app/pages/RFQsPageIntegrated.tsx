@@ -2,24 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useRfqs, useRfqDetail, useAwardQuote, useSendRfq } from '../../hooks';
+import { useRfqs, useRfqDetail, useAwardQuote, useSendRfq, useContractsByRfq } from '../../hooks';
 import { useCounterparties } from '../../hooks/useCounterparties';
-import { useContracts } from '../../hooks/useContracts';
 import { ApiError, KycGateErrorDetail, Rfq, RfqQuote, RfqStatus, RfqAwardRequest } from '../../types';
 import { groupQuotesByTrade, rankTradesBySpread } from '../../services/rfqs.service';
 import { getCounterpartyKycPreflight } from '../../services/counterparties.service';
-import { FioriObjectStatus, mapStatusToType } from '../components/fiori/FioriObjectStatus';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { FioriTile } from '../components/fiori/FioriTile';
 import { FioriModal } from '../components/fiori/FioriModal';
-import { FioriInput } from '../components/fiori/FioriInput';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { QuoteEntryForm } from '../components/rfq/QuoteEntryForm';
-import { AwardedContractInfo } from '../components/rfq/AwardedContractInfo';
 import { TimelinePanel } from '../components/timeline/TimelinePanel';
+import { RfqDecisionRankingTable } from '../components/rfq/RfqDecisionRankingTable';
 import { 
-  Download, 
   Search, 
   FileText, 
   Users, 
@@ -41,46 +37,24 @@ function openWhatsApp(text: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-// ============================================
-// Status Helpers - Baseado nos enums do backend
-// ============================================
-
-function getStatusType(status: RfqStatus): 'success' | 'error' | 'neutral' | 'information' | 'warning' {
-  switch (status) {
-    case RfqStatus.AWARDED:
-      return 'success';
-    case RfqStatus.FAILED:
-    case RfqStatus.EXPIRED:
-      return 'error';
-    case RfqStatus.QUOTED:
-      return 'information';
-    case RfqStatus.SENT:
-    case RfqStatus.PENDING:
-      return 'neutral';
-    default:
-      return 'neutral';
-  }
-}
-
-function getStatusLabel(status: RfqStatus): string {
-  const labels: Record<RfqStatus, string> = {
-    [RfqStatus.DRAFT]: 'Rascunho',
-    [RfqStatus.PENDING]: 'Pendente',
-    [RfqStatus.SENT]: 'Enviada',
-    [RfqStatus.QUOTED]: 'Cotada',
-    [RfqStatus.AWARDED]: 'Contratada',
-    [RfqStatus.EXPIRED]: 'Expirada',
-    [RfqStatus.FAILED]: 'Falhou',
-  };
-  return labels[status] || status;
-}
-
 function legSideLabel(value: string | null | undefined): string {
   if (!value) return '—';
   const k = String(value).toLowerCase();
   if (k === 'buy') return 'Compra';
   if (k === 'sell') return 'Venda';
   return '—';
+}
+
+function formatNumber(value: number | null | undefined, opts?: Intl.NumberFormatOptions): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2, ...opts });
+}
+
+function formatImpact(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+  const abs = Math.abs(value);
+  return `${sign}${abs.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ============================================
@@ -98,11 +72,9 @@ export function RFQsPageIntegrated() {
   // API State via hooks
   const { rfqs, isLoading, isError, error, refetch } = useRfqs();
   const { counterparties } = useCounterparties();
-  const { contracts } = useContracts();
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<RfqStatus | 'all'>('all');
   const [selectedRfqId, setSelectedRfqId] = useState<number | null>(null);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
 
@@ -119,6 +91,8 @@ export function RFQsPageIntegrated() {
   
   // Selected RFQ detail
   const { rfq: selectedRfq, isLoading: isLoadingDetail, refetch: refetchDetail } = useRfqDetail(selectedRfqId);
+
+  const { contracts: rfqContracts, isLoading: isLoadingContracts } = useContractsByRfq(selectedRfqId);
   
   // Mutations
   const awardMutation = useAwardQuote();
@@ -195,10 +169,9 @@ export function RFQsPageIntegrated() {
       const matchesSearch =
         rfq.rfq_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         rfq.period.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || rfq.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      return matchesSearch;
     });
-  }, [rfqs, searchTerm, statusFilter]);
+  }, [rfqs, searchTerm]);
 
   // Group quotes by trade and rank them
   const rankedTrades = useMemo(() => {
@@ -206,6 +179,45 @@ export function RFQsPageIntegrated() {
     const grouped = groupQuotesByTrade(selectedRfq.counterparty_quotes);
     return rankTradesBySpread(grouped);
   }, [selectedRfq]);
+
+  const decisionSummary = useMemo(() => {
+    if (!selectedRfq) return null;
+
+    const winnerQuoteId = selectedRfq.winner_quote_id;
+    const bestTrade = rankedTrades.length ? rankedTrades[0] : null;
+
+    const selectedTrade =
+      typeof winnerQuoteId === 'number'
+        ? rankedTrades.find((t) => t.quotes.some((q) => q.id === winnerQuoteId)) || null
+        : null;
+
+    const bestBuy = bestTrade?.quotes.find((q) => q.leg_side === 'buy');
+    const bestSell = bestTrade?.quotes.find((q) => q.leg_side === 'sell');
+    const bestCounterparty = bestBuy?.counterparty_name || bestSell?.counterparty_name || null;
+
+    const selectedBuy = selectedTrade?.quotes.find((q) => q.leg_side === 'buy');
+    const selectedSell = selectedTrade?.quotes.find((q) => q.leg_side === 'sell');
+    const selectedCounterparty =
+      selectedBuy?.counterparty_name || selectedSell?.counterparty_name || (selectedTrade ? '—' : null);
+
+    const bestSpread = bestTrade?.spread ?? null;
+    const selectedSpread = selectedTrade?.spread ?? null;
+
+    const spreadDelta =
+      typeof bestSpread === 'number' && typeof selectedSpread === 'number' ? selectedSpread - bestSpread : null;
+
+    const qty = selectedRfq.quantity_mt;
+    const impactVsBest = typeof spreadDelta === 'number' ? spreadDelta * qty : null;
+
+    return {
+      bestSpread,
+      bestCounterparty,
+      selectedSpread,
+      selectedCounterparty,
+      spreadDelta,
+      impactVsBest,
+    };
+  }, [rankedTrades, selectedRfq]);
 
   // ============================================
   // Handlers
@@ -340,22 +352,6 @@ export function RFQsPageIntegrated() {
             />
             <Search className="w-4 h-4 absolute right-2 top-2 text-[var(--sapContent_IconColor)]" />
           </div>
-          
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as RfqStatus | 'all')}
-            aria-label="Filtro de status"
-            title="Filtro de status"
-            className="w-full h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"
-          >
-            <option value="all">Todos os status</option>
-            {Object.values(RfqStatus).map((status) => (
-              <option key={status} value={status}>
-                {getStatusLabel(status)}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -384,12 +380,7 @@ export function RFQsPageIntegrated() {
               }`}
             >
               <div className="flex items-start justify-between mb-2">
-                <div className="font-['72:Bold',sans-serif] text-sm text-[#0064d9]">
-                  Cotação nº {rfq.id}
-                </div>
-                <FioriObjectStatus status={getStatusType(rfq.status)}>
-                  {getStatusLabel(rfq.status)}
-                </FioriObjectStatus>
+                <div className="font-['72:Bold',sans-serif] text-sm text-[#0064d9]">Cotação nº {rfq.id}</div>
               </div>
               <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">
                 Período: {rfq.period}
@@ -419,85 +410,139 @@ export function RFQsPageIntegrated() {
   const detailContent = selectedRfq ? (
     <div className="h-full overflow-y-auto">
       <div className="p-4 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h1 className="font-['72:Black',sans-serif] text-2xl text-[#0064d9] m-0">
-              Cotação nº {selectedRfq.id}
-            </h1>
-            <FioriObjectStatus status={getStatusType(selectedRfq.status)}>
-              {getStatusLabel(selectedRfq.status)}
-            </FioriObjectStatus>
+        {/* Header — Identidade + Resumo Econômico */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* Bloco A — Identidade */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h1 className="font-['72:Black',sans-serif] text-2xl text-[#0064d9] m-0">
+                  Cotação nº {selectedRfq.id}
+                </h1>
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                  Identificadores operacionais para decisão de hedge.
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {canSend && (
+                  <FioriButton variant="emphasized" onClick={handleSendRfq} disabled={sendMutation.isLoading}>
+                    <Send className="w-4 h-4 mr-1" />
+                    {sendMutation.isLoading ? 'Enviando...' : 'Enviar'}
+                  </FioriButton>
+                )}
+                <FioriButton variant="ghost" icon={<MessageCircle className="w-4 h-4" />} onClick={handleShareWhatsApp}>
+                  WhatsApp
+                </FioriButton>
+                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetchDetail}>
+                  Atualizar
+                </FioriButton>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+              <FioriTile
+                title="Quantidade"
+                value={`${selectedRfq.quantity_mt.toLocaleString('pt-BR')} MT`}
+                icon={<FileText className="w-4 h-4" />}
+              />
+              <FioriTile title="Período" value={selectedRfq.period} icon={<Calendar className="w-4 h-4" />} />
+              <FioriTile
+                title="Propostas"
+                value={`${selectedRfq.counterparty_quotes?.length || 0}`}
+                valueColor={selectedRfq.counterparty_quotes?.length ? 'positive' : 'neutral'}
+                icon={<Users className="w-4 h-4" />}
+              />
+              <FioriTile
+                title="Operação"
+                value={selectedRfq.deal_id?.toString() || '—'}
+                icon={<FileText className="w-4 h-4" />}
+              />
+            </div>
           </div>
-          <div className="flex gap-2">
-            {canSend && (
-              <FioriButton 
-                variant="emphasized"
-                onClick={handleSendRfq}
-                disabled={sendMutation.isLoading}
-              >
-                <Send className="w-4 h-4 mr-1" />
-                {sendMutation.isLoading ? 'Enviando...' : 'Enviar'}
-              </FioriButton>
-            )}
-            <FioriButton variant="ghost" icon={<MessageCircle className="w-4 h-4" />} onClick={handleShareWhatsApp}>
-              WhatsApp
-            </FioriButton>
-            <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetchDetail}>
-              Atualizar
-            </FioriButton>
+
+          {/* Bloco B — Resumo Econômico */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h2 className="font-['72:Bold',sans-serif] text-base text-[#131e29] m-0">
+              Resumo Econômico
+            </h2>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+              Destaques para leitura executiva e decisão.
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)]">
+                <div className="text-xs text-[var(--sapContent_LabelColor)]">Melhor proposta (rank 1)</div>
+                <div className="mt-1 font-['72:Bold',sans-serif] text-sm text-[#131e29]">
+                  Diferença: {formatNumber(decisionSummary?.bestSpread)}
+                </div>
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                  Contraparte: {decisionSummary?.bestCounterparty || '—'}
+                </div>
+              </div>
+
+              <div className="p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)]">
+                <div className="text-xs text-[var(--sapContent_LabelColor)]">Proposta selecionada</div>
+                <div className="mt-1 font-['72:Bold',sans-serif] text-sm text-[#131e29]">
+                  Diferença: {formatNumber(decisionSummary?.selectedSpread)}
+                </div>
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                  Contraparte: {decisionSummary?.selectedCounterparty || '—'}
+                </div>
+              </div>
+
+              <div className="p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-white">
+                <div className="text-xs text-[var(--sapContent_LabelColor)]">Diferença vs melhor proposta</div>
+                <div className="mt-1 font-['72:Bold',sans-serif] text-sm text-[#131e29] tabular-nums">
+                  {formatImpact(decisionSummary?.spreadDelta)}
+                </div>
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                  Referência: melhor proposta (rank 1)
+                </div>
+              </div>
+
+              <div className="p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-white">
+                <div className="text-xs text-[var(--sapContent_LabelColor)]">Impacto estimado vs melhor</div>
+                <div className="mt-1 font-['72:Bold',sans-serif] text-sm text-[#131e29] tabular-nums">
+                  {formatImpact(decisionSummary?.impactVsBest)}
+                </div>
+                <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+                  Base: diferença × quantidade (MT)
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* KPI Tiles */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <FioriTile
-            title="Quantidade"
-            value={`${selectedRfq.quantity_mt.toLocaleString('pt-BR')} MT`}
-            icon={<FileText className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Período"
-            value={selectedRfq.period}
-            icon={<Calendar className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Cotações"
-            value={`${selectedRfq.counterparty_quotes?.length || 0}`}
-            valueColor={selectedRfq.counterparty_quotes?.length ? 'positive' : 'neutral'}
-            icon={<Users className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Operação"
-            value={selectedRfq.deal_id?.toString() || '—'}
-            icon={<FileText className="w-4 h-4" />}
-          />
-        </div>
-
-        {/* Contracted Quote Info (if awarded) */}
-        {isAwarded && selectedRfq.winner_quote_id && (
-          <div className="bg-[var(--sapInformationBackground,#f5faff)] border border-[var(--sapInformationBorderColor,#0a6ed1)] rounded-lg p-4">
-            <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29]">
-              Cotação contratada
+        {/* Referência a Contratos (discreta, quando aplicável) */}
+        {selectedRfqId && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] m-0">
+              Referência a Contratos
             </h3>
-            <p className="text-sm text-[var(--sapContent_LabelColor)]">
-              Cotação: #{selectedRfq.winner_quote_id}
-              {selectedRfq.winner_rank && ` (Classificação: ${selectedRfq.winner_rank}º)`}
-            </p>
-            {selectedRfq.decision_reason && (
-              <p className="text-sm text-[var(--sapContent_LabelColor)] mt-1">
-                Motivo: {selectedRfq.decision_reason}
-              </p>
-            )}
-          </div>
-        )}
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">
+              Informação para rastreabilidade. Detalhes e ciclo de vida são tratados na página de Contratos.
+            </div>
 
-        {/* Contracts Created (after award) */}
-        {isAwarded && selectedRfqId && contracts.length > 0 && (
-          <AwardedContractInfo
-            contracts={contracts}
-            rfqId={selectedRfqId}
-          />
+            <div className="mt-3">
+              {isLoadingContracts ? (
+                <div className="text-sm text-[var(--sapContent_LabelColor)]">Verificando vínculos...</div>
+              ) : rfqContracts.length > 0 ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm text-[#131e29]">
+                    Existe contrato associado a esta cotação.
+                  </div>
+                  <Link
+                    to={`/financeiro/contratos?rfq_id=${encodeURIComponent(String(selectedRfqId))}`}
+                    className="text-sm text-[#0064d9] no-underline hover:underline"
+                  >
+                    Abrir Contratos
+                  </Link>
+                </div>
+              ) : (
+                <div className="text-sm text-[var(--sapContent_LabelColor)]">Nenhum contrato associado.</div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Quote Entry Form (collapsible) */}
@@ -525,114 +570,29 @@ export function RFQsPageIntegrated() {
           </div>
         )}
 
-        {/* Ranking de Cotações */}
-        {rankedTrades.length > 0 && (
+        {/* Ranking de Cotações — núcleo decisório */}
+        {selectedRfq.counterparty_quotes?.length > 0 ? (
+          <RfqDecisionRankingTable
+            trades={rankedTrades}
+            winnerQuoteId={selectedRfq.winner_quote_id}
+            canSelect={canAward}
+            isSelectionDisabled={isAwarded}
+            onSelect={(quote) => handleOpenAwardModal(quote)}
+          />
+        ) : (
           <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
-              Ranking de Cotações
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--sapList_HeaderBorderColor)]">
-                    <th className="text-left p-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Rank</th>
-                    <th className="text-left p-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Contraparte</th>
-                    <th className="text-right p-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Compra</th>
-                    <th className="text-right p-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Venda</th>
-                    <th className="text-right p-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Diferença</th>
-                    {canAward && <th className="text-center p-2">Ação</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rankedTrades.map((trade) => {
-                    const buyLeg = trade.quotes.find(q => q.leg_side === 'buy');
-                    const sellLeg = trade.quotes.find(q => q.leg_side === 'sell');
-                    const counterpartyName = buyLeg?.counterparty_name || sellLeg?.counterparty_name || '—';
-                    const isWinner = selectedRfq.winner_quote_id && trade.quotes.some(q => q.id === selectedRfq.winner_quote_id);
-                    
-                    return (
-                      <tr 
-                        key={trade.groupId} 
-                        className={`border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] ${
-                          isWinner ? 'bg-[var(--sapList_SelectionBackgroundColor)] border-l-2 border-l-[var(--sapPositiveColor)]' : ''
-                        }`}
-                      >
-                        <td className="p-2">
-                          <span className="font-['72:Bold',sans-serif]">
-                            {trade.rank}º
-                          </span>
-                        </td>
-                        <td className="p-2">{counterpartyName}</td>
-                        <td className="p-2 text-right font-['72:Regular',sans-serif]">
-                          {buyLeg?.quote_price?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '—'}
-                        </td>
-                        <td className="p-2 text-right font-['72:Regular',sans-serif]">
-                          {sellLeg?.quote_price?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '—'}
-                        </td>
-                        <td className="p-2 text-right font-['72:Bold',sans-serif]">
-                          {trade.spread?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '—'}
-                        </td>
-                        {canAward && (
-                          <td className="p-2 text-center">
-                            <FioriButton
-                              variant="default"
-                              onClick={() => buyLeg && handleOpenAwardModal(buyLeg)}
-                              disabled={isAwarded}
-                            >
-                              Selecionar
-                            </FioriButton>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Individual Quotes (if no trades grouped) */}
-        {rankedTrades.length === 0 && selectedRfq.counterparty_quotes?.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
-              Cotações Individuais
-            </h3>
-            <div className="space-y-2">
-              {selectedRfq.counterparty_quotes.map((quote) => (
-                <div 
-                  key={quote.id} 
-                  className="flex items-center justify-between p-3 bg-[var(--sapGroup_ContentBackground)] rounded"
-                >
-                  <div>
-                    <span className="font-['72:Bold',sans-serif]">{quote.counterparty_name}</span>
-                    <span className="text-sm text-[var(--sapContent_LabelColor)] ml-2">
-                      {legSideLabel(quote.leg_side)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-['72:Bold',sans-serif]">
-                      {quote.quote_price?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </span>
-                    {canAward && (
-                      <FioriButton
-                        variant="default"
-                        onClick={() => handleOpenAwardModal(quote)}
-                      >
-                        Selecionar
-                      </FioriButton>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] m-0">Ranking de Cotações</h3>
+            <div className="text-sm text-[var(--sapContent_LabelColor)] mt-2">
+              Nenhuma proposta recebida até o momento.
             </div>
           </div>
         )}
 
         <TimelinePanel
-          title="Histórico"
+          title="Histórico (Registro e Auditoria)"
           subjectType="rfq"
           subjectId={selectedRfq.id}
+          variant="audit"
         />
       </div>
     </div>

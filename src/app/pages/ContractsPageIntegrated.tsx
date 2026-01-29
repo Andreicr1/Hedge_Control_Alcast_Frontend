@@ -9,6 +9,7 @@ import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { FioriTile } from '../components/fiori/FioriTile';
+import { ContractDocumentsPanel } from '../components/contracts/ContractDocumentsPanel';
 import { LoadingState, ErrorState, EmptyState } from '../components/ui';
 import { UX_COPY } from '../ux/copy';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
@@ -461,7 +462,7 @@ export function ContractsPageIntegrated() {
     );
   };
 
-  const renderTradeSnapshot = (contract: Contract) => {
+  const renderEconomicStructure = (contract: Contract) => {
     const { buyLeg, sellLeg, spread } = extractTradeLegs(contract);
     const notional = calculateNotional(contract);
 
@@ -477,14 +478,11 @@ export function ContractsPageIntegrated() {
     const maturity = contract.maturity_date
       ? new Date(contract.maturity_date).toLocaleDateString('pt-BR')
       : null;
-
-    const showAdjustment = display.key === 'vencido' || display.key === 'settled';
-    const adj = contract.settlement_adjustment_usd;
     
     return (
       <div className="bg-white rounded-lg shadow-sm p-4">
         <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
-          Legs do swap
+          Estrutura econômica
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -581,25 +579,50 @@ export function ContractsPageIntegrated() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 pt-3 mt-3 border-t border-[var(--sapGroup_ContentBorderColor)]">
-          <div>
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Vencimento</div>
-            <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-              {maturity || '—'}
+        <div className="pt-3 mt-3 border-t border-[var(--sapGroup_ContentBorderColor)]">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Vencimento</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
+                {maturity || '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Status pós-vencimento</div>
+              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
+                {display.label}
+              </div>
             </div>
           </div>
-          <div>
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Settlement Date</div>
-            <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-              {contract.settlement_date
-                ? new Date(contract.settlement_date).toLocaleDateString('pt-BR')
-                : '—'}
-            </div>
+
+          <div className="pt-3 mt-3 border-t border-[var(--sapGroup_ContentBorderColor)] text-xs text-[var(--sapContent_LabelColor)]">
+            {obsStart && obsEnd ? `Janela de observação: ${obsStart} → ${obsEnd}` : '—'}
           </div>
         </div>
+      </div>
+    );
+  };
 
-        {showAdjustment && (
-          <div className="pt-3 mt-3 border-t border-[var(--sapGroup_ContentBorderColor)]">
+  const renderSettlementSummary = (contract: Contract) => {
+    const settlementDate = contract.settlement_date
+      ? new Date(contract.settlement_date).toLocaleDateString('pt-BR')
+      : null;
+    const adj = contract.settlement_adjustment_usd;
+    const showAdjustment = adj !== null && adj !== undefined;
+
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-4">
+        <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">Liquidação</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Settlement Date</div>
+            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
+              {settlementDate || '—'}
+            </div>
+          </div>
+
+          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
             <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Ajuste (USD)</div>
             <div
               className={`font-['72:Black',sans-serif] text-lg ${
@@ -608,7 +631,7 @@ export function ContractsPageIntegrated() {
                   : 'text-[var(--sapNegativeColor)]'
               }`}
             >
-              {formatAdjustment(adj)}
+              {showAdjustment ? formatAdjustment(adj) : '—'}
             </div>
             {contract.settlement_adjustment_methodology && (
               <div className="text-xs text-[var(--sapContent_LabelColor)]">
@@ -617,7 +640,7 @@ export function ContractsPageIntegrated() {
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     );
   };
@@ -645,38 +668,39 @@ export function ContractsPageIntegrated() {
           </FioriButton>
         </div>
 
-        {/* Contract ID */}
-        <div className="bg-[var(--sapGroup_ContentBackground)] rounded p-3">
-          <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Identificador do contrato</div>
-          <div className="font-['72:Regular',sans-serif] text-sm text-[#131e29] break-all">
-            {selectedContract.contract_id}
-          </div>
-        </div>
+        {/* (1) Identidade e rastreabilidade */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-3">Identidade e rastreabilidade</h3>
 
-        {/* KPI Tiles */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <FioriTile
-            title="Estrutura"
-            value={`#${selectedContract.trade_index ?? 0}`}
-            icon={<ArrowRightLeft className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Liquidação"
-            value={selectedContract.settlement_date 
-              ? new Date(selectedContract.settlement_date).toLocaleDateString('pt-BR')
-              : '—'}
-            icon={<Calendar className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Operação"
-            value={`#${selectedContract.deal_id}`}
-            icon={<FileText className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Cotação"
-            value={`#${selectedContract.rfq_id}`}
-            icon={<FileText className="w-4 h-4" />}
-          />
+          <div className="bg-[var(--sapGroup_ContentBackground)] rounded p-3 border border-[var(--sapGroup_ContentBorderColor)] mb-3">
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Identificador do contrato</div>
+            <div className="font-['72:Regular',sans-serif] text-sm text-[#131e29] break-all">{selectedContract.contract_id}</div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <FioriTile
+              title="Estrutura"
+              value={`#${selectedContract.trade_index ?? 0}`}
+              icon={<ArrowRightLeft className="w-4 h-4" />}
+            />
+            <FioriTile
+              title="Liquidação"
+              value={selectedContract.settlement_date 
+                ? new Date(selectedContract.settlement_date).toLocaleDateString('pt-BR')
+                : '—'}
+              icon={<Calendar className="w-4 h-4" />}
+            />
+            <FioriTile
+              title="Operação"
+              value={`#${selectedContract.deal_id}`}
+              icon={<FileText className="w-4 h-4" />}
+            />
+            <FioriTile
+              title="Cotação"
+              value={`#${selectedContract.rfq_id}`}
+              icon={<FileText className="w-4 h-4" />}
+            />
+          </div>
         </div>
 
         {/* Counterparty */}
@@ -696,14 +720,20 @@ export function ContractsPageIntegrated() {
           </div>
         </div>
 
-        {/* Trade Snapshot */}
-        {renderTradeSnapshot(selectedContract)}
+        {/* (2) Estrutura econômica */}
+        {renderEconomicStructure(selectedContract)}
 
-        {/* Legs detail (institutional) */}
+        {/* (3) Leitura técnica das legs */}
         {renderLegDetailCards(selectedContract)}
 
-        {/* Exposure coverage */}
+        {/* (4) Liquidação */}
+        {renderSettlementSummary(selectedContract)}
+
+        {/* (5) Cobertura de exposição */}
         {renderExposureCoverage(selectedContractExposures)}
+
+        {/* (6) Documentos do contrato */}
+        <ContractDocumentsPanel contract={selectedContract} />
 
         {/* Links */}
         <div className="bg-white rounded-lg shadow-sm p-4">
