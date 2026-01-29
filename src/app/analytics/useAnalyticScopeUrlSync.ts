@@ -25,9 +25,31 @@ export function useAnalyticScopeUrlSync(options: ScopeUrlSyncOptions = {}) {
   const currentFromUrl = useMemo(() => scopeFromSearchParams(searchParams), [searchParams]);
 
   const lastWriteRef = useRef<string>('');
+  const pendingWriteRef = useRef<string>('');
 
   // URL -> store
   useEffect(() => {
+    // If we just wrote scope -> URL, React Router may not have applied the updated
+    // search params yet. During that window, `searchParams` can still reflect the
+    // old URL; syncing URL -> store would incorrectly revert the user's selection.
+    if (pendingWriteRef.current) {
+      const currentStr = searchParams.toString();
+
+      // URL caught up with our pending write.
+      if (currentStr === pendingWriteRef.current) {
+        pendingWriteRef.current = '';
+      } else {
+        // Only ignore URL->store if the pending URL still matches the current scope.
+        // If scope has changed since we started the write (e.g. back/forward navigation),
+        // don't block the URL from taking effect.
+        const pendingScope = scopeFromSearchParams(new URLSearchParams(pendingWriteRef.current));
+        if (pendingScope && isSameScope(pendingScope, scope)) {
+          return;
+        }
+        pendingWriteRef.current = '';
+      }
+    }
+
     if (currentFromUrl) {
       if (!isSameScope(currentFromUrl, scope)) {
         setScope(currentFromUrl);
@@ -52,6 +74,7 @@ export function useAnalyticScopeUrlSync(options: ScopeUrlSyncOptions = {}) {
     if (nextStr === lastWriteRef.current) return;
 
     lastWriteRef.current = nextStr;
+    pendingWriteRef.current = nextStr;
     setSearchParams(next, { replace: true });
   }, [scope, searchParams, setSearchParams]);
 }
