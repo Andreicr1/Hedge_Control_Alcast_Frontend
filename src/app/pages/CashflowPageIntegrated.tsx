@@ -368,40 +368,33 @@ function CashflowScopePanel({
   const indeterminateAll = selectedDealIds.size > 0 && selectedDealIds.size < totalDeals;
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
-        <div className="text-sm font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Escopo</div>
-        <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Selecione para consolidar</div>
-      </div>
+    <div>
+      <label className="flex items-center gap-2 text-sm py-2">
+        <input
+          type="checkbox"
+          checked={checkedAll}
+          ref={(el) => {
+            if (el) el.indeterminate = indeterminateAll;
+          }}
+          onChange={onToggleAll}
+        />
+        <span className="font-['72:Bold',sans-serif]">Selecionar Todos</span>
+      </label>
 
-      <div className="p-3">
-        <label className="flex items-center gap-2 text-sm py-2">
-          <input
-            type="checkbox"
-            checked={checkedAll}
-            ref={(el) => {
-              if (el) el.indeterminate = indeterminateAll;
-            }}
-            onChange={onToggleAll}
-          />
-          <span className="font-['72:Bold',sans-serif]">Selecionar Todos</span>
-        </label>
-
-        <div className="mt-2 space-y-3">
-          {groups.map((g) => (
-            <div key={g.company}>
-              <div className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Bold',sans-serif] uppercase tracking-wide mb-1">{g.company}</div>
-              <div className="space-y-1">
-                {g.deals.map((d) => (
-                  <label key={d.id} className="flex items-center gap-2 text-sm py-1">
-                    <input type="checkbox" checked={selectedDealIds.has(d.id)} onChange={() => onToggleDeal(d.id)} />
-                    <span>{dealLabel(d)}</span>
-                  </label>
-                ))}
-              </div>
+      <div className="mt-2 space-y-3">
+        {groups.map((g) => (
+          <div key={g.company}>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Bold',sans-serif] uppercase tracking-wide mb-1">{g.company}</div>
+            <div className="space-y-1">
+              {g.deals.map((d) => (
+                <label key={d.id} className="flex items-center gap-2 text-sm py-1">
+                  <input type="checkbox" checked={selectedDealIds.has(d.id)} onChange={() => onToggleDeal(d.id)} />
+                  <span>{dealLabel(d)}</span>
+                </label>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1002,7 +995,7 @@ export function CashflowPageIntegrated() {
 
   return (
     <FioriFlexibleColumnLayout
-      masterTitle="Escopo"
+      masterTitle="Seleção"
       masterContent={
         isLoadingDeals ? (
           <div className="p-4">
@@ -1013,7 +1006,36 @@ export function CashflowPageIntegrated() {
             <ErrorState error={dealsError} onRetry={fetchDeals} />
           </div>
         ) : (
-          <CashflowScopePanel groups={groupedDeals} selectedDealIds={selectedDealIds} onToggleDeal={toggleDeal} onToggleAll={toggleAllDeals} />
+          <div className="h-full overflow-y-auto">
+            <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
+              <div className="text-sm font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Escopo</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Selecione para consolidar</div>
+            </div>
+            <div className="p-3">
+              <CashflowScopePanel groups={groupedDeals} selectedDealIds={selectedDealIds} onToggleDeal={toggleDeal} onToggleAll={toggleAllDeals} />
+            </div>
+
+            <div className="border-t border-[var(--sapList_BorderColor)]" />
+            <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
+              <div className="text-sm font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Composição</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Seleção automática ao marcar Deals; ajuste se necessário</div>
+            </div>
+            <div className="p-3">
+              {showNoDealSelected ? (
+                <EmptyState title="Nenhuma seleção" description="Selecione um ou mais Deals para ver a composição." />
+              ) : compositionTrees.length === 0 ? (
+                <EmptyState title="Sem dados" description="Não há itens para o período." />
+              ) : (
+                <CompositionTree
+                  nodes={compositionTrees}
+                  selected={selectedLeafKeys}
+                  expanded={expandedCompositionKeys}
+                  onToggleExpanded={toggleExpandedComposition}
+                  onToggleSelected={onToggleSelectedNode}
+                />
+              )}
+            </div>
+          </div>
         )
       }
       masterWidth={340}
@@ -1090,192 +1112,164 @@ export function CashflowPageIntegrated() {
             </div>
           ) : (
             <div className="border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
-              <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr]">
-                {/* Left (Composition) */}
-                <div className="border-b lg:border-b-0 lg:border-r border-[var(--sapList_BorderColor)]">
-                  <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)]">
-                    <div className="text-sm font-['72:Bold',sans-serif]">Composição</div>
-                    <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Seleção automática ao marcar Deals; ajuste se necessário</div>
-                  </div>
-                  <div className="p-3">
-                    {compositionTrees.length === 0 ? (
-                      <EmptyState title="Sem dados" description="Não há itens para o período." />
-                    ) : (
-                      <CompositionTree
-                        nodes={compositionTrees}
-                        selected={selectedLeafKeys}
-                        expanded={expandedCompositionKeys}
-                        onToggleExpanded={toggleExpandedComposition}
-                        onToggleSelected={onToggleSelectedNode}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* Right (Grid) */}
+              <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)] flex items-center justify-between">
                 <div>
-                  <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)] flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-['72:Bold',sans-serif]">Fluxo de Caixa</div>
-                      <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Trimestre → mês → semana</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
-                          <input type="checkbox" checked={metricVisibility.mtm} onChange={() => toggleMetric('mtm')} />
-                          <span>MTM</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
-                          <input type="checkbox" checked={metricVisibility.estimated} onChange={() => toggleMetric('estimated')} />
-                          <span>Estimado</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
-                          <input type="checkbox" checked={metricVisibility.risk} onChange={() => toggleMetric('risk')} />
-                          <span>Risco</span>
-                        </label>
-                      </div>
-                      <FioriButton
-                        variant="ghost"
-                        onClick={() => {
-                          const q: Record<string, boolean> = {};
-                          const m: Record<string, boolean> = {};
-                          const w: Record<string, boolean> = {};
-                          for (const k of allQuarterKeys) q[k] = true;
-                          for (const k of allMonthKeys) m[k] = true;
-                          for (const k of allWeekKeys) w[k] = true;
-                          setExpandedQuarters(q);
-                          setExpandedMonths(m);
-                          setExpandedWeeks(w);
-                        }}
-                        disabled={timeColumns.length === 0}
-                      >
-                        Expandir tudo
-                      </FioriButton>
-                      <FioriButton
-                        variant="ghost"
-                        onClick={() => {
-                          setExpandedQuarters({});
-                          setExpandedMonths({});
-                          setExpandedWeeks({});
-                        }}
-                        disabled={timeColumns.length === 0}
-                      >
-                        Recolher
-                      </FioriButton>
-                    </div>
+                  <div className="text-sm font-['72:Bold',sans-serif]">Fluxo de Caixa</div>
+                  <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Trimestre → mês → semana</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
+                      <input type="checkbox" checked={metricVisibility.mtm} onChange={() => toggleMetric('mtm')} />
+                      <span>MTM</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
+                      <input type="checkbox" checked={metricVisibility.estimated} onChange={() => toggleMetric('estimated')} />
+                      <span>Estimado</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
+                      <input type="checkbox" checked={metricVisibility.risk} onChange={() => toggleMetric('risk')} />
+                      <span>Risco</span>
+                    </label>
                   </div>
+                  <FioriButton
+                    variant="ghost"
+                    onClick={() => {
+                      const q: Record<string, boolean> = {};
+                      const m: Record<string, boolean> = {};
+                      const w: Record<string, boolean> = {};
+                      for (const k of allQuarterKeys) q[k] = true;
+                      for (const k of allMonthKeys) m[k] = true;
+                      for (const k of allWeekKeys) w[k] = true;
+                      setExpandedQuarters(q);
+                      setExpandedMonths(m);
+                      setExpandedWeeks(w);
+                    }}
+                    disabled={timeColumns.length === 0}
+                  >
+                    Expandir tudo
+                  </FioriButton>
+                  <FioriButton
+                    variant="ghost"
+                    onClick={() => {
+                      setExpandedQuarters({});
+                      setExpandedMonths({});
+                      setExpandedWeeks({});
+                    }}
+                    disabled={timeColumns.length === 0}
+                  >
+                    Recolher
+                  </FioriButton>
+                </div>
+              </div>
 
-                  <div className="p-3">
-                    {showInitialLoading ? (
-                      <LoadingState message="Carregando fluxo de caixa..." />
-                    ) : cashflow.isError ? (
-                      <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
-                    ) : gridRows.length === 0 ? (
-                      <EmptyState title="Sem dados" description="Sem itens selecionados para o período." />
-                    ) : timeColumns.length === 0 ? (
-                      <EmptyState title="Sem dados" description="Sem dados para o período." />
-                    ) : (
-                      <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
-                        <div className="overflow-auto">
-                          <table className="min-w-[760px] w-full">
-                            <thead>
-                              <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                                <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Resumo</th>
+              <div className="p-3">
+                {showInitialLoading ? (
+                  <LoadingState message="Carregando fluxo de caixa..." />
+                ) : cashflow.isError ? (
+                  <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
+                ) : gridRows.length === 0 ? (
+                  <EmptyState title="Sem dados" description="Sem itens selecionados para o período." />
+                ) : timeColumns.length === 0 ? (
+                  <EmptyState title="Sem dados" description="Sem dados para o período." />
+                ) : (
+                  <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
+                    <div className="overflow-auto">
+                      <table className="min-w-[760px] w-full">
+                        <thead>
+                          <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                            <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Resumo</th>
+                            {timeColumns.map((c) => {
+                              const canExpand = c.canExpand;
+                              const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
+
+                              const toggle = () => {
+                                if (!c.canExpand) return;
+                                if (c.level === 'quarter') {
+                                  setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                  if (c.expanded) {
+                                    setExpandedMonths({});
+                                    setExpandedWeeks({});
+                                  }
+                                  return;
+                                }
+                                if (c.level === 'month') {
+                                  setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                  if (c.expanded) setExpandedWeeks({});
+                                  return;
+                                }
+                                if (c.level === 'week') {
+                                  setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                }
+                              };
+
+                              return (
+                                <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
+                                  {canExpand ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggle();
+                                      }}
+                                      title="Expandir/recolher"
+                                    >
+                                      <span>{c.label}</span>
+                                      {icon}
+                                    </button>
+                                  ) : (
+                                    <span>{c.label}</span>
+                                  )}
+                                </th>
+                              );
+                            })}
+
+                            <th className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
+                              Total acumulado
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gridRows.map((row) => {
+                            const isTotal = row.kind === 'total';
+                            const isDeal = row.kind === 'deal';
+                            const isGroup = row.kind === 'group-physical' || row.kind === 'group-financial';
+
+                            const leftCellClass = isTotal || isDeal || isGroup ? "font-['72:Bold',sans-serif]" : '';
+                            const leftBg = isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-white';
+
+                            return (
+                              <tr key={row.key} className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                                <td className={`p-3 text-sm sticky left-0 z-10 ${leftBg} ${leftCellClass}`}>
+                                  <div style={{ paddingLeft: `${row.level * 14}px` }}>{row.label}</div>
+                                </td>
+
                                 {timeColumns.map((c) => {
-                                  const canExpand = c.canExpand;
-                                  const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
-
-                                  const toggle = () => {
-                                    if (!c.canExpand) return;
-                                    if (c.level === 'quarter') {
-                                      setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                      if (c.expanded) {
-                                        setExpandedMonths({});
-                                        setExpandedWeeks({});
-                                      }
-                                      return;
-                                    }
-                                    if (c.level === 'month') {
-                                      setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                      if (c.expanded) setExpandedWeeks({});
-                                      return;
-                                    }
-                                    if (c.level === 'week') {
-                                      setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                    }
-                                  };
-
+                                  const sums = rowSumsForDates(row, c.dates);
                                   return (
-                                    <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
-                                      {canExpand ? (
-                                        <button
-                                          type="button"
-                                          className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggle();
-                                          }}
-                                          title="Expandir/recolher"
-                                        >
-                                          <span>{c.label}</span>
-                                          {icon}
-                                        </button>
-                                      ) : (
-                                        <span>{c.label}</span>
-                                      )}
-                                    </th>
+                                    <td key={`${row.key}:${c.key}`} className="p-2 text-xs text-right whitespace-nowrap align-top">
+                                      {renderSumsCell(sums)}
+                                    </td>
                                   );
                                 })}
 
-                                <th className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
-                                  Total acumulado
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {gridRows.map((row) => {
-                                const isTotal = row.kind === 'total';
-                                const isDeal = row.kind === 'deal';
-                                const isGroup = row.kind === 'group-physical' || row.kind === 'group-financial';
-
-                                const leftCellClass = isTotal || isDeal || isGroup ? "font-['72:Bold',sans-serif]" : '';
-                                const leftBg = isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-white';
-
-                                return (
-                                  <tr key={row.key} className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                                    <td className={`p-3 text-sm sticky left-0 z-10 ${leftBg} ${leftCellClass}`}>
-                                      <div style={{ paddingLeft: `${row.level * 14}px` }}>
-                                        {isDeal ? row.label : row.kind === 'group-physical' ? `${row.label}` : row.kind === 'group-financial' ? `${row.label}` : row.label}
-                                      </div>
+                                {(() => {
+                                  const totalSums = rowSumsForDates(row, allDates);
+                                  return (
+                                    <td key={`${row.key}:total`} className={`p-2 text-xs text-right whitespace-nowrap align-top bg-[var(--sapList_HeaderBackground)]`}>
+                                      {renderSumsCell(totalSums)}
                                     </td>
-
-                                    {timeColumns.map((c) => {
-                                      const sums = rowSumsForDates(row, c.dates);
-                                      return (
-                                        <td key={`${row.key}:${c.key}`} className="p-2 text-xs text-right whitespace-nowrap align-top">
-                                          {renderSumsCell(sums)}
-                                        </td>
-                                      );
-                                    })}
-
-                                    {(() => {
-                                      const totalSums = rowSumsForDates(row, allDates);
-                                      return (
-                                        <td key={`${row.key}:total`} className={`p-2 text-xs text-right whitespace-nowrap align-top bg-[var(--sapList_HeaderBackground)]`}>
-                                          {renderSumsCell(totalSums)}
-                                        </td>
-                                      );
-                                    })()}
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
+                                  );
+                                })()}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           )}
