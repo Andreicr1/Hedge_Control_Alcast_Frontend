@@ -20,6 +20,7 @@ import {
   HedgeTaskStatus,
   DealStatus,
   DealLifecycleStatus,
+  DealCommercialStatus,
   DealEntityType,
   DealDirection,
   DealAllocationType,
@@ -721,11 +722,23 @@ export interface Deal {
   deal_uuid: string;
   reference_name?: string | null;
   commodity?: string | null;
+  company?: string | null;
+  economic_period?: string | null;
+  commercial_status: DealCommercialStatus;
   currency: string;
   status: DealStatus;
   lifecycle_status: DealLifecycleStatus;
   created_by?: number | null;
   created_at: string;
+}
+
+export interface DealCreate {
+  reference_name?: string | null;
+  commodity?: string | null;
+  company?: string | null;
+  economic_period?: string | null;
+  commercial_status?: DealCommercialStatus | null;
+  currency?: string | null;
 }
 
 // ============================================

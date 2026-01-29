@@ -119,6 +119,15 @@ export enum DealLifecycleStatus {
 }
 
 // ============================================
+// Deal Commercial Status (Comercial workflow)
+// ============================================
+export enum DealCommercialStatus {
+  NEGOTIATION = 'negotiation',
+  ACTIVE = 'active',
+  CLOSED = 'closed',
+}
+
+// ============================================
 // Deal Entity Type
 // ============================================
 export enum DealEntityType {

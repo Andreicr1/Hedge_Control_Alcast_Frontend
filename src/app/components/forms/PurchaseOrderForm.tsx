@@ -3,9 +3,9 @@ import { Save, X } from 'lucide-react';
 import { FioriButton } from '../fiori/FioriButton';
 import { FioriInput } from '../fiori/FioriInput';
 import { FioriSelect } from '../fiori/FioriSelect';
-import { OrderStatus, PriceType } from '../../../types';
-import type { Deal, PurchaseOrderCreate, Supplier } from '../../../types';
-import { listDeals } from '../../../services/deals.service';
+import { DealCommercialStatus, OrderStatus, PriceType } from '../../../types';
+import type { Deal, DealCreate, PurchaseOrderCreate, Supplier } from '../../../types';
+import { createDeal, listDeals } from '../../../services/deals.service';
 import { listSuppliers } from '../../../services/suppliers.service';
 
 interface PurchaseOrderFormProps {
@@ -44,6 +44,9 @@ export function PurchaseOrderForm({ onClose, onSave }: PurchaseOrderFormProps) {
 
   const [supplierId, setSupplierId] = useState('');
   const [dealId, setDealId] = useState('');
+  const [newDealReferenceName, setNewDealReferenceName] = useState('');
+  const [newDealCompany, setNewDealCompany] = useState('');
+  const [newDealEconomicPeriod, setNewDealEconomicPeriod] = useState('');
   const [product, setProduct] = useState('');
   const [quantityMt, setQuantityMt] = useState('');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
@@ -85,7 +88,8 @@ export function PurchaseOrderForm({ onClose, onSave }: PurchaseOrderFormProps) {
 
   const dealOptions = useMemo(() => {
     return [
-      { value: '', label: loadingDeals ? 'Carregando...' : 'Sem deal (opcional)' },
+      { value: '', label: loadingDeals ? 'Carregando...' : 'Selecione...' },
+      { value: '__new__', label: 'Criar novo Deal...' },
       ...deals.map((d) => ({ value: String(d.id), label: d.reference_name || d.deal_uuid })),
     ];
   }, [deals, loadingDeals]);
@@ -136,6 +140,11 @@ export function PurchaseOrderForm({ onClose, onSave }: PurchaseOrderFormProps) {
       return;
     }
 
+    if (!isNonEmpty(dealId)) {
+      setError('Selecione um Deal (ou crie um novo).');
+      return;
+    }
+
     const quantity = Number(quantityMt);
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setError('Quantidade (MT) inválida.');
@@ -176,9 +185,35 @@ export function PurchaseOrderForm({ onClose, onSave }: PurchaseOrderFormProps) {
       return;
     }
 
+    let resolvedDealId: number | null = null;
+    if (dealId === '__new__') {
+      const dealPayload: DealCreate = {
+        reference_name: isNonEmpty(newDealReferenceName) ? newDealReferenceName : null,
+        commodity: isNonEmpty(product) ? product : null,
+        company: isNonEmpty(newDealCompany) ? newDealCompany : null,
+        economic_period: isNonEmpty(newDealEconomicPeriod) ? newDealEconomicPeriod : null,
+        commercial_status: DealCommercialStatus.ACTIVE,
+        currency: 'USD',
+      };
+      try {
+        const created = await createDeal(dealPayload);
+        resolvedDealId = created.id;
+      } catch {
+        setError('Falha ao criar Deal.');
+        return;
+      }
+    } else {
+      const parsed = Number(dealId);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError('Deal inválido.');
+        return;
+      }
+      resolvedDealId = parsed;
+    }
+
     const payload: PurchaseOrderCreate = {
       supplier_id: Number(supplierId),
-      deal_id: isNonEmpty(dealId) ? Number(dealId) : undefined,
+      deal_id: resolvedDealId,
       product: isNonEmpty(product) ? product : undefined,
       total_quantity_mt: quantity,
       unit: 'MT',
@@ -236,12 +271,41 @@ export function PurchaseOrderForm({ onClose, onSave }: PurchaseOrderFormProps) {
               required
             />
             <FioriSelect
-              label="Deal (opcional)"
+              label="Deal"
               value={dealId}
               onChange={(e) => setDealId(e.target.value)}
               options={dealOptions}
               disabled={loadingDeals || saving}
+              required
             />
+
+            {dealId === '__new__' && (
+              <>
+                <FioriInput
+                  label="Deal (referência)"
+                  value={newDealReferenceName}
+                  onChange={(e) => setNewDealReferenceName(e.target.value)}
+                  placeholder="Ex.: AT-ALU-Q2-2026"
+                  disabled={saving}
+                />
+
+                <FioriInput
+                  label="Empresa"
+                  value={newDealCompany}
+                  onChange={(e) => setNewDealCompany(e.target.value)}
+                  placeholder="Ex.: Alcast Trading"
+                  disabled={saving}
+                />
+
+                <FioriInput
+                  label="Período econômico"
+                  value={newDealEconomicPeriod}
+                  onChange={(e) => setNewDealEconomicPeriod(e.target.value)}
+                  placeholder="Ex.: 2026-Q2"
+                  disabled={saving}
+                />
+              </>
+            )}
 
             <FioriInput
               label="Produto"

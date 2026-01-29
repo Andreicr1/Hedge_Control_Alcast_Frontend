@@ -442,6 +442,7 @@ export const endpoints = {
   // Deals
   deals: {
     list: '/deals',
+    create: '/deals',
     detail: (id: number) => `/deals/${id}`,
     update: (id: number) => `/deals/${id}`,
     pnl: (id: number) => `/deals/${id}/pnl`,

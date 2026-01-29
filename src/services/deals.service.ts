@@ -10,13 +10,20 @@
  */
 
 import { api, endpoints } from '../api';
-import { Deal, DealPnlResponse } from '../types';
+import { Deal, DealCreate, DealPnlResponse } from '../types';
 
 // ============================================
 // List Deals
 // ============================================
 export async function listDeals(): Promise<Deal[]> {
   return api.get<Deal[]>(endpoints.deals.list);
+}
+
+// ============================================
+// Create Deal
+// ============================================
+export async function createDeal(payload: DealCreate): Promise<Deal> {
+  return api.post<Deal>(endpoints.deals.create, payload);
 }
 
 // ============================================
@@ -98,6 +105,7 @@ export function groupLegsByType(pnl: DealPnlResponse): {
 
 export default {
   list: listDeals,
+  create: createDeal,
   get: getDeal,
   update: updateDeal,
   getPnl: getDealPnl,

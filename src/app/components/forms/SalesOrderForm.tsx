@@ -3,9 +3,10 @@ import { Save, X } from 'lucide-react';
 import { FioriButton } from '../fiori/FioriButton';
 import { FioriInput } from '../fiori/FioriInput';
 import { FioriSelect } from '../fiori/FioriSelect';
-import { OrderStatus, PriceType } from '../../../types';
-import type { Customer, SalesOrderCreate } from '../../../types';
+import { DealCommercialStatus, OrderStatus, PriceType } from '../../../types';
+import type { Customer, Deal, DealCreate, SalesOrderCreate } from '../../../types';
 import { listCustomers } from '../../../services/customers.service';
+import { createDeal, listDeals } from '../../../services/deals.service';
 
 interface SalesOrderFormProps {
   onClose: () => void;
@@ -36,10 +37,16 @@ function isNonEmpty(value: string): boolean {
 export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
   const [saving, setSaving] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [loadingDeals, setLoadingDeals] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [customerId, setCustomerId] = useState('');
+  const [dealId, setDealId] = useState('');
+  const [newDealReferenceName, setNewDealReferenceName] = useState('');
+  const [newDealCompany, setNewDealCompany] = useState('');
+  const [newDealEconomicPeriod, setNewDealEconomicPeriod] = useState('');
   const [product, setProduct] = useState('');
   const [quantityMt, setQuantityMt] = useState('');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
@@ -79,6 +86,14 @@ export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
     ];
   }, [customers, loadingCustomers]);
 
+  const dealOptions = useMemo(() => {
+    return [
+      { value: '', label: loadingDeals ? 'Carregando...' : 'Selecione...' },
+      { value: '__new__', label: 'Criar novo Deal...' },
+      ...deals.map((d) => ({ value: String(d.id), label: d.reference_name || d.deal_uuid })),
+    ];
+  }, [deals, loadingDeals]);
+
   const pricingPeriod = useMemo(() => {
     if (pricingType === PriceType.AVG) {
       if (!isNonEmpty(avgYear) || !isNonEmpty(avgMonth)) return '';
@@ -103,11 +118,26 @@ export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
       } finally {
         setLoadingCustomers(false);
       }
+
+      setLoadingDeals(true);
+      try {
+        const result = await listDeals();
+        setDeals(result);
+      } catch {
+        setError((prev) => prev || 'Falha ao carregar deals.');
+      } finally {
+        setLoadingDeals(false);
+      }
     })();
   }, []);
 
   async function handleSubmit(): Promise<void> {
     setError(null);
+
+    if (!isNonEmpty(dealId)) {
+      setError('Selecione um Deal (ou crie um novo).');
+      return;
+    }
 
     if (!isNonEmpty(customerId)) {
       setError('Selecione um cliente.');
@@ -154,7 +184,34 @@ export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
       return;
     }
 
+    let resolvedDealId: number | null = null;
+    if (dealId === '__new__') {
+      const dealPayload: DealCreate = {
+        reference_name: isNonEmpty(newDealReferenceName) ? newDealReferenceName : null,
+        commodity: isNonEmpty(product) ? product : null,
+        company: isNonEmpty(newDealCompany) ? newDealCompany : null,
+        economic_period: isNonEmpty(newDealEconomicPeriod) ? newDealEconomicPeriod : null,
+        commercial_status: DealCommercialStatus.ACTIVE,
+        currency: 'USD',
+      };
+      try {
+        const created = await createDeal(dealPayload);
+        resolvedDealId = created.id;
+      } catch {
+        setError('Falha ao criar Deal.');
+        return;
+      }
+    } else {
+      const parsed = Number(dealId);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError('Deal inválido.');
+        return;
+      }
+      resolvedDealId = parsed;
+    }
+
     const payload: SalesOrderCreate = {
+      deal_id: resolvedDealId,
       customer_id: Number(customerId),
       product: isNonEmpty(product) ? product : undefined,
       total_quantity_mt: quantity,
@@ -204,6 +261,43 @@ export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FioriSelect
+              label="Deal"
+              value={dealId}
+              onChange={(e) => setDealId(e.target.value)}
+              options={dealOptions}
+              disabled={loadingDeals || saving}
+              required
+            />
+
+            {dealId === '__new__' && (
+              <>
+                <FioriInput
+                  label="Deal (referência)"
+                  value={newDealReferenceName}
+                  onChange={(e) => setNewDealReferenceName(e.target.value)}
+                  placeholder="Ex.: AB-ALU-Q1-2026"
+                  disabled={saving}
+                />
+
+                <FioriInput
+                  label="Empresa"
+                  value={newDealCompany}
+                  onChange={(e) => setNewDealCompany(e.target.value)}
+                  placeholder="Ex.: Alcast Brasil"
+                  disabled={saving}
+                />
+
+                <FioriInput
+                  label="Período econômico"
+                  value={newDealEconomicPeriod}
+                  onChange={(e) => setNewDealEconomicPeriod(e.target.value)}
+                  placeholder="Ex.: 2026-Q1"
+                  disabled={saving}
+                />
+              </>
+            )}
+
             <FioriSelect
               label="Cliente"
               value={customerId}
