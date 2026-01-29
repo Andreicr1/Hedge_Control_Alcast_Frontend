@@ -11,7 +11,7 @@
  * - GET /deals (scope list)
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { flexRender, getCoreRowModel, type ColumnDef, useReactTable } from '@tanstack/react-table';
 
@@ -21,6 +21,7 @@ import { listDeals } from '../../services/deals.service';
 
 import { ErrorState, EmptyState, LoadingState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
+import { FioriDateRangePicker } from '../components/fiori/FioriDateRangePicker';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { TreeNode as TreeNodeView } from '../components/tree/TreeNode';
 import { findNodeById, useCashflowScopeTreeStore, walkNodes, type TreeNode as ScopeTreeNode } from '../stores/cashflowScopeTree.store';
@@ -1045,34 +1046,29 @@ export function CashflowPageIntegrated() {
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                Período (de)
-                <input
-                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                  type="date"
-                  value={String(queryBase.start_date || '')}
-                  onChange={(e) => setQueryBase((prev) => ({ ...prev, start_date: e.target.value || undefined }))}
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <div className="w-full md:w-[340px]">
+                <FioriDateRangePicker
+                  label="Período"
+                  startDateIso={String(queryBase.start_date || '') || undefined}
+                  endDateIso={String(queryBase.end_date || '') || undefined}
+                  placeholder="De · Até"
+                  onChange={({ startDateIso, endDateIso }) =>
+                    setQueryBase((prev) => ({ ...prev, start_date: startDateIso, end_date: endDateIso }))
+                  }
                 />
-              </label>
-              <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                Período (até)
-                <input
-                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                  type="date"
-                  value={String(queryBase.end_date || '')}
-                  onChange={(e) => setQueryBase((prev) => ({ ...prev, end_date: e.target.value || undefined }))}
-                />
-              </label>
-              <label className="text-xs text-[var(--sapContent_LabelColor)]">
-                Data de corte
-                <input
-                  className="mt-1 w-full p-2 border border-[var(--sapField_BorderColor)] rounded bg-white text-sm"
-                  type="date"
-                  value={String(queryBase.as_of || '')}
-                  onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
-                />
-              </label>
+              </div>
+              <div className="w-full md:w-[220px]">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-[var(--sapContent_LabelColor)]">Data de corte</span>
+                  <input
+                    className="h-8 w-full rounded-[4px] border border-[var(--sapField_BorderColor)] bg-[var(--sapField_Background)] px-2 text-[13px] font-['72:Regular',sans-serif] text-[var(--sapField_TextColor)]"
+                    type="date"
+                    value={String(queryBase.as_of || '')}
+                    onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="mt-4 border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
@@ -1211,12 +1207,20 @@ function CashflowTanStackTable({
   renderSums: (row: GridRow, dates: string[]) => ReactNode;
   renderTotal: (row: GridRow) => ReactNode;
 }) {
+  const itemColWidth = 360;
+  const periodColWidth = 140;
+  const totalColWidth = 190;
+
   const columns: ColumnDef<GridRow>[] = useMemo(() => {
     const cols: ColumnDef<GridRow>[] = [];
 
     cols.push({
       id: 'item',
-      header: () => <span>Item</span>,
+      header: () => (
+        <div className="p-2 text-xs font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)] bg-[var(--sapList_HeaderBackground)]">
+          Item
+        </div>
+      ),
       cell: ({ row }) => {
         const r = row.original;
         const isTotal = r.kind === 'total';
@@ -1225,7 +1229,11 @@ function CashflowTanStackTable({
         const leftCellClass = isTotal || isDeal || isGroup ? "font-['72:Bold',sans-serif]" : '';
         const leftBg = isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-white';
         return (
-          <div className={`p-3 text-sm ${leftBg} ${leftCellClass}`} style={{ paddingLeft: `${r.level * 14 + 12}px` }}>
+          <div
+            className={`p-2 text-[13px] ${leftBg} ${leftCellClass} truncate`}
+            style={{ paddingLeft: `${r.level * 14 + 12}px` }}
+            title={r.label}
+          >
             {r.label}
           </div>
         );
@@ -1238,11 +1246,11 @@ function CashflowTanStackTable({
         header: () => {
           const icon = c.canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
           return (
-            <div className="text-center p-2 text-xs whitespace-nowrap">
+            <div className="text-center p-2 text-xs whitespace-nowrap text-[var(--sapList_HeaderTextColor)] bg-[var(--sapList_HeaderBackground)]">
               {c.canExpand ? (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
+                  className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-black/5"
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleColumnExpand(c);
@@ -1258,14 +1266,24 @@ function CashflowTanStackTable({
             </div>
           );
         },
-        cell: ({ row }) => <div className="p-2 text-xs text-right whitespace-nowrap align-top">{renderSums(row.original, c.dates)}</div>,
+        cell: ({ row }) => (
+          <div className="p-2 text-[13px] text-right whitespace-nowrap align-top tabular-nums">{renderSums(row.original, c.dates)}</div>
+        ),
       });
     }
 
     cols.push({
       id: 'total',
-      header: () => <div className="text-center p-2 text-xs whitespace-nowrap">Total acumulado</div>,
-      cell: ({ row }) => <div className="p-2 text-xs text-right whitespace-nowrap align-top bg-[var(--sapList_HeaderBackground)]">{renderTotal(row.original)}</div>,
+      header: () => (
+        <div className="text-center p-2 text-xs whitespace-nowrap text-[var(--sapList_HeaderTextColor)] bg-[var(--sapList_HeaderBackground)]">
+          Total acumulado
+        </div>
+      ),
+      cell: ({ row }) => (
+        <div className="p-2 text-[13px] text-right whitespace-nowrap align-top tabular-nums bg-[var(--sapList_HeaderBackground)]">
+          {renderTotal(row.original)}
+        </div>
+      ),
     });
 
     return cols;
@@ -1279,19 +1297,29 @@ function CashflowTanStackTable({
 
   const lastColId = 'total';
 
+  const colStyleFor = (colId: string): CSSProperties => {
+    if (colId === 'item') return { width: itemColWidth, minWidth: itemColWidth, maxWidth: itemColWidth };
+    if (colId === lastColId) return { width: totalColWidth, minWidth: totalColWidth, maxWidth: totalColWidth };
+    return { width: periodColWidth, minWidth: periodColWidth, maxWidth: periodColWidth };
+  };
+
   return (
     <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
       <div className="overflow-auto max-h-[70vh]">
-        <table className="min-w-[1200px] w-full">
+        <table className="w-max min-w-full border-separate border-spacing-0">
           <thead>
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="border-b border-[var(--sapList_BorderColor)] bg-white">
+              <tr key={hg.id} className="border-b border-[var(--sapList_BorderColor)] bg-[var(--sapList_HeaderBackground)]">
                 {hg.headers.map((h) => {
                   const isFirst = h.column.id === 'item';
                   const isLast = h.column.id === lastColId;
-                  const sticky = isFirst ? 'sticky left-0 z-20 bg-white' : isLast ? 'sticky right-0 z-20 bg-white' : '';
+                  const sticky = isFirst
+                    ? 'sticky left-0 z-20 bg-[var(--sapList_HeaderBackground)] border-r border-[var(--sapList_BorderColor)]'
+                    : isLast
+                      ? 'sticky right-0 z-20 bg-[var(--sapList_HeaderBackground)] border-l border-[var(--sapList_BorderColor)]'
+                      : '';
                   return (
-                    <th key={h.id} className={`${sticky} align-top`}>
+                    <th key={h.id} className={`${sticky} align-top`} style={colStyleFor(h.column.id)}>
                       {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
                     </th>
                   );
@@ -1305,9 +1333,13 @@ function CashflowTanStackTable({
                 {r.getVisibleCells().map((cell) => {
                   const isFirst = cell.column.id === 'item';
                   const isLast = cell.column.id === lastColId;
-                  const sticky = isFirst ? 'sticky left-0 z-10 bg-white' : isLast ? 'sticky right-0 z-10 bg-[var(--sapList_HeaderBackground)]' : '';
+                  const sticky = isFirst
+                    ? 'sticky left-0 z-10 bg-white border-r border-[var(--sapList_BorderColor)]'
+                    : isLast
+                      ? 'sticky right-0 z-10 bg-[var(--sapList_HeaderBackground)] border-l border-[var(--sapList_BorderColor)]'
+                      : '';
                   return (
-                    <td key={cell.id} className={`${sticky} align-top`}>
+                    <td key={cell.id} className={`${sticky} align-top`} style={colStyleFor(cell.column.id)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   );
