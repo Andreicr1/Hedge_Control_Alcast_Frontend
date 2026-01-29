@@ -16,6 +16,17 @@ function readLegacyDealId(params: URLSearchParams): number | null {
   return n;
 }
 
+function normalizeSearchParams(params: URLSearchParams): string {
+  return Array.from(params.entries())
+    .sort(([ak, av], [bk, bv]) => {
+      const kc = ak.localeCompare(bk);
+      if (kc !== 0) return kc;
+      return av.localeCompare(bv);
+    })
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&');
+}
+
 export function useAnalyticScopeUrlSync(options: ScopeUrlSyncOptions = {}) {
   const { acceptLegacyDealId = true } = options;
 
@@ -33,7 +44,7 @@ export function useAnalyticScopeUrlSync(options: ScopeUrlSyncOptions = {}) {
     // search params yet. During that window, `searchParams` can still reflect the
     // old URL; syncing URL -> store would incorrectly revert the user's selection.
     if (pendingWriteRef.current) {
-      const currentStr = searchParams.toString();
+      const currentStr = normalizeSearchParams(searchParams);
 
       // URL caught up with our pending write.
       if (currentStr === pendingWriteRef.current) {
@@ -68,9 +79,10 @@ export function useAnalyticScopeUrlSync(options: ScopeUrlSyncOptions = {}) {
   // store -> URL
   useEffect(() => {
     const next = writeScopeToSearchParams(searchParams, scope);
-    const nextStr = next.toString();
+    const nextStr = normalizeSearchParams(next);
+    const currentStr = normalizeSearchParams(searchParams);
 
-    if (nextStr === searchParams.toString()) return;
+    if (nextStr === currentStr) return;
     if (nextStr === lastWriteRef.current) return;
 
     lastWriteRef.current = nextStr;
