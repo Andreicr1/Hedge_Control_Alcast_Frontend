@@ -1177,7 +1177,7 @@ export function CashflowPageIntegrated() {
                     ) : (
                       <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
                         <div className="overflow-auto">
-                          <table className="min-w-[980px] w-full">
+                          <table className="min-w-[760px] w-full">
                             <thead>
                               <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
                                 <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Resumo</th>
