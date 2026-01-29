@@ -14,7 +14,7 @@ export function SettingsPageIntegrated() {
   const { user } = useAuthContext();
   const role = normalizeRoleName(user?.role);
 
-  const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000', []);
+  const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_BASE_URL || '/api', []);
 
   return (
     <div className="sap-fiori-page p-4">

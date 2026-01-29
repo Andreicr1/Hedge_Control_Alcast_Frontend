@@ -60,15 +60,15 @@ Crie um arquivo `.env` na raiz do projeto:
 ```env
 # URL do backend (opcional)
 #
-# - Local (dev): por padrão o frontend usa `/api` e o Vite faz proxy para `http://localhost:8001`
-#   (ver `vite.config.ts`). Você pode deixar vazio.
-#
 # - Azure Static Web Apps (SWA): recomendado manter `VITE_API_BASE_URL=/api`.
 #   O projeto usa **Azure Functions integradas no SWA** como proxy para o backend (Container Apps),
 #   então o browser sempre chama o mesmo domínio (sem CORS) e POST/PUT/PATCH/DELETE funcionam.
 #
 #   Nesse modo, o backend real é configurado via `BACKEND_BASE_URL` (app setting do SWA),
 #   e NÃO deve ser exposto como variável `VITE_` no frontend.
+#
+# - Dev (frontend local, Azure backend): defina `VITE_API_BASE_URL` explicitamente para um endpoint Azure,
+#   por exemplo `https://<SWA_HOST>/api` (recomendado) ou `https://<CONTAINER_APP_FQDN>/api`.
 VITE_API_BASE_URL=
 
 # Power BI (Cashflow)

@@ -16,15 +16,4 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  server: {
-    proxy: {
-      // Dev-only CORS bypass: frontend calls /api/*, Vite proxies to backend.
-      '/api': {
-        target: 'http://localhost:8001',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (p) => p.replace(/^\/api/, ''),
-      },
-    },
-  },
 })

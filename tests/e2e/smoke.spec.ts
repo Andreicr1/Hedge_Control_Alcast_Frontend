@@ -183,7 +183,12 @@ function envString(key: string): string | undefined {
 }
 
 async function waitForBackendReady(request: any): Promise<BackendTarget> {
-  const origin = envString('E2E_BACKEND_URL') ?? 'http://localhost:8001';
+  const origin = envString('E2E_BACKEND_URL');
+  if (!origin) {
+    throw new Error(
+      'E2E_BACKEND_URL must be set to an Azure endpoint origin, e.g. https://<SWA_HOST> or https://<CONTAINER_APP_FQDN>.',
+    );
+  }
   const forcedPrefix = envString('E2E_API_PREFIX');
   const prefixesToTry = forcedPrefix ? [forcedPrefix] : ['', '/api'];
   const timeoutMs = 20_000;

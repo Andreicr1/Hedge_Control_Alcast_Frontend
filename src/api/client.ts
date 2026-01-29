@@ -20,18 +20,18 @@ export const API_BASE_URL = getApiBaseUrl();
 export function getApiBaseUrl(): string {
   const configured = import.meta.env.VITE_API_BASE_URL;
   if (configured) {
-    const normalized = String(configured).replace(/\/+$/, '');
-    if (import.meta.env.DEV && (normalized === 'http://localhost:8000' || normalized === 'http://127.0.0.1:8000')) {
-      return '/api';
-    }
-    return normalized;
+    return String(configured).replace(/\/+$/, '');
   }
 
-  // Default: use same-origin proxy (/api) to avoid CORS.
-  if (import.meta.env.PROD) {
-    // On Azure Static Web Apps we use same-origin /api.
-    // When deployed with integrated Azure Functions (api/), the Functions layer proxies to the backend.
+  // Azure-only policy:
+  // - PROD (Azure Static Web Apps): same-origin /api (Azure Functions proxy)
+  // - DEV: require explicit Azure URL to avoid local-backend assumptions
+  if (import.meta.env.DEV) {
+    throw new Error(
+      'Missing VITE_API_BASE_URL. Set it to an Azure endpoint, e.g. https://<SWA_HOST>/api or https://<CONTAINER_APP_FQDN>/api.'
+    );
   }
+
   return '/api';
 }
 

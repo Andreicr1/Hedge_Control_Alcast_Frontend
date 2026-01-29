@@ -1,28 +1,26 @@
 /**
- * Cashflow Page - Institutional Matrix (Treasury view)
+ * Cashflow Page (Institutional)
  *
- * Institutional requirement:
- * - Columns = settlement dates (expandable: Quarter → Month → Week → Day)
- * - Rows = Deal → SO / PO / Contract hierarchy
- * - Cell = expected settlement value (USD, signed)
+ * Layout requirement:
+ * - Left column: companies → deals (checkbox per deal)
+ * - Center: composition tree for selected deals (independent selection)
+ * - Right: analytic time grid (Quarter → Month → Week → Day), with columns for deterministic / estimated / risk
  *
- * Data source = GET /cashflow/analytic (SO/PO physical + Contract financial).
+ * Data source:
+ * - GET /cashflow/analytic (lines)
+ * - GET /deals (scope list)
  */
 
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 
-import { useCashflowAnalytic } from '../../hooks';
-import type { CashFlowLine, CashflowAnalyticQueryParams } from '../../types';
+import type { ApiError, CashFlowLine, CashflowAnalyticQueryParams, Deal } from '../../types';
+import { getCashflowAnalytic } from '../../services/cashflow.service';
+import { listDeals } from '../../services/deals.service';
 
 import { ErrorState, EmptyState, LoadingState } from '../components/ui';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
-
-import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
-import { useAnalyticScope } from '../analytics/ScopeProvider';
-import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 
 import { UX_COPY } from '../ux/copy';
 
@@ -95,17 +93,7 @@ function signedAmountUsd(line: CashFlowLine): number {
   return (line.direction === 'outflow' ? -1 : 1) * Number(line.amount || 0);
 }
 
-type MatrixRowKind = 'deal' | 'group' | 'so' | 'po' | 'contract';
-
-type MatrixRow = {
-  key: string;
-  kind: MatrixRowKind;
-  level: number;
-  dealId: string;
-  label: string;
-  entityId?: string;
-  valuesByDate: Record<string, number>;
-};
+type SelectionLeafKey = string;
 
 type TimeBucketLevel = 'quarter' | 'month' | 'week' | 'day';
 
@@ -132,13 +120,349 @@ type TimeTree = {
   }>;
 };
 
+type CashflowConfidenceBucket = 'deterministic' | 'estimated' | 'risk';
+
+type DealCompositionNode = {
+  key: string;
+  label: string;
+  children?: DealCompositionNode[];
+  dealId: number;
+};
+
+function isNegative(value: number): boolean {
+  return typeof value === 'number' && value < 0;
+}
+
+function dealLeafPrefix(dealId: number): string {
+  return `deal:${dealId}`;
+}
+
+function soLeafKey(dealId: number, soId: string): SelectionLeafKey {
+  return `${dealLeafPrefix(dealId)}:so:${soId}`;
+}
+
+function poLeafKey(dealId: number, poId: string): SelectionLeafKey {
+  return `${dealLeafPrefix(dealId)}:po:${poId}`;
+}
+
+function contractLegLeafKey(dealId: number, contractId: string, dir: 'inflow' | 'outflow'): SelectionLeafKey {
+  return `${dealLeafPrefix(dealId)}:contract:${contractId}:${dir}`;
+}
+
+function normalizeCompanyLabel(company?: string | null): string {
+  const v = String(company || '').trim();
+  return v || 'Sem empresa';
+}
+
+function dealLabel(deal: Deal): string {
+  const ref = String(deal.reference_name || '').trim();
+  if (ref) return ref;
+  return `Deal #${deal.id}`;
+}
+
+function classifyConfidence(line: CashFlowLine): CashflowConfidenceBucket {
+  const cashflowType = String(line.cashflow_type || '').toLowerCase();
+  const confidence = String(line.confidence || '').toLowerCase();
+  const entityType = String(line.entity_type || '').toLowerCase();
+  if (cashflowType === 'risk' || confidence === 'risk' || entityType === 'exposure') return 'risk';
+  if (confidence === 'estimated') return 'estimated';
+  return 'deterministic';
+}
+
+function dealIdOfLine(line: CashFlowLine): number | null {
+  if (line.entity_type === 'deal') {
+    const id = Number(String(line.entity_id || '').trim());
+    return Number.isFinite(id) ? id : null;
+  }
+  const pid = Number(String(line.parent_id || '').trim());
+  return Number.isFinite(pid) ? pid : null;
+}
+
+function uniqSortedStrings(values: string[]): string[] {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function collectLeafKeys(node: DealCompositionNode): SelectionLeafKey[] {
+  if (!node.children || node.children.length === 0) return [node.key];
+  return node.children.flatMap((c) => collectLeafKeys(c));
+}
+
+function computeCheckState(node: DealCompositionNode, selected: Set<SelectionLeafKey>): { checked: boolean; indeterminate: boolean } {
+  const leaves = collectLeafKeys(node);
+  const selectedCount = leaves.reduce((acc, k) => acc + (selected.has(k) ? 1 : 0), 0);
+  if (selectedCount === 0) return { checked: false, indeterminate: false };
+  if (selectedCount === leaves.length) return { checked: true, indeterminate: false };
+  return { checked: false, indeterminate: true };
+}
+
+function toggleNodeLeaves(node: DealCompositionNode, selected: Set<SelectionLeafKey>, nextChecked: boolean): Set<SelectionLeafKey> {
+  const next = new Set(selected);
+  const leaves = collectLeafKeys(node);
+  if (nextChecked) {
+    for (const k of leaves) next.add(k);
+  } else {
+    for (const k of leaves) next.delete(k);
+  }
+  return next;
+}
+
+function buildCompositionTree(deal: Deal, dealLines: CashFlowLine[]): DealCompositionNode {
+  const did = deal.id;
+  const soIds = uniqSortedStrings(dealLines.filter((l) => l.entity_type === 'so').map((l) => String(l.entity_id)));
+  const poIds = uniqSortedStrings(dealLines.filter((l) => l.entity_type === 'po').map((l) => String(l.entity_id)));
+  const contractIds = uniqSortedStrings(dealLines.filter((l) => l.entity_type === 'contract').map((l) => String(l.entity_id)));
+
+  const physicalChildren: DealCompositionNode[] = [];
+  for (const id of soIds) {
+    const any = dealLines.find((l) => l.entity_type === 'so' && String(l.entity_id) === id);
+    const ref = String(any?.source_reference || '').trim();
+    physicalChildren.push({ key: soLeafKey(did, id), label: `SO ${ref || `#${id}`}`, dealId: did });
+  }
+  for (const id of poIds) {
+    const any = dealLines.find((l) => l.entity_type === 'po' && String(l.entity_id) === id);
+    const ref = String(any?.source_reference || '').trim();
+    physicalChildren.push({ key: poLeafKey(did, id), label: `PO ${ref || `#${id}`}`, dealId: did });
+  }
+  physicalChildren.sort((a, b) => a.label.localeCompare(b.label));
+
+  const financialChildren: DealCompositionNode[] = [];
+  for (const cid of contractIds) {
+    const contractLines = dealLines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === cid);
+    const hasIn = contractLines.some((l) => l.direction === 'inflow');
+    const hasOut = contractLines.some((l) => l.direction === 'outflow');
+
+    const children: DealCompositionNode[] = [];
+    if (hasOut) children.push({ key: contractLegLeafKey(did, cid, 'outflow'), label: 'Leg Comprada', dealId: did });
+    if (hasIn) children.push({ key: contractLegLeafKey(did, cid, 'inflow'), label: 'Leg Vendida', dealId: did });
+
+    financialChildren.push({ key: `${dealLeafPrefix(did)}:contract:${cid}`, label: `Contrato Hedge ${cid}`, dealId: did, children: children.length ? children : undefined });
+  }
+  financialChildren.sort((a, b) => a.label.localeCompare(b.label));
+
+  const rootChildren: DealCompositionNode[] = [];
+  if (physicalChildren.length) {
+    rootChildren.push({ key: `${dealLeafPrefix(did)}:group:physical`, label: 'Físico', dealId: did, children: physicalChildren });
+  }
+  if (financialChildren.length) {
+    rootChildren.push({ key: `${dealLeafPrefix(did)}:group:financial`, label: 'Financeiro', dealId: did, children: financialChildren });
+  }
+
+  return { key: `${dealLeafPrefix(did)}:root`, label: dealLabel(deal), dealId: did, children: rootChildren };
+}
+
+function sumByConfidenceForDates(lines: CashFlowLine[], dates: string[]): Record<CashflowConfidenceBucket, number> {
+  const dateSet = new Set(dates);
+  const out: Record<CashflowConfidenceBucket, number> = { deterministic: 0, estimated: 0, risk: 0 };
+  for (const l of lines) {
+    const d = String(l.date);
+    if (!dateSet.has(d)) continue;
+    const k = classifyConfidence(l);
+    out[k] += signedAmountUsd(l);
+  }
+  return out;
+}
+
+function groupDealsByCompany(deals: Deal[]): Array<{ company: string; deals: Deal[] }> {
+  const map = new Map<string, Deal[]>();
+  for (const d of deals) {
+    const company = normalizeCompanyLabel(d.company);
+    map.set(company, [...(map.get(company) || []), d]);
+  }
+  const groups = Array.from(map.entries())
+    .map(([company, ds]) => ({ company, deals: ds.slice().sort((a, b) => dealLabel(a).localeCompare(dealLabel(b))) }))
+    .sort((a, b) => a.company.localeCompare(b.company));
+  return groups;
+}
+
+function useCashflowAnalyticMulti(paramsBase: CashflowAnalyticQueryParams, dealIds: number[]) {
+  const [state, setState] = useState<{ data: CashFlowLine[] | null; isLoading: boolean; isError: boolean; error: ApiError | null }>({
+    data: null,
+    isLoading: false,
+    isError: false,
+    error: null,
+  });
+
+  const queryKey = useMemo(() => {
+    const ids = dealIds.slice().sort((a, b) => a - b);
+    return JSON.stringify({ ...paramsBase, dealIds: ids });
+  }, [paramsBase.as_of, paramsBase.end_date, paramsBase.start_date, dealIds.join(',')]);
+
+  const fetchLines = useCallback(async () => {
+    if (dealIds.length === 0) {
+      setState({ data: null, isLoading: false, isError: false, error: null });
+      return;
+    }
+
+    setState((prev) => ({ ...prev, isLoading: true, isError: false, error: null }));
+    try {
+      const ids = dealIds.slice().sort((a, b) => a - b);
+      const results = await Promise.all(ids.map((deal_id) => getCashflowAnalytic({ ...paramsBase, deal_id })));
+      setState({ data: results.flat(), isLoading: false, isError: false, error: null });
+    } catch (err) {
+      setState((prev) => ({ ...prev, isLoading: false, isError: true, error: err as ApiError }));
+    }
+  }, [queryKey]);
+
+  useEffect(() => {
+    fetchLines();
+  }, [fetchLines]);
+
+  return { ...state, refetch: fetchLines };
+}
+
+function CashflowScopePanel({
+  groups,
+  selectedDealIds,
+  onToggleDeal,
+  onToggleAll,
+}: {
+  groups: Array<{ company: string; deals: Deal[] }>;
+  selectedDealIds: Set<number>;
+  onToggleDeal: (dealId: number) => void;
+  onToggleAll: () => void;
+}) {
+  const totalDeals = useMemo(() => groups.reduce((acc, g) => acc + g.deals.length, 0), [groups]);
+  const checkedAll = totalDeals > 0 && selectedDealIds.size === totalDeals;
+  const indeterminateAll = selectedDealIds.size > 0 && selectedDealIds.size < totalDeals;
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
+        <div className="text-sm font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Escopo</div>
+        <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Selecione para consolidar</div>
+      </div>
+
+      <div className="p-3">
+        <label className="flex items-center gap-2 text-sm py-2">
+          <input
+            type="checkbox"
+            checked={checkedAll}
+            ref={(el) => {
+              if (el) el.indeterminate = indeterminateAll;
+            }}
+            onChange={onToggleAll}
+          />
+          <span className="font-['72:Bold',sans-serif]">Selecionar Todos</span>
+        </label>
+
+        <div className="mt-2 space-y-3">
+          {groups.map((g) => (
+            <div key={g.company}>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Bold',sans-serif] uppercase tracking-wide mb-1">{g.company}</div>
+              <div className="space-y-1">
+                {g.deals.map((d) => (
+                  <label key={d.id} className="flex items-center gap-2 text-sm py-1">
+                    <input type="checkbox" checked={selectedDealIds.has(d.id)} onChange={() => onToggleDeal(d.id)} />
+                    <span>{dealLabel(d)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompositionTree({
+  nodes,
+  selected,
+  expanded,
+  onToggleExpanded,
+  onToggleSelected,
+}: {
+  nodes: DealCompositionNode[];
+  selected: Set<SelectionLeafKey>;
+  expanded: Set<string>;
+  onToggleExpanded: (key: string) => void;
+  onToggleSelected: (node: DealCompositionNode, nextChecked: boolean) => void;
+}) {
+  const renderNode = (n: DealCompositionNode, level: number) => {
+    const hasChildren = !!n.children && n.children.length > 0;
+    const isExpanded = expanded.has(n.key);
+    const { checked, indeterminate } = computeCheckState(n, selected);
+
+    return (
+      <div key={n.key}>
+        <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${level * 14}px` }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              className="w-5 h-5 inline-flex items-center justify-center text-[var(--sapContent_IconColor)]"
+              onClick={() => onToggleExpanded(n.key)}
+              title={isExpanded ? 'Recolher' : 'Expandir'}
+            >
+              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+          ) : (
+            <span className="w-5" />
+          )}
+
+          <input
+            type="checkbox"
+            checked={checked}
+            ref={(el) => {
+              if (el) el.indeterminate = indeterminate;
+            }}
+            onChange={(e) => onToggleSelected(n, e.target.checked)}
+          />
+          <span className={level === 0 || (hasChildren && level === 1) ? "font-['72:Bold',sans-serif]" : ''}>{n.label}</span>
+        </div>
+
+        {hasChildren && isExpanded ? <div>{n.children!.map((c) => renderNode(c, level + 1))}</div> : null}
+      </div>
+    );
+  };
+
+  return <div className="text-sm">{nodes.map((n) => renderNode(n, 0))}</div>;
+}
+
 export function CashflowPageIntegrated() {
-  const navigate = useNavigate();
-
-  useAnalyticScopeUrlSync({ acceptLegacyDealId: true });
-  const { scope } = useAnalyticScope();
-
   const today = useMemo(() => isoToday(), []);
+
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [isLoadingDeals, setIsLoadingDeals] = useState(true);
+  const [dealsError, setDealsError] = useState<ApiError | null>(null);
+
+  const fetchDeals = useCallback(async () => {
+    setIsLoadingDeals(true);
+    setDealsError(null);
+    try {
+      const data = await listDeals();
+      setDeals(data);
+    } catch (err) {
+      setDealsError(err as ApiError);
+    } finally {
+      setIsLoadingDeals(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDeals();
+  }, [fetchDeals]);
+
+  const groupedDeals = useMemo(() => groupDealsByCompany(deals), [deals]);
+  const allDealIds = useMemo(() => deals.map((d) => d.id).sort((a, b) => a - b), [deals]);
+
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
+
+  const toggleAllDeals = useCallback(() => {
+    setSelectedDealIds((prev) => {
+      const total = allDealIds.length;
+      if (total > 0 && prev.size === total) return new Set();
+      return new Set(allDealIds);
+    });
+  }, [allDealIds.join(',')]);
+
+  const toggleDeal = useCallback((dealId: number) => {
+    setSelectedDealIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(dealId)) next.delete(dealId);
+      else next.add(dealId);
+      return next;
+    });
+  }, []);
 
   const [queryBase, setQueryBase] = useState<CashflowAnalyticQueryParams>(() => ({
     as_of: today,
@@ -146,35 +470,118 @@ export function CashflowPageIntegrated() {
     end_date: addDaysIso(today, 90),
   }));
 
-  const matrixQuery: CashflowAnalyticQueryParams | null = useMemo(() => {
-    if (scope.kind === 'none') return null;
-    if (scope.kind === 'all') return queryBase;
-    return { ...queryBase, deal_id: scope.dealId };
-  }, [queryBase, scope]);
-
-  const cashflow = useCashflowAnalytic(matrixQuery);
-
-  const [collapsedDeals, setCollapsedDeals] = useState<Record<string, boolean>>({});
+  const selectedDealIdsList = useMemo(() => Array.from(selectedDealIds.values()).sort((a, b) => a - b), [selectedDealIds]);
+  const cashflow = useCashflowAnalyticMulti(queryBase, selectedDealIdsList);
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({});
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
 
+  const [expandedCompositionKeys, setExpandedCompositionKeys] = useState<Set<string>>(new Set());
+  const [selectedLeafKeys, setSelectedLeafKeys] = useState<Set<SelectionLeafKey>>(new Set());
+
   const lines: CashFlowLine[] = useMemo(() => cashflow.data || [], [cashflow.data]);
 
-  const dealIdOfLine = (l: CashFlowLine): string | null => {
-    if (l.entity_type === 'deal') {
-      const id = String(l.entity_id || '').trim();
-      return id || null;
+  const linesByDeal = useMemo(() => {
+    const map = new Map<number, CashFlowLine[]>();
+    for (const l of lines) {
+      const did = dealIdOfLine(l);
+      if (!did) continue;
+      map.set(did, [...(map.get(did) || []), l]);
     }
-    const pid = String(l.parent_id || '').trim();
-    return pid || null;
-  };
+    return map;
+  }, [lines]);
+
+  const selectedDeals = useMemo(() => deals.filter((d) => selectedDealIds.has(d.id)), [deals, selectedDealIds]);
+
+  const compositionTrees = useMemo(() => {
+    return selectedDeals
+      .map((d) => {
+        const dealLines = linesByDeal.get(d.id) || [];
+        return buildCompositionTree(d, dealLines);
+      })
+      .filter((n) => (n.children || []).length > 0);
+  }, [selectedDeals, linesByDeal]);
+
+  useEffect(() => {
+    // On selection changes, default-expand the deal roots only (children remain collapsed).
+    setExpandedCompositionKeys((prev) => {
+      const next = new Set(prev);
+      for (const n of compositionTrees) next.add(n.key);
+      return next;
+    });
+  }, [compositionTrees.length]);
+
+  const toggleExpandedComposition = useCallback((key: string) => {
+    setExpandedCompositionKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const onToggleSelectedNode = useCallback((node: DealCompositionNode, nextChecked: boolean) => {
+    setSelectedLeafKeys((prev) => toggleNodeLeaves(node, prev, nextChecked));
+  }, []);
+
+  const filteredLines: CashFlowLine[] = useMemo(() => {
+    if (selectedDealIds.size === 0) return [];
+    if (selectedLeafKeys.size === 0) return [];
+
+    const hasPhysicalSelectionByDeal = new Map<number, boolean>();
+    const hasFinancialSelectionByDeal = new Map<number, boolean>();
+    for (const k of selectedLeafKeys) {
+      const m = /^deal:(\d+):(so|po|contract):/.exec(k);
+      if (!m) continue;
+      const did = Number(m[1]);
+      const kind = m[2];
+      if (kind === 'so' || kind === 'po') hasPhysicalSelectionByDeal.set(did, true);
+      if (kind === 'contract') hasFinancialSelectionByDeal.set(did, true);
+    }
+
+    const out: CashFlowLine[] = [];
+    for (const l of lines) {
+      const did = dealIdOfLine(l);
+      if (!did) continue;
+      if (!selectedDealIds.has(did)) continue;
+
+      const entityType = String(l.entity_type || '').toLowerCase();
+      const entityId = String(l.entity_id);
+
+      if (entityType === 'so') {
+        if (selectedLeafKeys.has(soLeafKey(did, entityId))) out.push(l);
+        continue;
+      }
+      if (entityType === 'po') {
+        if (selectedLeafKeys.has(poLeafKey(did, entityId))) out.push(l);
+        continue;
+      }
+      if (entityType === 'contract') {
+        const k = contractLegLeafKey(did, entityId, l.direction === 'outflow' ? 'outflow' : 'inflow');
+        if (selectedLeafKeys.has(k)) out.push(l);
+        continue;
+      }
+
+      // Risk/exposure lines are part of the financial view.
+      const isRiskish = classifyConfidence(l) === 'risk';
+      if (isRiskish && hasFinancialSelectionByDeal.get(did)) {
+        out.push(l);
+        continue;
+      }
+
+      // Deal summary lines: include when any selection exists for that deal.
+      if (entityType === 'deal' && (hasPhysicalSelectionByDeal.get(did) || hasFinancialSelectionByDeal.get(did))) {
+        out.push(l);
+      }
+    }
+    return out;
+  }, [lines, selectedDealIds, selectedLeafKeys]);
 
   const allDates = useMemo(() => {
     const set = new Set<string>();
-    for (const l of lines) set.add(String(l.date));
+    for (const l of filteredLines) set.add(String(l.date));
     return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
-  }, [lines]);
+  }, [filteredLines]);
 
   const timeTree: TimeTree = useMemo(() => {
     const quarterMap = new Map<
@@ -289,191 +696,67 @@ export function CashflowPageIntegrated() {
     return cols;
   }, [expandedMonths, expandedQuarters, expandedWeeks, timeTree.quarters]);
 
-  const sumRowForDates = (r: MatrixRow, dates: string[]): number => {
-    let acc = 0;
-    for (const d of dates) acc += r.valuesByDate[d] || 0;
-    return acc;
-  };
-
-  const rows: MatrixRow[] = useMemo(() => {
-    const byDeal = new Map<string, CashFlowLine[]>();
-    for (const l of lines) {
-      const did = dealIdOfLine(l);
-      if (!did) continue;
-      const list = byDeal.get(did) || [];
-      list.push(l);
-      byDeal.set(did, list);
-    }
-
-    const dealIds = Array.from(byDeal.keys()).sort((a, b) => {
-      const na = Number(a);
-      const nb = Number(b);
-      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
-      return a.localeCompare(b);
-    });
-
-    const add = (obj: Record<string, number>, date: string, v: number) => {
-      obj[date] = (obj[date] || 0) + v;
-    };
-
-    const out: MatrixRow[] = [];
-
-    for (const dealId of dealIds) {
-      const dealLines = byDeal.get(dealId) || [];
-      const dealIdNum = Number(dealId);
-      const dealLabel = Number.isFinite(dealIdNum) && dealIdNum > 0 ? `Deal #${dealIdNum}` : `Deal ${dealId}`;
-
-      const dealRow: MatrixRow = {
-        key: `deal:${dealId}`,
-        kind: 'deal',
-        level: 0,
-        dealId,
-        label: dealLabel,
-        valuesByDate: {},
-      };
-
-      const groupTotals: Record<'so' | 'po' | 'contract', Record<string, number>> = { so: {}, po: {}, contract: {} };
-      const riskTotals: Record<string, number> = {};
-
-      const itemRowsByType: Record<'so' | 'po' | 'contract', Map<string, MatrixRow>> = {
-        so: new Map(),
-        po: new Map(),
-        contract: new Map(),
-      };
-
-      for (const l of dealLines) {
-        const date = String(l.date);
-        const v = signedAmountUsd(l);
-
-        add(dealRow.valuesByDate, date, v);
-
-        const cashflowType = String(l.cashflow_type || '').toLowerCase();
-        const confidence = String(l.confidence || '').toLowerCase();
-        const entityType = String(l.entity_type || '').toLowerCase();
-
-        if (cashflowType === 'risk' || confidence === 'risk' || entityType === 'exposure') {
-          add(riskTotals, date, v);
-          continue;
-        }
-
-        if (entityType !== 'so' && entityType !== 'po' && entityType !== 'contract') continue;
-        const type = entityType as 'so' | 'po' | 'contract';
-
-        add(groupTotals[type], date, v);
-
-        const entityId = String(l.entity_id);
-        const key = `${type}:${entityId}`;
-
-        const map = itemRowsByType[type];
-        const existing = map.get(key);
-
-        const sourceReference = String(l.source_reference || '').trim();
-        const label =
-          type === 'so'
-            ? `SO ${sourceReference || `#${entityId}`}`
-            : type === 'po'
-              ? `PO ${sourceReference || `#${entityId}`}`
-              : `Contrato ${entityId}`;
-
-        const row: MatrixRow =
-          existing ||
-          ({ key, kind: type, level: 2, dealId, label, entityId, valuesByDate: {} } as MatrixRow);
-
-        add(row.valuesByDate, date, v);
-        map.set(key, row);
-      }
-
-      out.push(dealRow);
-      if (collapsedDeals[dealId]) continue;
-
-      const pushGroup = (kind: 'so' | 'po' | 'contract', title: string) => {
-        const items = Array.from(itemRowsByType[kind].values());
-        if (!items.length) return;
-
-        out.push({ key: `group:${dealId}:${kind}`, kind: 'group', level: 1, dealId, label: title, valuesByDate: groupTotals[kind] });
-
-        items.sort((a, b) => a.label.localeCompare(b.label));
-        out.push(...items);
-      };
-
-      pushGroup('so', 'Pedidos de Venda (SO)');
-      pushGroup('po', 'Pedidos de Compra (PO)');
-      pushGroup('contract', 'Contratos');
-
-      if (Object.keys(riskTotals).length > 0) {
-        out.push({ key: `group:${dealId}:risk`, kind: 'group', level: 1, dealId, label: 'Risco (estimado)', valuesByDate: riskTotals });
-      }
-    }
-
-    return out;
-  }, [collapsedDeals, lines]);
-
-  const selectedLines: CashFlowLine[] = useMemo(() => {
-    if (scope.kind === 'none') return [];
-    if (scope.kind === 'all') return lines;
-
-    if (scope.kind === 'deal') {
-      const did = String(scope.dealId);
-      return lines.filter((l) => dealIdOfLine(l) === did);
-    }
-
-    if (scope.kind === 'so') {
-      const id = String(scope.soId);
-      return lines.filter((l) => l.entity_type === 'so' && String(l.entity_id) === id);
-    }
-
-    if (scope.kind === 'po') {
-      const id = String(scope.poId);
-      return lines.filter((l) => l.entity_type === 'po' && String(l.entity_id) === id);
-    }
-
-    const id = String(scope.contractId);
-    return lines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === id);
-  }, [lines, scope]);
+  const allQuarterKeys = useMemo(() => timeTree.quarters.map((q) => q.key), [timeTree.quarters]);
+  const allMonthKeys = useMemo(() => timeTree.quarters.flatMap((q) => q.months.map((m) => m.key)), [timeTree.quarters]);
+  const allWeekKeys = useMemo(() => timeTree.quarters.flatMap((q) => q.months.flatMap((m) => m.weeks.map((w) => w.key))), [timeTree.quarters]);
 
   const selectionTitle = useMemo(() => {
-    if (scope.kind === 'none') return 'Nenhuma seleção';
-    if (scope.kind === 'all') return 'Todos os deals';
-    if (scope.kind === 'deal') return `Deal #${scope.dealId}`;
-    if (scope.kind === 'so') return `SO #${scope.soId} · Deal #${scope.dealId}`;
-    if (scope.kind === 'po') return `PO #${scope.poId} · Deal #${scope.dealId}`;
-    return `Contrato ${scope.contractId} · Deal #${scope.dealId}`;
-  }, [scope]);
+    if (selectedDealIds.size === 0) return 'Nenhuma seleção';
+    if (selectedDealIds.size === 1) {
+      const only = selectedDeals[0];
+      return only ? dealLabel(only) : 'Selecionar Deal';
+    }
+    return `${selectedDealIds.size} deals`;
+  }, [selectedDealIds.size, selectedDeals]);
 
   const totals = useMemo(() => {
     let inflow = 0;
     let outflow = 0;
-    for (const l of selectedLines) {
+    for (const l of filteredLines) {
       const v = signedAmountUsd(l);
       if (v >= 0) inflow += v;
       else outflow += -v;
     }
     return { inflow, outflow, net: inflow - outflow };
-  }, [selectedLines]);
+  }, [filteredLines]);
 
   const confidenceTotals = useMemo(() => {
     let deterministic = 0;
     let estimated = 0;
     let risk = 0;
 
-    for (const l of selectedLines) {
+    for (const l of filteredLines) {
       const v = signedAmountUsd(l);
-      const c = String(l.confidence || '').toLowerCase();
+      const c = classifyConfidence(l);
       if (c === 'deterministic') deterministic += v;
       else if (c === 'estimated') estimated += v;
       else risk += v;
     }
 
     return { deterministic, estimated, risk };
-  }, [selectedLines]);
+  }, [filteredLines]);
 
   const appliedAsOf = useMemo(() => (queryBase.as_of ? formatIsoDate(String(queryBase.as_of)) : '—'), [queryBase.as_of]);
   const showInitialLoading = cashflow.isLoading && !cashflow.data;
 
+  const showNoDealSelected = selectedDealIds.size === 0;
+
   return (
     <FioriFlexibleColumnLayout
       masterTitle="Escopo"
-      masterContent={<AnalyticScopeTree />}
+      masterContent={
+        isLoadingDeals ? (
+          <div className="p-4">
+            <LoadingState message="Carregando deals..." />
+          </div>
+        ) : dealsError ? (
+          <div className="p-4">
+            <ErrorState error={dealsError} onRetry={fetchDeals} />
+          </div>
+        ) : (
+          <CashflowScopePanel groups={groupedDeals} selectedDealIds={selectedDealIds} onToggleDeal={toggleDeal} onToggleAll={toggleAllDeals} />
+        )
+      }
       masterWidth={340}
       detailContent={
         <div className="sap-fiori-page h-full overflow-y-auto">
@@ -488,7 +771,7 @@ export function CashflowPageIntegrated() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch} disabled={scope.kind === 'none'}>
+                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch} disabled={selectedDealIds.size === 0}>
                   Atualizar
                 </FioriButton>
               </div>
@@ -540,45 +823,90 @@ export function CashflowPageIntegrated() {
             </div>
           </div>
 
-          {scope.kind === 'none' ? (
+          {showNoDealSelected ? (
             <div className="p-6">
-              <EmptyState title="Sem seleção" description="Selecione um deal para visualizar." />
+              <EmptyState title="Nenhuma seleção" description="Selecione um ou mais Deals no escopo à esquerda." />
             </div>
           ) : (
-            <div className="sap-fiori-section">
-              <div className="sap-fiori-section-content">
-                {showInitialLoading ? (
-                  <LoadingState message="Carregando fluxo de caixa..." />
-                ) : cashflow.isError ? (
-                  <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
-                ) : rows.length === 0 ? (
-                  <EmptyState title={UX_COPY.pages.cashflow.empty} description="Nenhuma linha encontrada no período." />
-                ) : (
-                  <>
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                        Preço variável (AVG/AVGInter/C2R) ⇒ exposição ⇒ hedge. Preço fixo ⇒ sem exposição.
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <FioriButton
-                          variant="ghost"
-                          onClick={() => {
-                            setExpandedQuarters({});
-                            setExpandedMonths({});
-                            setExpandedWeeks({});
-                          }}
-                        >
-                          Recolher colunas
-                        </FioriButton>
-                      </div>
-                    </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Center */}
+              <div className="border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
+                <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)]">
+                  <div className="text-sm font-['72:Bold',sans-serif]">Composição</div>
+                  <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Selecione itens para consolidar</div>
+                </div>
+                <div className="p-3 max-h-[520px] overflow-y-auto">
+                  {compositionTrees.length === 0 ? (
+                    <EmptyState title="Sem dados" description="Não há itens para o período." />
+                  ) : (
+                    <CompositionTree
+                      nodes={compositionTrees}
+                      selected={selectedLeafKeys}
+                      expanded={expandedCompositionKeys}
+                      onToggleExpanded={toggleExpandedComposition}
+                      onToggleSelected={onToggleSelectedNode}
+                    />
+                  )}
+                </div>
+              </div>
 
+              {/* Right */}
+              <div className="border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
+                <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)] flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-['72:Bold',sans-serif]">Fluxo de Caixa</div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Trimestre → mês → semana</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FioriButton
+                      variant="ghost"
+                      onClick={() => {
+                        const q: Record<string, boolean> = {};
+                        const m: Record<string, boolean> = {};
+                        const w: Record<string, boolean> = {};
+                        for (const k of allQuarterKeys) q[k] = true;
+                        for (const k of allMonthKeys) m[k] = true;
+                        for (const k of allWeekKeys) w[k] = true;
+                        setExpandedQuarters(q);
+                        setExpandedMonths(m);
+                        setExpandedWeeks(w);
+                      }}
+                      disabled={timeColumns.length === 0}
+                    >
+                      Expandir tudo
+                    </FioriButton>
+                    <FioriButton
+                      variant="ghost"
+                      onClick={() => {
+                        setExpandedQuarters({});
+                        setExpandedMonths({});
+                        setExpandedWeeks({});
+                      }}
+                      disabled={timeColumns.length === 0}
+                    >
+                      Recolher
+                    </FioriButton>
+                  </div>
+                </div>
+
+                <div className="p-3">
+                  {selectedLeafKeys.size === 0 ? (
+                    <EmptyState title="Nenhuma seleção" description="Selecione itens do Deal na coluna central." />
+                  ) : showInitialLoading ? (
+                    <LoadingState message="Carregando fluxo de caixa..." />
+                  ) : cashflow.isError ? (
+                    <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
+                  ) : filteredLines.length === 0 ? (
+                    <EmptyState title="Sem dados" description="Sem dados para o período." />
+                  ) : timeColumns.length === 0 ? (
+                    <EmptyState title="Sem dados" description="Sem dados para o período." />
+                  ) : (
                     <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
                       <div className="overflow-auto">
                         <table className="min-w-[900px] w-full">
                           <thead>
                             <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                              <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Entidade</th>
+                              <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Resumo</th>
                               {timeColumns.map((c) => {
                                 const canExpand = c.canExpand;
                                 const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
@@ -604,7 +932,7 @@ export function CashflowPageIntegrated() {
                                 };
 
                                 return (
-                                  <th key={c.key} className="text-right p-3 text-xs whitespace-nowrap">
+                                  <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={3}>
                                     {canExpand ? (
                                       <button
                                         type="button"
@@ -625,65 +953,40 @@ export function CashflowPageIntegrated() {
                                 );
                               })}
                             </tr>
+                            <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                              <th className="text-left p-3 text-[11px] sticky left-0 z-20 bg-white text-[var(--sapContent_LabelColor)]">&nbsp;</th>
+                              {timeColumns.map((c) => (
+                                <>
+                                  <th key={`${c.key}:d`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Det.</th>
+                                  <th key={`${c.key}:e`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Est.</th>
+                                  <th key={`${c.key}:r`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Risco</th>
+                                </>
+                              ))}
+                            </tr>
                           </thead>
                           <tbody>
-                            {rows.map((r) => {
-                              const isDeal = r.kind === 'deal';
-                              const isGroup = r.kind === 'group';
-                              const collapsed = !!collapsedDeals[r.dealId];
-                              const isNegative = (v: number) => typeof v === 'number' && v < 0;
-
-                              if (scope.kind !== 'all' && String(scope.dealId) !== r.dealId) return null;
-
-                              return (
-                                <tr
-                                  key={r.key}
-                                  className={`border-b border-[var(--sapList_BorderColor)] ${
-                                    isDeal ? 'bg-[var(--sapGroup_ContentBackground)] cursor-pointer hover:bg-[var(--sapList_HoverBackground)]' : 'bg-white'
-                                  }`}
-                                  onClick={() => {
-                                    if (r.kind === 'deal' && scope.kind === 'all') {
-                                      setCollapsedDeals((prev) => ({ ...prev, [r.dealId]: !prev[r.dealId] }));
-                                      return;
-                                    }
-                                    if (r.kind === 'contract' && r.entityId) {
-                                      navigate(`/financeiro/contratos?id=${encodeURIComponent(String(r.entityId))}`);
-                                    }
-                                  }}
-                                >
-                                  <td
-                                    className={`p-3 text-sm sticky left-0 z-10 ${isDeal ? 'bg-[var(--sapGroup_ContentBackground)]' : 'bg-white'}`}
-                                    style={{ paddingLeft: `${r.level * 16 + 12}px` }}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {isDeal && scope.kind === 'all' ? (
-                                        collapsed ? (
-                                          <ChevronRight className="w-4 h-4" />
-                                        ) : (
-                                          <ChevronDown className="w-4 h-4" />
-                                        )
-                                      ) : null}
-                                      <span className={isDeal || isGroup ? "font-['72:Bold',sans-serif]" : ''}>{r.label}</span>
-                                    </div>
+                            <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                              <td className="p-3 text-sm sticky left-0 z-10 bg-white font-['72:Bold',sans-serif]">Total</td>
+                              {timeColumns.flatMap((c) => {
+                                const sums = sumByConfidenceForDates(filteredLines, c.dates);
+                                const cells: Array<{ key: string; v: number }> = [
+                                  { key: `${c.key}:det`, v: sums.deterministic },
+                                  { key: `${c.key}:est`, v: sums.estimated },
+                                  { key: `${c.key}:risk`, v: sums.risk },
+                                ];
+                                return cells.map((cell) => (
+                                  <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap">
+                                    <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
                                   </td>
-
-                                  {timeColumns.map((c) => {
-                                    const v = sumRowForDates(r, c.dates);
-                                    return (
-                                      <td key={`${r.key}:${c.key}`} className="p-3 text-xs text-right whitespace-nowrap">
-                                        <span className={isNegative(v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(v)}</span>
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              );
-                            })}
+                                ));
+                              })}
+                            </tr>
                           </tbody>
                         </table>
                       </div>
                     </div>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           )}
