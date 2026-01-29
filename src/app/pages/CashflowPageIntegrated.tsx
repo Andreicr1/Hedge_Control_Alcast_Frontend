@@ -89,6 +89,20 @@ function formatUsdSigned(value?: number | null): string {
   return value < 0 ? `-${text}` : text;
 }
 
+function stripTechnicalPrefix(raw: string): string {
+  return String(raw)
+    .replace(/^contract:/i, '')
+    .replace(/^so:/i, '')
+    .replace(/^po:/i, '')
+    .trim();
+}
+
+function shortenId(raw: string): string {
+  const v = stripTechnicalPrefix(raw);
+  if (v.length <= 18) return v;
+  return `${v.slice(0, 8)}…${v.slice(-4)}`;
+}
+
 function signedAmountUsd(line: CashFlowLine): number {
   return (line.direction === 'outflow' ? -1 : 1) * Number(line.amount || 0);
 }
@@ -242,7 +256,7 @@ function buildCompositionTree(deal: Deal, dealLines: CashFlowLine[]): DealCompos
   for (const cid of contractIds) {
     const contractLines = dealLines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === cid);
     const ref = String(contractLines.find((l) => String(l.source_reference || '').trim())?.source_reference || '').trim();
-    financialChildren.push({ key: contractLeafKey(did, cid), label: `Contrato Hedge ${ref || cid}`, dealId: did });
+    financialChildren.push({ key: contractLeafKey(did, cid), label: `Contrato Hedge ${ref || shortenId(cid)}`, dealId: did });
   }
   financialChildren.sort((a, b) => a.label.localeCompare(b.label));
 
@@ -507,6 +521,49 @@ export function CashflowPageIntegrated() {
   const [expandedCompositionKeys, setExpandedCompositionKeys] = useState<Set<string>>(new Set());
   const [selectedLeafKeys, setSelectedLeafKeys] = useState<Set<SelectionLeafKey>>(new Set());
 
+  const [metricVisibility, setMetricVisibility] = useState<{ mtm: boolean; estimated: boolean; risk: boolean }>(() => ({ mtm: true, estimated: false, risk: false }));
+
+  const toggleMetric = useCallback((key: 'mtm' | 'estimated' | 'risk') => {
+    setMetricVisibility((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      const any = next.mtm || next.estimated || next.risk;
+      if (!any) return { ...prev, [key]: true };
+      return next;
+    });
+  }, []);
+
+  const visibleMetricKeys = useMemo(() => {
+    const keys: Array<'mtm' | 'estimated' | 'risk'> = [];
+    if (metricVisibility.mtm) keys.push('mtm');
+    if (metricVisibility.estimated) keys.push('estimated');
+    if (metricVisibility.risk) keys.push('risk');
+    return keys;
+  }, [metricVisibility.estimated, metricVisibility.mtm, metricVisibility.risk]);
+
+  const renderSumsCell = useCallback(
+    (sums: Record<CashflowConfidenceBucket, number>) => {
+      const showLabels = visibleMetricKeys.length > 1;
+
+      const entries: Array<{ key: 'mtm' | 'estimated' | 'risk'; label: string; value: number }> = visibleMetricKeys.map((k) => {
+        if (k === 'mtm') return { key: k, label: 'MTM', value: sums.deterministic };
+        if (k === 'estimated') return { key: k, label: 'Est.', value: sums.estimated };
+        return { key: k, label: 'Risco', value: sums.risk };
+      });
+
+      return (
+        <div className="flex flex-col items-end gap-0.5 leading-tight">
+          {entries.map((e) => (
+            <div key={e.key} className="flex items-baseline gap-2">
+              {showLabels ? <span className="text-[10px] text-[var(--sapContent_LabelColor)]">{e.label}</span> : null}
+              <span className={isNegative(e.value) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(e.value)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    },
+    [visibleMetricKeys]
+  );
+
   const lines: CashFlowLine[] = useMemo(() => cashflow.data || [], [cashflow.data]);
 
   const linesByDeal = useMemo(() => {
@@ -665,6 +722,23 @@ export function CashflowPageIntegrated() {
       const sel = selectedStructureByDeal.get(did);
       if (!sel) continue;
 
+      const dealLines = linesByDeal.get(did) || [];
+      const soLabelOf = (soId: string) => {
+        const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'so' && String(l.entity_id) === soId);
+        const ref = String(any?.source_reference || '').trim();
+        return ref || stripTechnicalPrefix(soId);
+      };
+      const poLabelOf = (poId: string) => {
+        const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'po' && String(l.entity_id) === poId);
+        const ref = String(any?.source_reference || '').trim();
+        return ref || stripTechnicalPrefix(poId);
+      };
+      const contractLabelOf = (cid: string) => {
+        const any = dealLines.find((l) => String(l.entity_type || '').toLowerCase() === 'contract' && String(l.entity_id) === cid);
+        const ref = String(any?.source_reference || '').trim();
+        return ref || shortenId(cid);
+      };
+
       const soIds = Array.from(sel.soIds.values()).sort((a, b) => a.localeCompare(b));
       const poIds = Array.from(sel.poIds.values()).sort((a, b) => a.localeCompare(b));
       const contractIds = Array.from(sel.contractIds.values()).sort((a, b) => a.localeCompare(b));
@@ -678,13 +752,13 @@ export function CashflowPageIntegrated() {
 
       if (hasPhysical) {
         rows.push({ key: `deal:${did}:row:physical`, dealId: did, kind: 'group-physical', label: 'Físico', level: 1 });
-        for (const soId of soIds) rows.push({ key: soLeafKey(did, soId), dealId: did, kind: 'so', label: `SO ${soId}`, level: 2, soId });
-        for (const poId of poIds) rows.push({ key: poLeafKey(did, poId), dealId: did, kind: 'po', label: `PO ${poId}`, level: 2, poId });
+        for (const soId of soIds) rows.push({ key: soLeafKey(did, soId), dealId: did, kind: 'so', label: soLabelOf(soId), level: 2, soId });
+        for (const poId of poIds) rows.push({ key: poLeafKey(did, poId), dealId: did, kind: 'po', label: poLabelOf(poId), level: 2, poId });
       }
 
       if (hasFinancial) {
         rows.push({ key: `deal:${did}:row:financial`, dealId: did, kind: 'group-financial', label: 'Financeiro', level: 1 });
-        for (const cid of contractIds) rows.push({ key: contractLeafKey(did, cid), dealId: did, kind: 'contract', label: `Contrato Hedge ${cid}`, level: 2, contractId: cid });
+        for (const cid of contractIds) rows.push({ key: contractLeafKey(did, cid), dealId: did, kind: 'contract', label: contractLabelOf(cid), level: 2, contractId: cid });
       }
     }
 
@@ -999,7 +1073,7 @@ export function CashflowPageIntegrated() {
                   <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.net)}</div>
                 </div>
                 <div className="p-3">
-                  <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Determinístico (USD)</div>
+                  <div className="text-[11px] text-[var(--sapContent_LabelColor)]">MTM (USD)</div>
                   <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(confidenceTotals.deterministic)}</div>
                 </div>
                 <div className="p-3">
@@ -1045,7 +1119,21 @@ export function CashflowPageIntegrated() {
                       <div className="text-sm font-['72:Bold',sans-serif]">Fluxo de Caixa</div>
                       <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Trimestre → mês → semana</div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
+                          <input type="checkbox" checked={metricVisibility.mtm} onChange={() => toggleMetric('mtm')} />
+                          <span>MTM</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
+                          <input type="checkbox" checked={metricVisibility.estimated} onChange={() => toggleMetric('estimated')} />
+                          <span>Estimado</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
+                          <input type="checkbox" checked={metricVisibility.risk} onChange={() => toggleMetric('risk')} />
+                          <span>Risco</span>
+                        </label>
+                      </div>
                       <FioriButton
                         variant="ghost"
                         onClick={() => {
@@ -1118,7 +1206,7 @@ export function CashflowPageIntegrated() {
                                   };
 
                                   return (
-                                    <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={3}>
+                                    <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
                                       {canExpand ? (
                                         <button
                                           type="button"
@@ -1139,24 +1227,9 @@ export function CashflowPageIntegrated() {
                                   );
                                 })}
 
-                                <th className="text-center p-2 text-xs whitespace-nowrap" colSpan={3}>
+                                <th className="text-center p-2 text-xs whitespace-nowrap" colSpan={1}>
                                   Total acumulado
                                 </th>
-                              </tr>
-                              <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                                <th className="text-left p-3 text-[11px] sticky left-0 z-20 bg-white text-[var(--sapContent_LabelColor)]">&nbsp;</th>
-                                {timeColumns.map((c) => (
-                                  <>
-                                    <th key={`${c.key}:d`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Det.</th>
-                                    <th key={`${c.key}:e`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Est.</th>
-                                    <th key={`${c.key}:r`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Risco</th>
-                                  </>
-                                ))}
-                                <>
-                                  <th className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Det.</th>
-                                  <th className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Est.</th>
-                                  <th className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Risco</th>
-                                </>
                               </tr>
                             </thead>
                             <tbody>
@@ -1176,32 +1249,22 @@ export function CashflowPageIntegrated() {
                                       </div>
                                     </td>
 
-                                    {timeColumns.flatMap((c) => {
+                                    {timeColumns.map((c) => {
                                       const sums = rowSumsForDates(row, c.dates);
-                                      const cells: Array<{ key: string; v: number }> = [
-                                        { key: `${row.key}:${c.key}:det`, v: sums.deterministic },
-                                        { key: `${row.key}:${c.key}:est`, v: sums.estimated },
-                                        { key: `${row.key}:${c.key}:risk`, v: sums.risk },
-                                      ];
-                                      return cells.map((cell) => (
-                                        <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap">
-                                          <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
+                                      return (
+                                        <td key={`${row.key}:${c.key}`} className="p-2 text-xs text-right whitespace-nowrap align-top">
+                                          {renderSumsCell(sums)}
                                         </td>
-                                      ));
+                                      );
                                     })}
 
                                     {(() => {
                                       const totalSums = rowSumsForDates(row, allDates);
-                                      const cells: Array<{ key: string; v: number }> = [
-                                        { key: `${row.key}:total:det`, v: totalSums.deterministic },
-                                        { key: `${row.key}:total:est`, v: totalSums.estimated },
-                                        { key: `${row.key}:total:risk`, v: totalSums.risk },
-                                      ];
-                                      return cells.map((cell) => (
-                                        <td key={cell.key} className={`p-2 text-xs text-right whitespace-nowrap ${isTotal ? 'bg-[var(--sapList_HeaderBackground)]' : 'bg-[var(--sapList_HeaderBackground)]'}`}>
-                                          <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
+                                      return (
+                                        <td key={`${row.key}:total`} className={`p-2 text-xs text-right whitespace-nowrap align-top bg-[var(--sapList_HeaderBackground)]`}>
+                                          {renderSumsCell(totalSums)}
                                         </td>
-                                      ));
+                                      );
                                     })()}
                                   </tr>
                                 );
