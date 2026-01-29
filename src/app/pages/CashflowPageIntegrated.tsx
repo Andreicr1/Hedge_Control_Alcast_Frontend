@@ -145,8 +145,8 @@ function poLeafKey(dealId: number, poId: string): SelectionLeafKey {
   return `${dealLeafPrefix(dealId)}:po:${poId}`;
 }
 
-function contractLegLeafKey(dealId: number, contractId: string, dir: 'inflow' | 'outflow'): SelectionLeafKey {
-  return `${dealLeafPrefix(dealId)}:contract:${contractId}:${dir}`;
+function contractLeafKey(dealId: number, contractId: string): SelectionLeafKey {
+  return `${dealLeafPrefix(dealId)}:contract:${contractId}`;
 }
 
 function normalizeCompanyLabel(company?: string | null): string {
@@ -228,14 +228,8 @@ function buildCompositionTree(deal: Deal, dealLines: CashFlowLine[]): DealCompos
   const financialChildren: DealCompositionNode[] = [];
   for (const cid of contractIds) {
     const contractLines = dealLines.filter((l) => l.entity_type === 'contract' && String(l.entity_id) === cid);
-    const hasIn = contractLines.some((l) => l.direction === 'inflow');
-    const hasOut = contractLines.some((l) => l.direction === 'outflow');
-
-    const children: DealCompositionNode[] = [];
-    if (hasOut) children.push({ key: contractLegLeafKey(did, cid, 'outflow'), label: 'Leg Comprada', dealId: did });
-    if (hasIn) children.push({ key: contractLegLeafKey(did, cid, 'inflow'), label: 'Leg Vendida', dealId: did });
-
-    financialChildren.push({ key: `${dealLeafPrefix(did)}:contract:${cid}`, label: `Contrato Hedge ${cid}`, dealId: did, children: children.length ? children : undefined });
+    const ref = String(contractLines.find((l) => String(l.source_reference || '').trim())?.source_reference || '').trim();
+    financialChildren.push({ key: contractLeafKey(did, cid), label: `Contrato Hedge ${ref || cid}`, dealId: did });
   }
   financialChildren.sort((a, b) => a.label.localeCompare(b.label));
 
@@ -511,6 +505,37 @@ export function CashflowPageIntegrated() {
     });
   }, [compositionTrees.length]);
 
+  useEffect(() => {
+    // When selecting a Deal in scope, auto-select all its components (granular selection remains editable).
+    setSelectedLeafKeys((prev) => {
+      const next = new Set(prev);
+
+      // 1) Remove leaf keys for deals that are no longer selected.
+      for (const k of Array.from(next)) {
+        const m = /^deal:(\d+):/.exec(k);
+        if (!m) continue;
+        const did = Number(m[1]);
+        if (!selectedDealIds.has(did)) next.delete(k);
+      }
+
+      // 2) For each selected deal, if it has zero selection, default to all leaves.
+      const leafKeysByDeal = new Map<number, SelectionLeafKey[]>();
+      for (const tree of compositionTrees) {
+        leafKeysByDeal.set(tree.dealId, collectLeafKeys(tree));
+      }
+
+      for (const did of selectedDealIds) {
+        const dealLeaves = leafKeysByDeal.get(did) || [];
+        if (dealLeaves.length === 0) continue;
+        const hasAnyForDeal = dealLeaves.some((k) => next.has(k));
+        if (hasAnyForDeal) continue;
+        for (const k of dealLeaves) next.add(k);
+      }
+
+      return next;
+    });
+  }, [compositionTrees, selectedDealIds]);
+
   const toggleExpandedComposition = useCallback((key: string) => {
     setExpandedCompositionKeys((prev) => {
       const next = new Set(prev);
@@ -557,8 +582,8 @@ export function CashflowPageIntegrated() {
         continue;
       }
       if (entityType === 'contract') {
-        const k = contractLegLeafKey(did, entityId, l.direction === 'outflow' ? 'outflow' : 'inflow');
-        if (selectedLeafKeys.has(k)) out.push(l);
+        // Hedge contracts: include both legs when the contract is selected.
+        if (selectedLeafKeys.has(contractLeafKey(did, entityId))) out.push(l);
         continue;
       }
 
@@ -807,185 +832,210 @@ export function CashflowPageIntegrated() {
               </label>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saldo líquido (USD)</div>
-                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.net)}</div>
-              </div>
-              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Determinístico (USD)</div>
-                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(confidenceTotals.deterministic)}</div>
-              </div>
-              <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Estimado + Risco (USD)</div>
-                <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(confidenceTotals.estimated + confidenceTotals.risk)}</div>
+            <div className="mt-4 border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[var(--sapList_BorderColor)]">
+                <div className="p-3">
+                  <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Saldo líquido (USD)</div>
+                  <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(totals.net)}</div>
+                </div>
+                <div className="p-3">
+                  <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Determinístico (USD)</div>
+                  <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(confidenceTotals.deterministic)}</div>
+                </div>
+                <div className="p-3">
+                  <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Estimado + Risco (USD)</div>
+                  <div className="text-sm font-['72:Bold',sans-serif]">{formatUsdSigned(confidenceTotals.estimated + confidenceTotals.risk)}</div>
+                </div>
               </div>
             </div>
           </div>
 
           {showNoDealSelected ? (
             <div className="p-6">
-              <EmptyState title="Nenhuma seleção" description="Selecione um ou mais Deals no escopo à esquerda." />
+              <EmptyState title="Nenhuma seleção" description="Selecione um ou mais Deals para ver o fluxo de caixa." />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Center */}
-              <div className="border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
-                <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)]">
-                  <div className="text-sm font-['72:Bold',sans-serif]">Composição</div>
-                  <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Selecione itens para consolidar</div>
-                </div>
-                <div className="p-3 max-h-[520px] overflow-y-auto">
-                  {compositionTrees.length === 0 ? (
-                    <EmptyState title="Sem dados" description="Não há itens para o período." />
-                  ) : (
-                    <CompositionTree
-                      nodes={compositionTrees}
-                      selected={selectedLeafKeys}
-                      expanded={expandedCompositionKeys}
-                      onToggleExpanded={toggleExpandedComposition}
-                      onToggleSelected={onToggleSelectedNode}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Right */}
-              <div className="border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
-                <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)] flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-['72:Bold',sans-serif]">Fluxo de Caixa</div>
-                    <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Trimestre → mês → semana</div>
+            <div className="border border-[var(--sapList_BorderColor)] rounded bg-white overflow-hidden">
+              <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr]">
+                {/* Left (Composition) */}
+                <div className="border-b lg:border-b-0 lg:border-r border-[var(--sapList_BorderColor)]">
+                  <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)]">
+                    <div className="text-sm font-['72:Bold',sans-serif]">Composição</div>
+                    <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Seleção automática ao marcar Deals; ajuste se necessário</div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <FioriButton
-                      variant="ghost"
-                      onClick={() => {
-                        const q: Record<string, boolean> = {};
-                        const m: Record<string, boolean> = {};
-                        const w: Record<string, boolean> = {};
-                        for (const k of allQuarterKeys) q[k] = true;
-                        for (const k of allMonthKeys) m[k] = true;
-                        for (const k of allWeekKeys) w[k] = true;
-                        setExpandedQuarters(q);
-                        setExpandedMonths(m);
-                        setExpandedWeeks(w);
-                      }}
-                      disabled={timeColumns.length === 0}
-                    >
-                      Expandir tudo
-                    </FioriButton>
-                    <FioriButton
-                      variant="ghost"
-                      onClick={() => {
-                        setExpandedQuarters({});
-                        setExpandedMonths({});
-                        setExpandedWeeks({});
-                      }}
-                      disabled={timeColumns.length === 0}
-                    >
-                      Recolher
-                    </FioriButton>
+                  <div className="p-3">
+                    {compositionTrees.length === 0 ? (
+                      <EmptyState title="Sem dados" description="Não há itens para o período." />
+                    ) : (
+                      <CompositionTree
+                        nodes={compositionTrees}
+                        selected={selectedLeafKeys}
+                        expanded={expandedCompositionKeys}
+                        onToggleExpanded={toggleExpandedComposition}
+                        onToggleSelected={onToggleSelectedNode}
+                      />
+                    )}
                   </div>
                 </div>
 
-                <div className="p-3">
-                  {selectedLeafKeys.size === 0 ? (
-                    <EmptyState title="Nenhuma seleção" description="Selecione itens do Deal na coluna central." />
-                  ) : showInitialLoading ? (
-                    <LoadingState message="Carregando fluxo de caixa..." />
-                  ) : cashflow.isError ? (
-                    <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
-                  ) : filteredLines.length === 0 ? (
-                    <EmptyState title="Sem dados" description="Sem dados para o período." />
-                  ) : timeColumns.length === 0 ? (
-                    <EmptyState title="Sem dados" description="Sem dados para o período." />
-                  ) : (
-                    <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
-                      <div className="overflow-auto">
-                        <table className="min-w-[900px] w-full">
-                          <thead>
-                            <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                              <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Resumo</th>
-                              {timeColumns.map((c) => {
-                                const canExpand = c.canExpand;
-                                const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
-
-                                const toggle = () => {
-                                  if (!c.canExpand) return;
-                                  if (c.level === 'quarter') {
-                                    setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                    if (c.expanded) {
-                                      setExpandedMonths({});
-                                      setExpandedWeeks({});
-                                    }
-                                    return;
-                                  }
-                                  if (c.level === 'month') {
-                                    setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                    if (c.expanded) setExpandedWeeks({});
-                                    return;
-                                  }
-                                  if (c.level === 'week') {
-                                    setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
-                                  }
-                                };
-
-                                return (
-                                  <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={3}>
-                                    {canExpand ? (
-                                      <button
-                                        type="button"
-                                        className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          toggle();
-                                        }}
-                                        title="Expandir/recolher"
-                                      >
-                                        <span>{c.label}</span>
-                                        {icon}
-                                      </button>
-                                    ) : (
-                                      <span>{c.label}</span>
-                                    )}
-                                  </th>
-                                );
-                              })}
-                            </tr>
-                            <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                              <th className="text-left p-3 text-[11px] sticky left-0 z-20 bg-white text-[var(--sapContent_LabelColor)]">&nbsp;</th>
-                              {timeColumns.map((c) => (
-                                <>
-                                  <th key={`${c.key}:d`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Det.</th>
-                                  <th key={`${c.key}:e`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Est.</th>
-                                  <th key={`${c.key}:r`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Risco</th>
-                                </>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                              <td className="p-3 text-sm sticky left-0 z-10 bg-white font-['72:Bold',sans-serif]">Total</td>
-                              {timeColumns.flatMap((c) => {
-                                const sums = sumByConfidenceForDates(filteredLines, c.dates);
-                                const cells: Array<{ key: string; v: number }> = [
-                                  { key: `${c.key}:det`, v: sums.deterministic },
-                                  { key: `${c.key}:est`, v: sums.estimated },
-                                  { key: `${c.key}:risk`, v: sums.risk },
-                                ];
-                                return cells.map((cell) => (
-                                  <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap">
-                                    <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
-                                  </td>
-                                ));
-                              })}
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
+                {/* Right (Grid) */}
+                <div>
+                  <div className="border-b border-[var(--sapList_BorderColor)] p-3 bg-[var(--sapGroup_ContentBackground)] flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-['72:Bold',sans-serif]">Fluxo de Caixa</div>
+                      <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Trimestre → mês → semana</div>
                     </div>
-                  )}
+                    <div className="flex items-center gap-2">
+                      <FioriButton
+                        variant="ghost"
+                        onClick={() => {
+                          const q: Record<string, boolean> = {};
+                          const m: Record<string, boolean> = {};
+                          const w: Record<string, boolean> = {};
+                          for (const k of allQuarterKeys) q[k] = true;
+                          for (const k of allMonthKeys) m[k] = true;
+                          for (const k of allWeekKeys) w[k] = true;
+                          setExpandedQuarters(q);
+                          setExpandedMonths(m);
+                          setExpandedWeeks(w);
+                        }}
+                        disabled={timeColumns.length === 0}
+                      >
+                        Expandir tudo
+                      </FioriButton>
+                      <FioriButton
+                        variant="ghost"
+                        onClick={() => {
+                          setExpandedQuarters({});
+                          setExpandedMonths({});
+                          setExpandedWeeks({});
+                        }}
+                        disabled={timeColumns.length === 0}
+                      >
+                        Recolher
+                      </FioriButton>
+                    </div>
+                  </div>
+
+                  <div className="p-3">
+                    {showInitialLoading ? (
+                      <LoadingState message="Carregando fluxo de caixa..." />
+                    ) : cashflow.isError ? (
+                      <ErrorState error={cashflow.error} onRetry={cashflow.refetch} />
+                    ) : filteredLines.length === 0 ? (
+                      <EmptyState title="Sem dados" description="Sem dados para o período." />
+                    ) : timeColumns.length === 0 ? (
+                      <EmptyState title="Sem dados" description="Sem dados para o período." />
+                    ) : (
+                      <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
+                        <div className="overflow-auto">
+                          <table className="min-w-[980px] w-full">
+                            <thead>
+                              <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                                <th className="text-left p-3 text-xs sticky left-0 z-20 bg-white">Resumo</th>
+                                {timeColumns.map((c) => {
+                                  const canExpand = c.canExpand;
+                                  const icon = canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
+
+                                  const toggle = () => {
+                                    if (!c.canExpand) return;
+                                    if (c.level === 'quarter') {
+                                      setExpandedQuarters((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                      if (c.expanded) {
+                                        setExpandedMonths({});
+                                        setExpandedWeeks({});
+                                      }
+                                      return;
+                                    }
+                                    if (c.level === 'month') {
+                                      setExpandedMonths((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                      if (c.expanded) setExpandedWeeks({});
+                                      return;
+                                    }
+                                    if (c.level === 'week') {
+                                      setExpandedWeeks((prev) => ({ ...prev, [c.key]: !prev[c.key] }));
+                                    }
+                                  };
+
+                                  return (
+                                    <th key={c.key} className="text-center p-2 text-xs whitespace-nowrap" colSpan={3}>
+                                      {canExpand ? (
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center gap-1 text-[var(--sapLink_TextColor)] hover:underline"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggle();
+                                          }}
+                                          title="Expandir/recolher"
+                                        >
+                                          <span>{c.label}</span>
+                                          {icon}
+                                        </button>
+                                      ) : (
+                                        <span>{c.label}</span>
+                                      )}
+                                    </th>
+                                  );
+                                })}
+
+                                <th className="text-center p-2 text-xs whitespace-nowrap" colSpan={3}>
+                                  Total acumulado
+                                </th>
+                              </tr>
+                              <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                                <th className="text-left p-3 text-[11px] sticky left-0 z-20 bg-white text-[var(--sapContent_LabelColor)]">&nbsp;</th>
+                                {timeColumns.map((c) => (
+                                  <>
+                                    <th key={`${c.key}:d`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Det.</th>
+                                    <th key={`${c.key}:e`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Est.</th>
+                                    <th key={`${c.key}:r`} className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Risco</th>
+                                  </>
+                                ))}
+                                <>
+                                  <th className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Det.</th>
+                                  <th className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Est.</th>
+                                  <th className="text-right p-2 text-[11px] text-[var(--sapContent_LabelColor)]">Risco</th>
+                                </>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
+                                <td className="p-3 text-sm sticky left-0 z-10 bg-white font-['72:Bold',sans-serif]">Total</td>
+                                {timeColumns.flatMap((c) => {
+                                  const sums = sumByConfidenceForDates(filteredLines, c.dates);
+                                  const cells: Array<{ key: string; v: number }> = [
+                                    { key: `${c.key}:det`, v: sums.deterministic },
+                                    { key: `${c.key}:est`, v: sums.estimated },
+                                    { key: `${c.key}:risk`, v: sums.risk },
+                                  ];
+                                  return cells.map((cell) => (
+                                    <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap">
+                                      <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
+                                    </td>
+                                  ));
+                                })}
+
+                                {(() => {
+                                  const totalSums = sumByConfidenceForDates(filteredLines, allDates);
+                                  const cells: Array<{ key: string; v: number }> = [
+                                    { key: 'total:det', v: totalSums.deterministic },
+                                    { key: 'total:est', v: totalSums.estimated },
+                                    { key: 'total:risk', v: totalSums.risk },
+                                  ];
+                                  return cells.map((cell) => (
+                                    <td key={cell.key} className="p-2 text-xs text-right whitespace-nowrap bg-[var(--sapList_HeaderBackground)]">
+                                      <span className={isNegative(cell.v) ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : ''}>{formatUsdSigned(cell.v)}</span>
+                                    </td>
+                                  ));
+                                })()}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
