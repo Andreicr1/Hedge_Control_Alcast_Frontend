@@ -153,7 +153,10 @@ export function ExposuresPageIntegrated() {
     return `Contrato ${scope.contractId} · Deal #${scope.dealId}`;
   }, [scope]);
 
-  const onOpenDeal = (dealId: number) => navigate(`/financeiro/deals/${dealId}`);
+  const onOpenDeal = (dealId: number) => {
+    const qs = new URLSearchParams({ scope: 'deal', deal_id: String(dealId) });
+    navigate(`/financeiro/cashflow?${qs.toString()}`);
+  };
 
   return (
     <FioriFlexibleColumnLayout

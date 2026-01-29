@@ -3,8 +3,6 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { normalizeRoleName } from '../../../utils/role';
 import svgPaths from '../../../imports/svg-usjkinc271';
-import svgPathsSalesOrder from '../../../imports/svg-4ordkfl4w2';
-import svgPathsCustomerOrder from '../../../imports/svg-1jb7ph01kc';
 import svgPathsPaidLeave from '../../../imports/svg-jmreoh7plc';
 import { UX_COPY } from '../../ux/copy';
 
@@ -38,43 +36,6 @@ function HomeIcon() {
   );
 }
 
-function SalesOrderIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g id="sales-order">
-          <g id="Icon">
-            <path clipRule="evenodd" d={svgPathsSalesOrder.p49d8500} fill="var(--fill-0, #131E29)" fillRule="evenodd" />
-            <path d={svgPathsSalesOrder.p96532c0} fill="var(--fill-0, #131E29)" />
-          </g>
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-function CustomerOrderIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_customer_order)" id="customer-order-entry">
-          <g id="Icon">
-            <path clipRule="evenodd" d={svgPathsCustomerOrder.p33334a40} fill="var(--fill-0, #131E29)" fillRule="evenodd" />
-            <path d={svgPathsCustomerOrder.p1e5c2e00} fill="var(--fill-0, #131E29)" />
-            <path d={svgPathsCustomerOrder.p1d474b00} fill="var(--fill-0, #131E29)" />
-            <path clipRule="evenodd" d={svgPathsCustomerOrder.p11b14f70} fill="var(--fill-0, #131E29)" fillRule="evenodd" />
-            <path d={svgPathsCustomerOrder.p15b4d560} fill="var(--fill-0, #131E29)" />
-          </g>
-        </g>
-        <defs>
-          <clipPath id="clip0_customer_order">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
 
 function PaidLeaveIcon() {
   return (
@@ -93,80 +54,7 @@ function PaidLeaveIcon() {
   );
 }
 
-function PurchaseIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_purchase)" id="Icon">
-          <g id="Icon_2">
-            <path d={svgPaths.p23c89d00} fill="var(--fill-0, #131E29)" />
-            <path d={svgPaths.p2129ad80} fill="var(--fill-0, #131E29)" />
-            <path d={svgPaths.p202b38f0} fill="var(--fill-0, #131E29)" />
-          </g>
-        </g>
-        <defs>
-          <clipPath id="clip0_purchase">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
 
-function FinanceIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_finance)" id="Icon">
-          <path d={svgPaths.p193c3f00} fill="var(--fill-0, #131E29)" id="Icon_2" />
-        </g>
-        <defs>
-          <clipPath id="clip0_finance">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_settings)" id="Icon">
-          <g id="Icon_2">
-            <path clipRule="evenodd" d={svgPaths.p24d52180} fill="var(--fill-0, #131E29)" fillRule="evenodd" />
-            <path clipRule="evenodd" d={svgPaths.p96faa70} fill="var(--fill-0, #131E29)" fillRule="evenodd" />
-          </g>
-        </g>
-        <defs>
-          <clipPath id="clip0_settings">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
-
-function DocumentIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g id="Icon">
-          <g id="Icon_2">
-            <path d={svgPaths.p398c9500} fill="var(--fill-0, #131E29)" />
-            <path d={svgPaths.p12a35700} fill="var(--fill-0, #131E29)" />
-            <path d={svgPaths.p307dd540} fill="var(--fill-0, #131E29)" />
-            <path d={svgPaths.p3d710f80} fill="var(--fill-0, #131E29)" />
-          </g>
-        </g>
-      </svg>
-    </div>
-  );
-}
 
 function ChevronDownIcon() {
   return (
@@ -192,55 +80,6 @@ function ChevronRightIcon() {
   );
 }
 
-function PlusIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_plus)" id="Icon">
-          <g id="Icon_2">
-            <path clipRule="evenodd" d={svgPaths.p1afbe700} fill="var(--fill-0, #0064D9)" fillRule="evenodd" />
-            <path d={svgPaths.p34e57700} fill="var(--fill-0, #0064D9)" />
-            <path d={svgPaths.p75eac00} fill="var(--fill-0, #0064D9)" />
-          </g>
-        </g>
-        <defs>
-          <clipPath id="clip0_plus">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
-
-function UserIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g id="Icon">
-          <path d={svgPaths.p2d94670} fill="var(--fill-0, #131E29)" id="Icon_2" />
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-function RewardsIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_rewards)" id="Icon">
-          <path d={svgPaths.p159ae300} fill="var(--fill-0, #131E29)" id="Icon_2" />
-        </g>
-        <defs>
-          <clipPath id="clip0_rewards">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
 
 // Single Navigation Item (No Children)
 interface NavigationItemProps {
@@ -379,34 +218,23 @@ function ChildNavigationItem({ label, path, isActive }: ChildNavigationItemProps
 export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationProps) {
   const location = useLocation();
   const [expandedGroups, setExpandedGroups] = useState<string[]>([
-    UX_COPY.nav.sales,
-    UX_COPY.nav.purchases,
     UX_COPY.nav.finance,
   ]);
 
   const role = normalizeRoleName(userRole);
 
-  const showInbox = !role || role === 'financeiro' || role === 'admin' || role === 'auditoria';
-  const showApprovals = !role || role === 'financeiro' || role === 'admin' || role === 'auditoria';
-  const showDeals = role === 'admin';
   const financeiroChildren = [
-    ...(showInbox ? [{ label: UX_COPY.nav.pending, path: '/financeiro/inbox' }] : []),
-    ...(showApprovals ? [{ label: UX_COPY.nav.approvals, path: '/financeiro/aprovacoes' }] : []),
     { label: UX_COPY.nav.riskExposure, path: '/financeiro/exposicoes' },
     { label: UX_COPY.nav.rfqs, path: '/financeiro/rfqs' },
     { label: UX_COPY.nav.contracts, path: '/financeiro/contratos' },
     { label: UX_COPY.nav.cashflow, path: '/financeiro/cashflow' },
-    { label: UX_COPY.nav.reports, path: '/financeiro/exports' },
+    { label: UX_COPY.nav.reports, path: '/financeiro/relatorios' },
     { label: UX_COPY.nav.counterparties, path: '/financeiro/contrapartes' },
-    ...(showDeals ? [{ label: UX_COPY.nav.deals, path: '/financeiro/deals' }] : []),
   ];
   const filterByRole = (items: NavItem[]): NavItem[] => {
     if (!role) return items;
     return items.filter((item) => {
       if (item.path === '/') return true;
-      if (item.path === '/configuracoes') return role === 'admin';
-      if (item.path === '/vendas') return role === 'vendas';
-      if (item.path === '/compras') return role === 'compras';
       if (item.path === '/financeiro') return role === 'financeiro' || role === 'auditoria' || role === 'admin';
       return true;
     });
@@ -415,33 +243,10 @@ export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationPro
   const navItems: NavItem[] = [
     { label: UX_COPY.nav.dashboard, path: '/', icon: <HomeIcon /> },
     {
-      label: UX_COPY.nav.sales,
-      path: '/vendas',
-      icon: <SalesOrderIcon />,
-      children: [
-        { label: UX_COPY.nav.salesOrders, path: '/vendas/sales-orders' },
-        { label: UX_COPY.nav.customers, path: '/vendas/clientes' },
-      ],
-    },
-    {
-      label: UX_COPY.nav.purchases,
-      path: '/compras',
-      icon: <CustomerOrderIcon />,
-      children: [
-        { label: UX_COPY.nav.purchaseOrders, path: '/compras/purchase-orders' },
-        { label: UX_COPY.nav.suppliers, path: '/compras/fornecedores' },
-      ],
-    },
-    {
       label: UX_COPY.nav.finance,
       path: '/financeiro',
       icon: <PaidLeaveIcon />,
       children: financeiroChildren,
-    },
-    {
-      label: UX_COPY.nav.settings,
-      path: '/configuracoes',
-      icon: <SettingsIcon />,
     },
   ];
 
@@ -518,8 +323,6 @@ export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationPro
                 </svg>
               </div>
             </div>
-
-            <NavigationItem label="Perfil" path="/perfil" icon={<UserIcon />} />
           </div>
         </div>
       </div>

@@ -159,10 +159,12 @@ export function ContractsPageIntegrated() {
   }, [navigate, setScope]);
 
   const handleNavigateToSource = useCallback(
-    (link: ContractExposureLink) => {
+    (link: ContractExposureLink, dealId: number) => {
       const t = (link.source_type || '').toLowerCase();
-      if (t === 'so') navigate(`/vendas/sales-orders/${encodeURIComponent(String(link.source_id))}`);
-      if (t === 'po') navigate(`/compras/purchase-orders/${encodeURIComponent(String(link.source_id))}`);
+      const qs = new URLSearchParams({ scope: t, deal_id: String(dealId) });
+      if (t === 'so') qs.set('so_id', String(link.source_id));
+      if (t === 'po') qs.set('po_id', String(link.source_id));
+      navigate(`/financeiro/exposicoes?${qs.toString()}`);
     },
     [navigate],
   );
@@ -327,7 +329,7 @@ export function ContractsPageIntegrated() {
     return t || '—';
   };
 
-  const renderExposureCoverage = (links: ContractExposureLink[]) => {
+  const renderExposureCoverage = (links: ContractExposureLink[], dealId: number) => {
     if (!links.length) return null;
 
     const grouped = links.reduce(
@@ -372,7 +374,7 @@ export function ContractsPageIntegrated() {
                     .map((row) => (
                       <button
                         key={`${row.exposure_id}`}
-                        onClick={() => handleNavigateToSource(row)}
+                        onClick={() => handleNavigateToSource(row, dealId)}
                         className="w-full text-left p-2 rounded bg-[var(--sapGroup_ContentBackground)] hover:bg-[var(--sapList_HoverBackground)] transition-colors"
                         title="Abrir documento de origem"
                       >
@@ -696,7 +698,7 @@ export function ContractsPageIntegrated() {
         {renderSettlementSummary(selectedContract)}
 
         {/* (4) Cobertura de exposição */}
-        {renderExposureCoverage(selectedContractExposures)}
+        {renderExposureCoverage(selectedContractExposures, selectedContract.deal_id)}
 
         {/* (5) Documentos do contrato (repositório central) */}
         <div className="rounded-lg border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)] p-1">
