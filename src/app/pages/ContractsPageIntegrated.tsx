@@ -429,10 +429,7 @@ export function ContractsPageIntegrated() {
 
     return (
       <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-1">Estrutura Econômica</h3>
-        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
-          Base financeira do contrato (legs, nocional, diferença, janelas e vencimento).
-        </div>
+        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-4">Estrutura Econômica</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
@@ -448,7 +445,7 @@ export function ContractsPageIntegrated() {
           </div>
 
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Referência variável</div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Referência</div>
             <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
               {variableLabel || formatPriceTypeLabel(contract.variable_leg?.price_type || undefined)}
             </div>
@@ -464,7 +461,7 @@ export function ContractsPageIntegrated() {
               <tr>
                 <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Leg</th>
                 <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Preço</th>
-                <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Quantidade (t)</th>
+                <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Qtd. (t)</th>
                 <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Tipo</th>
               </tr>
             </thead>
@@ -487,7 +484,7 @@ export function ContractsPageIntegrated() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Diferença (Compra − Venda)</div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Diferença</div>
             <div className="font-['72:Black',sans-serif] text-lg text-[#131e29] tabular-nums">
               {spread != null ? formatNumber(spread, { minimumFractionDigits: 2 }) : '—'}
             </div>
@@ -499,7 +496,7 @@ export function ContractsPageIntegrated() {
             </div>
           </div>
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Status pós-vencimento</div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Status</div>
             <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
               {display.label}
             </div>
@@ -509,9 +506,7 @@ export function ContractsPageIntegrated() {
 
         {legs.length > 0 && (
           <div className="mt-4">
-            <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] mb-2">
-              Leitura técnica (detalhe das legs)
-            </div>
+            <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] mb-2">Detalhe das legs</div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm border border-[var(--sapList_BorderColor)]">
                 <thead className="bg-[var(--sapList_HeaderBackground)]">
@@ -520,7 +515,7 @@ export function ContractsPageIntegrated() {
                     <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Qtd (t)</th>
                     <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Preço</th>
                     <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Tipo</th>
-                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Período/Regra</th>
+                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Período</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -556,10 +551,7 @@ export function ContractsPageIntegrated() {
 
     return (
       <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-1">Liquidação e Impacto Financeiro</h3>
-        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
-          Data de settlement, ajuste final (USD) e critério utilizado.
-        </div>
+        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-4">Liquidação</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
@@ -582,7 +574,7 @@ export function ContractsPageIntegrated() {
             </div>
             {contract.settlement_adjustment_methodology && (
               <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                Critério: {contract.settlement_adjustment_methodology}
+                Metodologia: {contract.settlement_adjustment_methodology}
                 {contract.settlement_adjustment_locked ? ' • bloqueado' : ''}
               </div>
             )}
@@ -592,7 +584,7 @@ export function ContractsPageIntegrated() {
         {contract.settlement_meta && (
           <details className="mt-3">
             <summary className="text-sm text-[#0064d9] cursor-pointer select-none">
-              Ver metadados de liquidação
+              Detalhes
             </summary>
             <pre className="mt-2 text-xs p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)] overflow-auto">
               {JSON.stringify(contract.settlement_meta, null, 2)}
@@ -629,11 +621,9 @@ export function ContractsPageIntegrated() {
         {/* (1) Identidade, rastreabilidade e vínculos */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-1">
-            Identidade e Rastreabilidade
+            Identidade do Contrato
           </h3>
-          <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
-            Registro operacional derivado de RFQ/Deal, com chaves de auditoria e vínculo com contraparte.
-          </div>
+          <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">Origem e referências</div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
@@ -668,12 +658,12 @@ export function ContractsPageIntegrated() {
             </div>
 
             <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Estrutura (trade_index)</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Estrutura</div>
               <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">#{selectedContract.trade_index ?? 0}</div>
             </div>
 
             <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Quote group</div>
+              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Grupo de cotação</div>
               <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] break-all">
                 {selectedContract.quote_group_id || '—'}
               </div>

@@ -32,9 +32,9 @@ export interface ContractDocumentsPanelProps {
 
 function toInstitutionalError(err: unknown, action: 'upload' | 'view' | 'download'): string {
   const genericByAction: Record<'upload' | 'view' | 'download', string> = {
-    upload: 'Falha ao enviar o documento. Tente novamente. Se o erro persistir, contate o suporte.',
-    view: 'Falha ao abrir o documento. Tente novamente. Se o erro persistir, contate o suporte.',
-    download: 'Falha ao baixar o documento. Tente novamente. Se o erro persistir, contate o suporte.',
+    upload: 'Não foi possível enviar o documento. Tente novamente.',
+    view: 'Não foi possível abrir o documento. Tente novamente.',
+    download: 'Não foi possível baixar o documento. Tente novamente.',
   };
 
   const statusCode = (() => {
@@ -51,12 +51,12 @@ function toInstitutionalError(err: unknown, action: 'upload' | 'view' | 'downloa
     return null;
   })();
 
-  if (statusCode === 401) return 'Sessão expirada. Faça login novamente e repita a operação.';
-  if (statusCode === 403) return 'Acesso negado para este contrato/documento.';
-  if (statusCode === 404) return 'Documento não encontrado (pode ter sido removido ou substituído).';
-  if (statusCode === 413) return 'Arquivo excede o limite aceito pelo servidor. Reduza o tamanho e tente novamente.';
+  if (statusCode === 401) return 'Sessão expirada. Entre novamente.';
+  if (statusCode === 403) return 'Sem permissão para este documento.';
+  if (statusCode === 404) return 'Documento não encontrado.';
+  if (statusCode === 413) return 'Arquivo acima do limite. Reduza o tamanho e tente novamente.';
   if (statusCode === 415) return 'Tipo de arquivo não suportado. Envie um PDF.';
-  if (statusCode === 422) return 'Arquivo inválido ou metadados inconsistentes. Verifique o PDF e tente novamente.';
+  if (statusCode === 422) return 'Documento inválido. Verifique o PDF e tente novamente.';
 
   if (typeof err === 'object' && err) {
     const anyErr = err as any;
@@ -106,7 +106,7 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
 
       const maxBytes = 25 * 1024 * 1024;
       if (file.size > maxBytes) {
-        setLocalError('Arquivo muito grande. Limite: 25 MB.');
+        setLocalError('Arquivo acima de 25 MB.');
         return;
       }
 
@@ -173,9 +173,6 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29]">Documentos do Contrato</h3>
-          <div className="text-xs text-[var(--sapContent_LabelColor)]">
-            Contrato original assinado (PDF) vinculado a este registro operacional.
-          </div>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -189,7 +186,7 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
             }}
           />
           <FioriButton variant="emphasized" onClick={handlePickFile} disabled={uploading}>
-            {uploading ? 'Enviando…' : 'Upload (PDF)'}
+            {uploading ? 'Enviando…' : 'Anexar PDF'}
           </FioriButton>
           <FioriButton variant="ghost" onClick={refetch}>
             Atualizar
@@ -207,8 +204,8 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
         <ErrorState error={error} onRetry={refetch} />
       ) : !hasDocs ? (
         <EmptyState
-          title="Nenhum documento anexado"
-          description="Envie o contrato assinado em PDF para manter rastreabilidade e auditoria."
+          title="Nenhum documento"
+          description="Anexe o PDF assinado."
         />
       ) : (
         <div className="overflow-x-auto">
