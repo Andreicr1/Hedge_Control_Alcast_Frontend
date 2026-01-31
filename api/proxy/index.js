@@ -116,9 +116,17 @@ function proxyRequest(targetUrl, { method, headers, body }) {
 
 module.exports = async function (context, req) {
   try {
-    const backendBase = process.env.BACKEND_BASE_URL
+    const backendBase = process.env.BACKEND_BASE_URL;
     if (!backendBase) {
-      context.res = { status: 500, body: 'BACKEND_BASE_URL is not set' }
+      context.res = {
+        status: 503,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          detail: 'Service unavailable',
+          code: 'gateway_not_configured',
+          missing: ['BACKEND_BASE_URL'],
+        }),
+      }
       return
     }
 

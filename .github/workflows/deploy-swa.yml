@@ -21,6 +21,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Entra build env (non-empty)
+        env:
+          VITE_ENTRA_TENANT_ID: ${{ secrets.VITE_ENTRA_TENANT_ID }}
+          VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
+          VITE_ENTRA_API_SCOPE: ${{ secrets.VITE_ENTRA_API_SCOPE }}
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "${VITE_ENTRA_TENANT_ID:-}" ]; then echo "::error::Missing/empty GitHub secret: VITE_ENTRA_TENANT_ID"; missing=1; fi
+          if [ -z "${VITE_ENTRA_CLIENT_ID:-}" ]; then echo "::error::Missing/empty GitHub secret: VITE_ENTRA_CLIENT_ID"; missing=1; fi
+          if [ -z "${VITE_ENTRA_API_SCOPE:-}" ]; then echo "::error::Missing/empty GitHub secret: VITE_ENTRA_API_SCOPE"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+
       - name: Build frontend (Vite)
         env:
           VITE_API_BASE_URL: /api

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { FioriShell } from './components/fiori/FioriShell';
 import { AuthProvider } from './components/AuthProvider';
@@ -22,30 +22,37 @@ export default function App() {
   const content = (
     <BrowserRouter>
       <AppShell>
-        <AnalyticScopeProvider>
-          <AnalyticsEntityTreeProvider>
-            <RouteAccessGate>
-              <Routes>
-                <Route path="/login" element={<LoginPageIntegrated />} />
-                <Route path="/" element={<HomeRedirect />} />
+        <Routes>
+          <Route path="/login" element={<LoginPageIntegrated />} />
 
-                {/* Financeiro */}
-                <Route path="/financeiro/exposicoes" element={<ExposuresPageIntegrated />} />
-                <Route path="/financeiro/rfqs" element={<RFQsPageIntegrated />} />
-                <Route path="/financeiro/contratos" element={<ContractsPageIntegrated />} />
-                <Route path="/financeiro/contrapartes" element={<CounterpartiesPageIntegrated />} />
-                <Route path="/financeiro/cashflow" element={<CashflowPageIntegrated />} />
-                <Route path="/financeiro/relatorios" element={<ExportsPageIntegrated />} />
+          <Route
+            element={
+              <RouteAccessGate>
+                <AnalyticScopeProvider>
+                  <AnalyticsEntityTreeProvider>
+                    <Outlet />
+                  </AnalyticsEntityTreeProvider>
+                </AnalyticScopeProvider>
+              </RouteAccessGate>
+            }
+          >
+            <Route path="/" element={<HomeRedirect />} />
 
-                <Route path="/financeiro/governanca/saude" element={<GovernanceHealthPageIntegrated />} />
-                <Route path="/financeiro/exports" element={<Navigate to="/financeiro/relatorios" replace />} />
+            {/* Financeiro */}
+            <Route path="/financeiro/exposicoes" element={<ExposuresPageIntegrated />} />
+            <Route path="/financeiro/rfqs" element={<RFQsPageIntegrated />} />
+            <Route path="/financeiro/contratos" element={<ContractsPageIntegrated />} />
+            <Route path="/financeiro/contrapartes" element={<CounterpartiesPageIntegrated />} />
+            <Route path="/financeiro/cashflow" element={<CashflowPageIntegrated />} />
+            <Route path="/financeiro/relatorios" element={<ExportsPageIntegrated />} />
 
-                {/* Fallback */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </RouteAccessGate>
-          </AnalyticsEntityTreeProvider>
-        </AnalyticScopeProvider>
+            <Route path="/financeiro/governanca/saude" element={<GovernanceHealthPageIntegrated />} />
+            <Route path="/financeiro/exports" element={<Navigate to="/financeiro/relatorios" replace />} />
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
       </AppShell>
     </BrowserRouter>
   );

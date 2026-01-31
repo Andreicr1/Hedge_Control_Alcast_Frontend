@@ -157,6 +157,11 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     });
 
     if (!response.ok) {
+      // Governance UX: backend truth must surface deterministically.
+      // 5xx/502/503 indicates service/proxy issues, not an auth outcome.
+      if (response.status >= 500) {
+        throw new Error('Serviço temporariamente indisponível. Tente novamente em alguns instantes.');
+      }
       if (response.status === 401 || response.status === 403) {
         await persistAuthFailureDetail(response);
       }

@@ -18,19 +18,27 @@ This frontend is deployed to **Azure Static Web Apps (SWA)** using GitHub Action
 
 Important:
 
-- Vite environment variables are injected at **build time**.
-- After changing any `VITE_*` values, trigger a new deploy.
 
 Workflow: `.github/workflows/deploy-swa.yml`
 
 Required GitHub Secrets:
 
-- `AZURE_STATIC_WEB_APPS_API_TOKEN` (SWA deployment token)
-- `VITE_AUTH_MODE` (`local` or `entra`)
-- `VITE_ENTRA_TENANT_ID`
-- `VITE_ENTRA_CLIENT_ID`
-- `VITE_ENTRA_API_SCOPE` (example: `api://<api-app-client-id>/access_as_user`)
 
+## Setup
+
+### Variáveis de ambiente (SWA / Entra / Proxy)
+
+Este frontend (Vite) lê variáveis `VITE_*` no **build**. Em Azure Static Web Apps, defina essas variáveis em **Configuration → Application settings** e dispare um novo deploy.
+
+- **Entra (quando `VITE_AUTH_MODE=entra`)**
+	- `VITE_ENTRA_TENANT_ID`
+	- `VITE_ENTRA_CLIENT_ID`
+	- `VITE_ENTRA_API_SCOPE` (ex.: `api://<api-app-client-id>/access_as_user`)
+
+- **API (Azure Functions proxy `/api`)**
+	- `BACKEND_BASE_URL` (URL base do backend, ex.: `https://<backend-host>`)
+
+Sem `BACKEND_BASE_URL`, o proxy responde `503` (gateway não configurado) e o navegador mostrará falhas em `/api/*`.
 Notes:
 
 - In SWA, the app uses same-origin API calls (`VITE_API_BASE_URL=/api`). The integrated `api/` Functions project proxies to the backend.

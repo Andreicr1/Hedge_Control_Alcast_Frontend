@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ApiError, EntityTreeResponse } from '../types';
 import { getEntityTree, type EntityTreeQuery } from '../services/analytics.service';
+import { getAuthToken } from '../api/client';
 
 export function useAnalyticsEntityTree(query?: EntityTreeQuery) {
   const [data, setData] = useState<EntityTreeResponse | null>(null);
@@ -11,6 +12,16 @@ export function useAnalyticsEntityTree(query?: EntityTreeQuery) {
   const queryKey = useMemo(() => JSON.stringify(query ?? {}), [query]);
 
   const refetch = useCallback(async () => {
+    // Avoid calling backend while unauthenticated.
+    const token = getAuthToken();
+    if (!token) {
+      setData(null);
+      setIsError(false);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setIsError(false);
     setError(null);

@@ -40,7 +40,6 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const auth = useAuth();
   const [initialized, setInitialized] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (!auth.isLoading) {
@@ -48,25 +47,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [auth.isLoading]);
 
-  // Retry auth if failed (up to 3 times)
-  useEffect(() => {
-    if (initialized && auth.error && !auth.isAuthenticated && retryCount < 3) {
-      const timer = setTimeout(() => {
-        setRetryCount(prev => prev + 1);
-        auth.checkAuth();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [initialized, auth.error, auth.isAuthenticated, retryCount, auth.checkAuth]);
-
   // Show loading state while checking auth
-  if (!initialized || (auth.error && retryCount < 3)) {
+  if (!initialized) {
     return (
       <div className="min-h-screen bg-[var(--sapBackgroundColor)] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--sapAccentColor3)] mx-auto mb-4"></div>
           <p className="text-[var(--sapContent_LabelColor)]">
-            {retryCount > 0 ? `Tentativa ${retryCount + 1}/3...` : 'Conectando ao servidor...'}
+            Conectando ao servidor...
           </p>
         </div>
       </div>
@@ -87,7 +75,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           </p>
           <button
             onClick={() => {
-              setRetryCount(0);
               auth.checkAuth();
             }}
             className="mt-2 px-4 py-2 bg-[var(--sapButton_Emphasized_Background)] text-white rounded hover:bg-[var(--sapButton_Emphasized_Hover_Background)]"
