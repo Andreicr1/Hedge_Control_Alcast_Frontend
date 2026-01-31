@@ -31,8 +31,6 @@ import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 import { UX_COPY } from '../ux/copy';
 import { formatDateTime } from '../ux/format';
 
-import '@ui5/webcomponents-icons/dist/refresh.js';
-
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   return null;
