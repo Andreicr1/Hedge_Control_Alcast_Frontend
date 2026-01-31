@@ -27,8 +27,6 @@ export {
 // Re-export specific functions (avoiding conflicts)
 export { formatPnl, calculateDealMargin, groupLegsByType } from './deals.service';
 export { 
-  getAluminumQuote, 
-  getAluminumHistory, 
   getSettlementsToday,
   getSettlementsUpcoming,
   getDashboardSummary,

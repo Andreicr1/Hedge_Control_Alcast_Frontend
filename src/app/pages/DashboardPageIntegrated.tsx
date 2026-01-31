@@ -1,10 +1,8 @@
 /** Dashboard Page */
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  useAluminumQuote, 
-  useAluminumHistory, 
   useSettlementsToday,
   useSettlementsUpcoming,
   useDashboard,
@@ -17,13 +15,10 @@ import { FioriBadge } from '../components/fiori/FioriBadge';
 import { FioriQuickLink } from '../components/fiori/FioriQuickLink';
 import { FioriTeamCard } from '../components/fiori/FioriTeamCard';
 import { FioriButton } from '../components/fiori/FioriButton';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // ============================================
 // Helpers
 // ============================================
-
-type HistoryRange = '7d' | '30d' | '1y';
 
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={`animate-pulse rounded bg-[rgba(0,0,0,0.06)] ${className}`} />;
@@ -45,35 +40,10 @@ function ErrorText() {
   );
 }
 
-/**
- * Formata data para exibição no eixo X do gráfico
- */
-function formatChartDate(ts: string, range: HistoryRange): string {
-  const date = new Date(ts);
-  if (range === '7d') {
-    // Para 1 semana: "Seg 13"
-    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    return `${days[date.getDay()]} ${date.getDate()}`;
-  } else if (range === '30d') {
-    // Para 1 mês: "13 Jan"
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    return `${date.getDate()} ${months[date.getMonth()]}`;
-  } else {
-    // Para 1 ano: "Jan 26"
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    return `${months[date.getMonth()]} ${String(date.getFullYear()).slice(2)}`;
-  }
-}
-
 export function DashboardPageIntegrated() {
   const navigate = useNavigate();
-  
-  // Estado do período do gráfico
-  const [historyRange, setHistoryRange] = useState<HistoryRange>('30d');
-  
+
   // APIs reais
-  const aluminumQuote = useAluminumQuote();
-  const aluminumHistory = useAluminumHistory(historyRange);
   const settlementsToday = useSettlementsToday();
   const settlementsUpcoming = useSettlementsUpcoming(8);
   
@@ -83,20 +53,6 @@ export function DashboardPageIntegrated() {
   // ============================================
   // Dados derivados
   // ============================================
-
-  // Histórico formatado para o gráfico - com datas reais
-  const historicalData = useMemo(() => {
-    if (!aluminumHistory.data || aluminumHistory.data.length === 0) {
-      return [];
-    }
-    
-    return aluminumHistory.data.map((point) => ({
-      date: `${point.date}T00:00:00Z`,
-      dateLabel: formatChartDate(`${point.date}T00:00:00Z`, historyRange),
-      cash: point.cash ?? undefined,
-      threeMonths: point.three_month ?? undefined,
-    }));
-  }, [aluminumHistory.data, historyRange]);
 
   // Próximos vencimentos
   const upcomingMaturities = useMemo(() => {
@@ -482,21 +438,6 @@ export function DashboardPageIntegrated() {
       }>;
   }, [dashboard.data?.timeline, translateEvent, formatActor, actorInitials]);
 
-  // Cotação atual (Cash + 3M) - SEM valores fallback estáticos
-  // Se não há dados da API, mostra "--"
-  const cashPrice = aluminumQuote.data?.cash?.price ?? null;
-  const threeMonthPrice = aluminumQuote.data?.three_month?.price ?? null;
-  const hasQuoteData = cashPrice !== null || threeMonthPrice !== null;
-
-  const lastQuoteTs = useMemo(() => {
-    const cashTs = aluminumQuote.data?.cash?.ts ? new Date(aluminumQuote.data.cash.ts) : null;
-    const threeTs = aluminumQuote.data?.three_month?.ts
-      ? new Date(aluminumQuote.data.three_month.ts)
-      : null;
-    const t = Math.max(cashTs?.getTime() || 0, threeTs?.getTime() || 0);
-    return t > 0 ? new Date(t).toISOString() : null;
-  }, [aluminumQuote.data]);
-
   // ============================================
   // Render - VISUAL IDÊNTICO à DashboardPage original
   // ============================================
@@ -506,59 +447,14 @@ export function DashboardPageIntegrated() {
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_280px] gap-4 max-w-[1600px] mx-auto">
         {/* Left Column - Metrics */}
         <div className="flex flex-col gap-4">
-          {/* Alumínio LME Spot */}
+          {/* Dados de mercado (governança) */}
           <FioriCard>
-            <FioriCardHeader 
-              title="Alumínio LME Spot - $/t" 
-              subtitle={'LME'}
-            />
-            
-            {aluminumQuote.isLoading ? (
-              <div className="py-4">
-                <SkeletonBlock className="h-[44px] w-[60%] mb-4" />
-                <div className="flex gap-4">
-                  <SkeletonBlock className="h-[34px] w-[45%]" />
-                  <SkeletonBlock className="h-[34px] w-[45%]" />
-                </div>
-              </div>
-            ) : aluminumQuote.isError ? (
-              <div className="py-6 text-center">
-                <p className="text-sm text-[var(--sapContent_LabelColor,#556b82)]">Falha ao carregar.</p>
-              </div>
-            ) : hasQuoteData ? (
-              <>
-                <div className="mb-6">
-                  <FioriCardMetric value={cashPrice !== null ? formatNumber(cashPrice, 2) : '--'} />
-                </div>
-                <div className="flex gap-4 text-center mb-4">
-                  <div className="flex-1">
-                    <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] mb-1">
-                      Cash (P3Y00)
-                    </div>
-                    <div className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapContent_ForegroundTextColor,#131e29)]">
-                      {cashPrice !== null ? formatNumber(cashPrice, 2) : '--'}
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] mb-1">
-                      3M (P4Y00)
-                    </div>
-                    <div className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapContent_ForegroundTextColor,#131e29)]">
-                      {threeMonthPrice !== null ? formatNumber(threeMonthPrice, 2) : '--'}
-                    </div>
-                  </div>
-                </div>
-                {lastQuoteTs && (
-                  <div className="text-[10px] text-[var(--sapContent_LabelColor,#556b82)] text-center">
-                    Atualizado em {formatHumanDateTime(lastQuoteTs)}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="py-6 text-center">
-                <p className="text-sm text-[var(--sapContent_LabelColor,#556b82)]">Sem dados para o período.</p>
-              </div>
-            )}
+            <FioriCardHeader title="Dados de mercado" subtitle="Governança" />
+            <div className="py-6 text-center">
+              <p className="text-sm text-[var(--sapContent_LabelColor,#556b82)]">
+                Superfícies legacy foram desabilitadas no frontend.
+              </p>
+            </div>
           </FioriCard>
 
           {/* PO / SO Abertas */}
@@ -688,124 +584,14 @@ export function DashboardPageIntegrated() {
 
         {/* Center Column - Chart & Table */}
         <div className="flex flex-col gap-4">
-          {/* Alumínio LME Histórico */}
+          {/* Histórico de preços (governança) */}
           <FioriCard>
-            {/* Header com botões de período */}
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] m-0">
-                  Alumínio LME Histórico
-                </h3>
-                <p className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] m-0">
-                  $/t
-                </p>
-              </div>
-              
-              {/* Botões de período */}
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setHistoryRange('7d')}
-                  className={`px-3 py-1 text-xs font-['72:Regular',sans-serif] rounded border transition-colors ${
-                    historyRange === '7d'
-                      ? 'bg-[var(--sapButton_Emphasized_Background,#0064d9)] text-white border-[var(--sapButton_Emphasized_Background,#0064d9)]'
-                      : 'bg-white text-[var(--sapButton_TextColor,#0064d9)] border-[var(--sapButton_BorderColor,#0064d9)] hover:bg-[var(--sapButton_Hover_Background,#eaeff5)]'
-                  }`}
-                >
-                  1 Sem
-                </button>
-                <button
-                  onClick={() => setHistoryRange('30d')}
-                  className={`px-3 py-1 text-xs font-['72:Regular',sans-serif] rounded border transition-colors ${
-                    historyRange === '30d'
-                      ? 'bg-[var(--sapButton_Emphasized_Background,#0064d9)] text-white border-[var(--sapButton_Emphasized_Background,#0064d9)]'
-                      : 'bg-white text-[var(--sapButton_TextColor,#0064d9)] border-[var(--sapButton_BorderColor,#0064d9)] hover:bg-[var(--sapButton_Hover_Background,#eaeff5)]'
-                  }`}
-                >
-                  1 Mês
-                </button>
-                <button
-                  onClick={() => setHistoryRange('1y')}
-                  className={`px-3 py-1 text-xs font-['72:Regular',sans-serif] rounded border transition-colors ${
-                    historyRange === '1y'
-                      ? 'bg-[var(--sapButton_Emphasized_Background,#0064d9)] text-white border-[var(--sapButton_Emphasized_Background,#0064d9)]'
-                      : 'bg-white text-[var(--sapButton_TextColor,#0064d9)] border-[var(--sapButton_BorderColor,#0064d9)] hover:bg-[var(--sapButton_Hover_Background,#eaeff5)]'
-                  }`}
-                >
-                  1 Ano
-                </button>
-              </div>
+            <FioriCardHeader title="Histórico de preços" subtitle="Governança" />
+            <div className="py-6 text-center">
+              <p className="text-sm text-[var(--sapContent_LabelColor,#556b82)]">
+                Superfícies legacy foram desabilitadas no frontend.
+              </p>
             </div>
-            
-            {aluminumHistory.isLoading ? (
-              <div className="h-[240px] flex items-center justify-center">
-                <SkeletonBlock className="h-[200px] w-[92%]" />
-              </div>
-            ) : aluminumHistory.isError ? (
-              <ErrorText />
-            ) : historicalData.length === 0 ? (
-              <EmptyText />
-            ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={historicalData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--sapGroup_ContentBorderColor,#d9d9d9)" />
-                  <XAxis 
-                    dataKey="dateLabel"
-                    tick={{ fill: 'var(--sapContent_LabelColor,#556b82)', fontSize: 11, fontFamily: '72:Regular,sans-serif' }}
-                    interval={historyRange === '7d' ? 0 : historyRange === '30d' ? 4 : 30}
-                    angle={historyRange === '1y' ? -45 : 0}
-                    textAnchor={historyRange === '1y' ? 'end' : 'middle'}
-                    height={historyRange === '1y' ? 60 : 30}
-                  />
-                  <YAxis 
-                    tick={{ fill: 'var(--sapContent_LabelColor,#556b82)', fontSize: 11, fontFamily: '72:Regular,sans-serif' }}
-                    domain={['dataMin - 50', 'dataMax + 50']}
-                    tickFormatter={(value) => `$${formatNumber(value, 0)}`}
-                    width={60}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid var(--sapGroup_ContentBorderColor,#d9d9d9)',
-                      borderRadius: '4px',
-                      fontFamily: '72:Regular,sans-serif',
-                      fontSize: '12px'
-                    }}
-                    formatter={(value: unknown) => {
-                      if (typeof value === 'number' && Number.isFinite(value)) {
-                        return [`$${formatNumber(value, 2)}`, ''];
-                      }
-                      return ['—', ''];
-                    }}
-                    labelFormatter={(label) => `${label}`}
-                  />
-                  <Legend 
-                    wrapperStyle={{ 
-                      fontFamily: '72:Regular,sans-serif', 
-                      fontSize: '12px',
-                      color: 'var(--sapContent_LabelColor,#556b82)'
-                    }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="cash" 
-                    stroke="var(--sapButton_TextColor,#0064d9)" 
-                    strokeWidth={2}
-                    dot={historyRange === '7d' ? { fill: 'var(--sapButton_TextColor,#0064d9)', r: 4 } : false}
-                    name="Cash"
-                    isAnimationActive={false}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="threeMonths" 
-                    stroke="var(--sapCriticalTextColor,#e76500)" 
-                    strokeWidth={2}
-                    dot={historyRange === '7d' ? { fill: 'var(--sapCriticalTextColor,#e76500)', r: 4 } : false}
-                    name="3M"
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
           </FioriCard>
 
           {/* Próximos Vencimentos */}

@@ -419,14 +419,6 @@ export const endpoints = {
     summary: '/dashboard/summary',
   },
 
-  // Alumínio LME (APIs reais)
-  aluminum: {
-    live: '/market/lme/aluminum/live',
-    historyCash: '/market/lme/aluminum/history/cash',
-    history3m: '/market/lme/aluminum/history/3m',
-    officialLatest: '/market/lme/aluminum/official/latest',
-  },
-
   // Settlements (APIs reais)
   settlements: {
     today: '/contracts/settlements/today',

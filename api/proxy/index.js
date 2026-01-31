@@ -67,6 +67,28 @@ module.exports = async function (context, req) {
   }
 
   const path = (req.params && req.params.path) ? req.params.path : ''
+
+  // Governance hard-stop: legacy surfaces must not be reachable from the frontend origin.
+  // If a client calls /api/market/*, /api/prices/*, /api/live, or any live/LME/spot legacy path,
+  // respond deterministically with 404.
+  const normalizedPath = String(path || '').replace(/^\/+/, '')
+  const lowerPath = normalizedPath.toLowerCase()
+  const blockedPrefixes = [
+    'market/',
+    'prices/',
+    'live',
+    'market-data/lme',
+  ]
+
+  if (blockedPrefixes.some((p) => lowerPath === p || lowerPath.startsWith(`${p}/`) || lowerPath.startsWith(p))) {
+    context.res = {
+      status: 404,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ detail: 'Not Found' }),
+    }
+    return
+  }
+
   const qs = req.originalUrl && req.originalUrl.includes('?')
     ? req.originalUrl.substring(req.originalUrl.indexOf('?'))
     : ''
