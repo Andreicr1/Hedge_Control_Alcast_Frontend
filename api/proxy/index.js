@@ -54,11 +54,26 @@ function sanitizeResponseHeaders(headers) {
   ])
 
   const out = {}
-  headers.forEach((value, key) => {
-    const lower = key.toLowerCase()
-    if (hopByHop.has(lower)) return
+
+  // Support both WHATWG Headers (fetch) and Node's plain header objects.
+  if (headers && typeof headers.forEach === 'function') {
+    headers.forEach((value, key) => {
+      const lower = String(key).toLowerCase()
+      if (hopByHop.has(lower)) return
+      out[key] = value
+    })
+    return out
+  }
+
+  for (const [key, rawValue] of Object.entries(headers || {})) {
+    const lower = String(key).toLowerCase()
+    if (hopByHop.has(lower)) continue
+    if (rawValue === undefined || rawValue === null) continue
+
+    // Azure Functions response headers expect strings; normalize arrays.
+    const value = Array.isArray(rawValue) ? rawValue.join(',') : String(rawValue)
     out[key] = value
-  })
+  }
   return out
 }
 
@@ -178,7 +193,7 @@ module.exports = async function (context, req) {
 
     context.res = {
       status: resp.statusCode,
-      headers: sanitizeResponseHeaders(new Map(Object.entries(resp.headers || {}))),
+      headers: sanitizeResponseHeaders(resp.headers || {}),
       body: resp.body,
       isRaw: true,
     }
