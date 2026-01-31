@@ -130,6 +130,28 @@ module.exports = async function (context, req) {
       return
     }
 
+    // Validate base URL early to avoid opaque 500s.
+    // Expect absolute URL, e.g. https://<backend-host>
+    let backendOrigin
+    try {
+      const u = new URL(String(backendBase).trim())
+      if (!/^https?:$/.test(u.protocol)) {
+        throw new Error('Invalid protocol')
+      }
+      backendOrigin = u.toString().replace(/\/+$/, '')
+    } catch {
+      context.res = {
+        status: 503,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          detail: 'Service unavailable',
+          code: 'gateway_invalid_backend_base_url',
+          hint: 'Set BACKEND_BASE_URL to an absolute http(s) URL, e.g. https://<backend-host>',
+        }),
+      }
+      return
+    }
+
     const path =
       (context && context.bindingData && context.bindingData.path) ??
       ((req.params && req.params.path) ? req.params.path : '')
@@ -159,7 +181,7 @@ module.exports = async function (context, req) {
       ? req.originalUrl.substring(req.originalUrl.indexOf('?'))
       : ''
 
-    const targetUrl = `${backendBase.replace(/\/+$/, '')}/${path}${qs}`
+    const targetUrl = `${backendOrigin}/${path}${qs}`
 
     // Normalize/sanitize headers.
     // NOTE: Some hosting layers may strip/override the standard Authorization header.
