@@ -1,61 +1,41 @@
 name: Deploy (Azure Static Web Apps)
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout do repositório
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # Setup Node.js para build do frontend (Vite)
-      - name: Setup Node.js 20
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # Instalar dependências do frontend
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
-      # Build do frontend (Vite)
       - name: Build frontend (Vite)
         env:
           VITE_API_BASE_URL: /api
-          VITE_AUTH_MODE: ${{ secrets.VITE_AUTH_MODE }}
+          VITE_AUTH_MODE: entra
           VITE_ENTRA_TENANT_ID: ${{ secrets.VITE_ENTRA_TENANT_ID }}
           VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
           VITE_ENTRA_API_SCOPE: ${{ secrets.VITE_ENTRA_API_SCOPE }}
         run: npm run build
 
-      # Deploy para Azure Static Web Apps (somente upload)
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
-        env:
-          # Repetimos as vars para o contexto do SWA
-          VITE_API_BASE_URL: /api
-          VITE_AUTH_MODE: ${{ secrets.VITE_AUTH_MODE }}
-          VITE_ENTRA_TENANT_ID: ${{ secrets.VITE_ENTRA_TENANT_ID }}
-          VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
-          VITE_ENTRA_API_SCOPE: ${{ secrets.VITE_ENTRA_API_SCOPE }}
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
-
-          # Estrutura do seu repo
           app_location: .
           api_location: api
           output_location: dist
-
-          # Importante: não rebuildar no container do SWA
-          skip_app_build: true
-
