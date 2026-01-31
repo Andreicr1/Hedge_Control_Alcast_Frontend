@@ -1,5 +1,5 @@
-const http = require('http')
-const https = require('https')
+import http from 'node:http'
+import https from 'node:https'
 
 function sanitizeHeaders(headers) {
   const hopByHop = new Set([
@@ -114,7 +114,7 @@ function proxyRequest(targetUrl, { method, headers, body }) {
   })
 }
 
-module.exports = async function (context, req) {
+export default async function (context, req) {
   try {
     const backendBase = process.env.BACKEND_BASE_URL;
     if (!backendBase) {
