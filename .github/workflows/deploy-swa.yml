@@ -58,4 +58,4 @@ jobs:
 
           # Importante: não rebuildar no container do SWA
           skip_app_build: true
-          skip_api_build: true
+
