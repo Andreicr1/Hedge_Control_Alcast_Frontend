@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, RefreshCw, History } from 'lucide-react';
+import { Icon } from '@ui5/webcomponents-react';
 
 import { useTimelineSubject } from '../../../hooks';
 import { RoleName, TIMELINE_V1_EVENT_TYPES, TimelineEvent } from '../../../types';
@@ -9,6 +9,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { FioriButton } from '../fiori/FioriButton';
 import { useAuthContext } from '../AuthProvider';
 import { UX_COPY } from '../../ux/copy';
+import { formatDateTime } from '../../ux/format';
 import {
   createHumanComment,
   correctHumanComment,
@@ -17,11 +18,10 @@ import {
   uploadHumanAttachment,
   type TimelineVisibility,
 } from '../../../services/timeline.service';
+import { canUseTimelineFinanceVisibility, canWriteTimeline } from '../../auth/accessPolicy';
 
-function formatDateTime(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString('pt-BR');
+function formatDateTimeLabel(value: string): string {
+  return formatDateTime(value, 'pt-BR');
 }
 
 function eventTypeLabel(eventType: string): string {
@@ -205,8 +205,8 @@ export function TimelinePanel({
   );
 
   const { user } = useAuthContext();
-  const canWrite = !!user && user.role !== RoleName.AUDITORIA;
-  const canUseFinanceVisibility = !!user && (user.role === RoleName.FINANCEIRO || user.role === RoleName.ADMIN);
+  const canWrite = !!user && canWriteTimeline(user.role);
+  const canUseFinanceVisibility = !!user && canUseTimelineFinanceVisibility(user.role);
 
   const [composerBody, setComposerBody] = useState('');
   const [composerVisibility, setComposerVisibility] = useState<TimelineVisibility>('all');
@@ -269,7 +269,7 @@ export function TimelinePanel({
                 </span>
               )}
             </div>
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">{formatDateTime(ev.occurred_at)}</div>
+            <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">{formatDateTimeLabel(ev.occurred_at)}</div>
 
             {isSuperseded && typeof correctionId === 'number' && (
               <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Comentário revisado</div>
@@ -487,12 +487,14 @@ export function TimelinePanel({
     <div className="bg-white rounded-lg shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          {variant !== 'audit' && <History className="w-4 h-4 text-[var(--sapContent_IconColor)]" />}
+          {variant !== 'audit' && (
+            <Icon name="history" style={{ width: '1rem', height: '1rem', color: 'var(--sapContent_IconColor)' }} />
+          )}
           <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] m-0">{title}</h3>
         </div>
         <FioriButton
           variant="ghost"
-          icon={variant !== 'audit' ? <RefreshCw className="w-4 h-4" /> : undefined}
+          icon={variant !== 'audit' ? 'refresh' : undefined}
           onClick={refetch}
         >
           Atualizar
@@ -603,7 +605,9 @@ export function TimelinePanel({
           <EmptyState
             title="Sem registros"
             description="Ainda não há registros no histórico para este item."
-            icon={<History className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
+            icon={
+              <Icon name="history" style={{ width: '2rem', height: '2rem', color: 'var(--sapContent_IconColor)' }} />
+            }
           />
         )
       ) : (
@@ -640,7 +644,7 @@ export function TimelinePanel({
             {hasMore ? (
               <FioriButton
                 variant="default"
-                icon={variant !== 'audit' ? <ChevronDown className="w-4 h-4" /> : undefined}
+                icon={variant !== 'audit' ? 'slim-arrow-down' : undefined}
                 onClick={loadMore}
                 disabled={isLoading}
               >

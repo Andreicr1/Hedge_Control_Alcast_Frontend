@@ -12,21 +12,21 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { flexRender, getCoreRowModel, type ColumnDef, useReactTable } from '@tanstack/react-table';
+import { Button, CheckBox, DatePicker } from '@ui5/webcomponents-react';
 
 import type { ApiError, CashFlowLine, CashflowAnalyticQueryParams, Deal } from '../../types';
 import { getCashflowAnalytic } from '../../services/cashflow.service';
 import { listDeals } from '../../services/deals.service';
 
 import { ErrorState, EmptyState, LoadingState } from '../components/ui';
-import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriDateRangePicker } from '../components/fiori/FioriDateRangePicker';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { TreeNode as TreeNodeView } from '../components/tree/TreeNode';
 import { findNodeById, useCashflowScopeTreeStore, walkNodes, type TreeNode as ScopeTreeNode } from '../stores/cashflowScopeTree.store';
 
 import { UX_COPY } from '../ux/copy';
+import { formatCurrencyFixed, formatMonthYearUTC } from '../ux/format';
 
 function parseIsoDateUtc(dateIso: string): Date {
   return new Date(`${dateIso}T00:00:00Z`);
@@ -61,7 +61,7 @@ function monthKey(dateIso: string): { key: string; label: string } {
   const d = parseIsoDateUtc(dateIso);
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const label = d.toLocaleString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const label = formatMonthYearUTC(d, 'pt-BR');
   return { key: `${yyyy}-${mm}`, label };
 }
 
@@ -89,7 +89,7 @@ function formatIsoDate(dateIso?: string | null): string {
 function formatUsdSigned(value?: number | null): string {
   if (typeof value !== 'number' || Number.isNaN(value) || Math.abs(value) < 1e-9) return '—';
   const abs = Math.abs(value);
-  const text = abs.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const text = formatCurrencyFixed(abs, 'USD', 0, 'en-US');
   return value < 0 ? `-${text}` : text;
 }
 
@@ -1040,9 +1040,9 @@ export function CashflowPageIntegrated() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={cashflow.refetch} disabled={scope.dealIds.length === 0}>
+                <Button design="Transparent" onClick={cashflow.refetch} disabled={scope.dealIds.length === 0}>
                   Atualizar
-                </FioriButton>
+                </Button>
               </div>
             </div>
 
@@ -1050,24 +1050,24 @@ export function CashflowPageIntegrated() {
               <div className="w-full md:w-[340px]">
                 <FioriDateRangePicker
                   label="Período"
-                  startDateIso={String(queryBase.start_date || '') || undefined}
-                  endDateIso={String(queryBase.end_date || '') || undefined}
-                  placeholder="De · Até"
+                  startDateIso={queryBase.start_date ? String(queryBase.start_date) : undefined}
+                  endDateIso={queryBase.end_date ? String(queryBase.end_date) : undefined}
+                  placeholder=""
                   onChange={({ startDateIso, endDateIso }) =>
                     setQueryBase((prev) => ({ ...prev, start_date: startDateIso, end_date: endDateIso }))
                   }
                 />
               </div>
               <div className="w-full md:w-[220px]">
-                <label className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1">
                   <span className="text-[11px] text-[var(--sapContent_LabelColor)]">Data de corte</span>
-                  <input
-                    className="h-8 w-full rounded-[4px] border border-[var(--sapField_BorderColor)] bg-[var(--sapField_Background)] px-2 text-[13px] font-['72:Regular',sans-serif] text-[var(--sapField_TextColor)]"
-                    type="date"
+                  <DatePicker
+                    valueFormat="yyyy-MM-dd"
+                    placeholder=""
                     value={String(queryBase.as_of || '')}
                     onChange={(e) => setQueryBase((prev) => ({ ...prev, as_of: e.target.value || undefined }))}
                   />
-                </label>
+                </div>
               </div>
             </div>
 
@@ -1102,21 +1102,12 @@ export function CashflowPageIntegrated() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
-                      <input type="checkbox" checked={metricVisibility.mtm} onChange={() => toggleMetric('mtm')} />
-                      <span>MTM</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
-                      <input type="checkbox" checked={metricVisibility.estimated} onChange={() => toggleMetric('estimated')} />
-                      <span>Estimado</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
-                      <input type="checkbox" checked={metricVisibility.risk} onChange={() => toggleMetric('risk')} />
-                      <span>Risco</span>
-                    </label>
+                    <CheckBox checked={metricVisibility.mtm} text="MTM" onChange={() => toggleMetric('mtm')} />
+                    <CheckBox checked={metricVisibility.estimated} text="Estimado" onChange={() => toggleMetric('estimated')} />
+                    <CheckBox checked={metricVisibility.risk} text="Risco" onChange={() => toggleMetric('risk')} />
                   </div>
-                  <FioriButton
-                    variant="ghost"
+                  <Button
+                    design="Transparent"
                     onClick={() => {
                       const q: Record<string, boolean> = {};
                       const m: Record<string, boolean> = {};
@@ -1131,9 +1122,9 @@ export function CashflowPageIntegrated() {
                     disabled={timeColumns.length === 0}
                   >
                     Expandir tudo
-                  </FioriButton>
-                  <FioriButton
-                    variant="ghost"
+                  </Button>
+                  <Button
+                    design="Transparent"
                     onClick={() => {
                       setExpandedQuarters({});
                       setExpandedMonths({});
@@ -1142,7 +1133,7 @@ export function CashflowPageIntegrated() {
                     disabled={timeColumns.length === 0}
                   >
                     Recolher
-                  </FioriButton>
+                  </Button>
                 </div>
               </div>
 
@@ -1244,7 +1235,7 @@ function CashflowTanStackTable({
       cols.push({
         id: c.key,
         header: () => {
-          const icon = c.canExpand ? (c.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null;
+          const expandSymbol = c.canExpand ? (c.expanded ? '▾' : '▸') : '';
           return (
             <div className="text-center p-2 text-xs whitespace-nowrap text-[var(--sapList_HeaderTextColor)] bg-[var(--sapList_HeaderBackground)]">
               {c.canExpand ? (
@@ -1258,7 +1249,7 @@ function CashflowTanStackTable({
                   title="Expandir/recolher"
                 >
                   <span>{c.label}</span>
-                  {icon}
+                  <span aria-hidden="true">{expandSymbol}</span>
                 </button>
               ) : (
                 <span>{c.label}</span>

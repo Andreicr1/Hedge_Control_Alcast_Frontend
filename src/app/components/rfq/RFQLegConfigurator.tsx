@@ -6,23 +6,21 @@
  */
 
 import React from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import { Label } from '../ui/label';
-import { Input } from '../ui/input';
-import { Button } from '../ui/button';
 import {
+  Button,
+  Card,
+  DatePicker,
+  Input,
+  Label,
+  Option,
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
+  Title,
+} from '@ui5/webcomponents-react';
 import { RfqSide, RfqPriceType } from '../../../types/enums';
 import type { RfqLegInput } from '../../../types/models';
-import { Trash2 } from 'lucide-react';
 
 interface RFQLegConfiguratorProps {
-  leg: RfqLegInput;
+  leg: Partial<RfqLegInput>;
   legIndex: number;
   onChange: (legIndex: number, updates: Partial<RfqLegInput>) => void;
   onRemove?: (legIndex: number) => void;
@@ -52,69 +50,65 @@ export const RFQLegConfigurator: React.FC<RFQLegConfiguratorProps> = ({
 }) => {
   return (
     <Card className="mb-4">
-      <CardHeader className="pb-4">
+      <div style={{ padding: '0.75rem' }}>
         <div className="flex justify-between items-center">
-          <CardTitle className="text-lg">
+          <Title level="H5">
             Leg {legIndex + 1}
-            {leg.side && (
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
+            {leg.side ? (
+              <span className="ml-2 text-sm font-normal" style={{ opacity: 0.75 }}>
                 - {SIDE_LABELS[leg.side]}
               </span>
-            )}
-          </CardTitle>
-          {showRemoveButton && onRemove && (
+            ) : null}
+          </Title>
+
+          {showRemoveButton && onRemove ? (
             <Button
-              variant="ghost"
-              size="icon"
+              design="Transparent"
+              icon="delete"
               onClick={() => onRemove(legIndex)}
               disabled={disabled}
-              className="text-destructive hover:text-destructive"
             >
-              <Trash2 className="h-4 w-4" />
+              Remover
             </Button>
-          )}
+          ) : null}
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+
+        <div className="mt-4 space-y-4">
         {/* Linha 1: Side + Price Type */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor={`side-${legIndex}`}>Lado da Operação *</Label>
+            <Label>Lado da Operação *</Label>
             <Select
-              value={leg.side}
-              onValueChange={(value) => onChange(legIndex, { side: value as RfqSide })}
+              value={String(leg.side ?? '')}
+              onChange={(e) => onChange(legIndex, { side: (String((e.target as any).value || '') as RfqSide) || undefined })}
               disabled={disabled}
             >
-              <SelectTrigger id={`side-${legIndex}`}>
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(SIDE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              <Option value="">—</Option>
+              {Object.entries(SIDE_LABELS).map(([value, label]) => (
+                <Option key={value} value={value}>
+                  {label}
+                </Option>
+              ))}
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`price-type-${legIndex}`}>Tipo de Preço *</Label>
+            <Label>Tipo de Preço *</Label>
             <Select
-              value={leg.price_type}
-              onValueChange={(value) => onChange(legIndex, { price_type: value as RfqPriceType })}
+              value={String(leg.price_type ?? '')}
+              onChange={(e) =>
+                onChange(legIndex, {
+                  price_type: (String((e.target as any).value || '') as RfqPriceType) || undefined,
+                })
+              }
               disabled={disabled}
             >
-              <SelectTrigger id={`price-type-${legIndex}`}>
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(PRICE_TYPE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              <Option value="">—</Option>
+              {Object.entries(PRICE_TYPE_LABELS).map(([value, label]) => (
+                <Option key={value} value={value}>
+                  {label}
+                </Option>
+              ))}
             </Select>
           </div>
         </div>
@@ -122,46 +116,45 @@ export const RFQLegConfigurator: React.FC<RFQLegConfiguratorProps> = ({
         {/* Linha 2: Quantidade + Datas */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
-            <Label htmlFor={`quantity-${legIndex}`}>Quantidade (MT) *</Label>
+            <Label>Quantidade (MT) *</Label>
             <Input
-              id={`quantity-${legIndex}`}
-              type="number"
-              value={leg.quantity_mt || ''}
-              onChange={(e) => {
-                const qty = parseFloat(e.target.value);
-                if (!isNaN(qty) && qty >= 0) {
+              type="Number"
+              value={leg.quantity_mt === 0 || typeof leg.quantity_mt === 'number' ? String(leg.quantity_mt) : ''}
+              onInput={(e) => {
+                const raw = String((e.target as any).value || '').trim();
+                if (raw === '') {
+                  onChange(legIndex, { quantity_mt: undefined });
+                  return;
+                }
+                const qty = Number.parseFloat(raw);
+                if (Number.isFinite(qty) && qty >= 0) {
                   onChange(legIndex, { quantity_mt: qty });
                 }
               }}
               disabled={disabled}
-              placeholder="Ex: 100"
-              min={0}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`start-date-${legIndex}`}>Data Início *</Label>
-            <Input
-              id={`start-date-${legIndex}`}
-              type="date"
-              value={leg.start_date || ''}
-              onChange={(e) => onChange(legIndex, { start_date: e.target.value })}
+            <Label>Data Início *</Label>
+            <DatePicker
+              value={String(leg.start_date ?? '')}
+              onChange={(e) => onChange(legIndex, { start_date: String((e.target as any).value || '') || undefined })}
               disabled={disabled}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`end-date-${legIndex}`}>Data Fim *</Label>
-            <Input
-              id={`end-date-${legIndex}`}
-              type="date"
-              value={leg.end_date || ''}
-              onChange={(e) => onChange(legIndex, { end_date: e.target.value })}
+            <Label>Data Fim *</Label>
+            <DatePicker
+              value={String(leg.end_date ?? '')}
+              onChange={(e) => onChange(legIndex, { end_date: String((e.target as any).value || '') || undefined })}
               disabled={disabled}
             />
           </div>
         </div>
-      </CardContent>
+        </div>
+      </div>
     </Card>
   );
 };

@@ -2,9 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Contract, ContractDocument } from '../../../types';
 import { useContractDocuments } from '../../../hooks/useContractDocuments';
 import { fetchContractDocumentBlob } from '../../../services/contractDocuments.service';
-import { FioriButton } from '../fiori/FioriButton';
-import { LoadingState, ErrorState, EmptyState } from '../ui';
 import { PdfViewerDialog } from '../documents/PdfViewerDialog';
+
+import { FioriBusyText, FioriErrorRetryBlock, FioriHeaderCard } from '../fiori';
+
+import {
+  AnalyticalTable,
+  Button,
+  FlexBox,
+  FlexBoxDirection,
+  IllustratedMessage,
+  MessageStrip,
+  Text,
+  Toolbar,
+  ToolbarSpacer,
+} from '@ui5/webcomponents-react';
+import { formatDateTimeFromDate, formatNumberFixedNoGrouping } from '../../ux/format';
 
 function formatBytes(n: number | null | undefined): string {
   const v = Number(n || 0);
@@ -16,14 +29,14 @@ function formatBytes(n: number | null | undefined): string {
     cur /= 1024;
     idx += 1;
   }
-  return `${cur.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+  return `${formatNumberFixedNoGrouping(cur, idx === 0 ? 0 : 1, 'en-US')} ${units[idx]}`;
 }
 
 function safeDateLabel(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('pt-BR');
+  return formatDateTimeFromDate(d, 'pt-BR');
 }
 
 export interface ContractDocumentsPanelProps {
@@ -168,97 +181,98 @@ export function ContractDocumentsPanel({ contract }: ContractDocumentsPanelProps
       .sort((a, b) => (b.version - a.version) || (b.id - a.id));
   }, [documents]);
 
-  return (
-    <div className="bg-white rounded-lg shadow-sm p-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29]">Documentos do Contrato</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void handleUploadSelected(f);
-            }}
-          />
-          <FioriButton variant="emphasized" onClick={handlePickFile} disabled={uploading}>
-            {uploading ? 'Enviando…' : 'Anexar PDF'}
-          </FioriButton>
-          <FioriButton variant="ghost" onClick={refetch}>
-            Atualizar
-          </FioriButton>
-        </div>
-      </div>
+  const tableData = useMemo(() => {
+    return rows.map((doc) => {
+      const uploadedBy = (doc.metadata_json as any)?.uploaded_by ?? '—';
+      return {
+        id: doc.id,
+        version: `v${doc.version}`,
+        filename: doc.filename,
+        sha256: doc.sha256,
+        size: formatBytes(doc.file_size_bytes),
+        uploadedAt: safeDateLabel(doc.uploaded_at),
+        uploadedBy: String(uploadedBy),
+        _doc: doc,
+      };
+    });
+  }, [rows]);
 
-      {localError && (
-        <div className="mb-3 text-sm text-[var(--sapNegativeColor)]">{localError}</div>
-      )}
+  return (
+    <FioriHeaderCard title="Documentos do Contrato">
+      <Toolbar style={{ marginBottom: '0.75rem' }}>
+        <Text style={{ opacity: 0.75 }}>Repositório central (PDF)</Text>
+        <ToolbarSpacer />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleUploadSelected(f);
+          }}
+        />
+        <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem' }}>
+          <Button design="Emphasized" onClick={handlePickFile} disabled={uploading}>
+            {uploading ? 'Enviando…' : 'Anexar PDF'}
+          </Button>
+          <Button design="Transparent" onClick={refetch} disabled={isLoading}>
+            Atualizar
+          </Button>
+        </FlexBox>
+      </Toolbar>
+
+      {localError ? (
+        <MessageStrip design="Negative" style={{ marginBottom: '0.75rem' }}>
+          {localError}
+        </MessageStrip>
+      ) : null}
 
       {isLoading ? (
-        <LoadingState message="Carregando documentos..." />
-      ) : isError ? (
-        <ErrorState error={error} onRetry={refetch} />
-      ) : !hasDocs ? (
-        <EmptyState
-          title="Nenhum documento"
-          description="Anexe o PDF assinado."
-        />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border border-[var(--sapList_BorderColor)]">
-            <thead className="bg-[var(--sapList_HeaderBackground)]">
-              <tr>
-                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Versão</th>
-                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Arquivo</th>
-                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Tamanho</th>
-                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Upload</th>
-                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Usuário</th>
-                <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((doc) => {
-                const uploadedBy = (doc.metadata_json as any)?.uploaded_by ?? '—';
-                return (
-                  <tr key={doc.id} className="border-t border-[var(--sapList_BorderColor)]">
-                    <td className="px-3 py-2">v{doc.version}</td>
-                    <td className="px-3 py-2">
-                      <div className="font-['72:Bold',sans-serif] text-[#131e29] break-all">{doc.filename}</div>
-                      {doc.sha256 && (
-                        <div className="text-xs text-[var(--sapContent_LabelColor)] break-all">SHA-256: {doc.sha256}</div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">{formatBytes(doc.file_size_bytes)}</td>
-                    <td className="px-3 py-2">{safeDateLabel(doc.uploaded_at)}</td>
-                    <td className="px-3 py-2">{String(uploadedBy)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-2">
-                        <FioriButton variant="ghost" onClick={() => void handleView(doc)}>
-                          Visualizar
-                        </FioriButton>
-                        <FioriButton variant="ghost" onClick={() => void handleDownload(doc)}>
-                          Download
-                        </FioriButton>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div>
+          <FioriBusyText message="Carregando documentos…" />
         </div>
+      ) : isError ? (
+        <div>
+          <FioriErrorRetryBlock message="Falha ao carregar documentos." onRetry={refetch} />
+        </div>
+      ) : !hasDocs ? (
+        <IllustratedMessage name="NoData" titleText="Nenhum documento" subtitleText="Anexe o PDF assinado." />
+      ) : (
+        <AnalyticalTable
+          columns={[
+            { Header: 'Versão', accessor: 'version' },
+            { Header: 'Arquivo', accessor: 'filename' },
+            { Header: 'Tamanho', accessor: 'size' },
+            { Header: 'Upload', accessor: 'uploadedAt' },
+            { Header: 'Usuário', accessor: 'uploadedBy' },
+            {
+              Header: 'Ações',
+              accessor: 'actions',
+              Cell: ({ row }: any) => {
+                const doc: ContractDocument = row.original._doc;
+                return (
+                  <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem' }}>
+                    <Button design="Transparent" onClick={() => void handleView(doc)}>
+                      Visualizar
+                    </Button>
+                    <Button design="Transparent" onClick={() => void handleDownload(doc)}>
+                      Download
+                    </Button>
+                  </FlexBox>
+                );
+              },
+            },
+          ]}
+          data={tableData}
+          alternateRowColor
+          visibleRows={Math.min(tableData.length, 8)}
+          minRows={Math.min(tableData.length, 8)}
+          style={{ width: '100%' }}
+        />
       )}
 
-      <PdfViewerDialog
-        open={viewerOpen}
-        onOpenChange={setViewerOpen}
-        title={viewerTitle}
-        fileUrl={viewerUrl}
-      />
-    </div>
+      <PdfViewerDialog open={viewerOpen} onOpenChange={setViewerOpen} title={viewerTitle} fileUrl={viewerUrl} />
+    </FioriHeaderCard>
   );
 }

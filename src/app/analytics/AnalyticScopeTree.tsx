@@ -1,12 +1,24 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, FolderTree, RefreshCw } from 'lucide-react';
 
 import type { EntityTreeNode } from '../../types';
-import { ErrorState, LoadingState, EmptyState } from '../components/ui';
-import { FioriButton } from '../components/fiori/FioriButton';
 import { useAnalyticScope } from './ScopeProvider';
 import { isSameScope, scopeKey } from './scope';
 import { useAnalyticsEntityTreeContext } from './EntityTreeProvider';
+
+import { FioriToolbarRow } from '../components/fiori';
+
+import {
+  BusyIndicator,
+  Button,
+  FlexBox,
+  FlexBoxDirection,
+  IllustratedMessage,
+  List,
+  ListItemStandard,
+  MessageStrip,
+  Text,
+  Title,
+} from '@ui5/webcomponents-react';
 
 function kindLabel(kind: EntityTreeNode['kind']): string {
   if (kind === 'root') return 'Todos os deals';
@@ -57,8 +69,6 @@ export function AnalyticScopeTree() {
 
   const tree = useAnalyticsEntityTreeContext();
 
-  const [openDeals, setOpenDeals] = useState<Record<string, boolean>>({});
-
   const rows = useMemo(() => {
     const root = tree.data?.root;
     if (!root) return [] as Array<{ node: EntityTreeNode; depth: number }>;
@@ -68,142 +78,90 @@ export function AnalyticScopeTree() {
 
     for (const deal of root.children || []) {
       out.push({ node: deal, depth: 0 });
-      const isOpen = openDeals[deal.id] ?? true;
-      if (!isOpen) continue;
       for (const child of deal.children || []) {
         out.push({ node: child, depth: 1 });
       }
     }
 
     return out;
-  }, [openDeals, tree.data]);
+  }, [tree.data]);
 
   if (tree.isLoading && !tree.data) {
     return (
-      <div className="p-4">
-        <LoadingState message="Carregando estrutura..." />
-      </div>
+      <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '1rem' }}>
+        <BusyIndicator active delay={0} />
+        <Text style={{ marginTop: '0.5rem', opacity: 0.75 }}>Carregando estrutura...</Text>
+      </FlexBox>
     );
   }
 
   if (tree.isError) {
     return (
-      <div className="p-4">
-        <ErrorState error={tree.error} onRetry={tree.refetch} />
+      <div style={{ padding: '1rem' }}>
+        <MessageStrip design="Negative" style={{ marginBottom: '0.75rem' }}>
+          Falha ao carregar estrutura.
+        </MessageStrip>
+        <Button design="Emphasized" onClick={tree.refetch}>
+          Tentar novamente
+        </Button>
       </div>
     );
   }
 
   if (!tree.data?.root || (tree.data.root.children || []).length === 0) {
     return (
-      <div className="p-4">
-        <EmptyState title="Sem operações" description="Não há deals para seleção no momento." />
+      <div style={{ padding: '1rem' }}>
+        <IllustratedMessage name="NoData" titleText="Sem operações" subtitleText="Não há deals para seleção no momento." />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full min-h-[60vh]">
-      <div className="p-4 border-b border-[var(--sapList_BorderColor)] bg-[var(--sapList_HeaderBackground)]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FolderTree className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-            <div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapList_HeaderTextColor)]">Escopo</div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)]">Selecione para consolidar</div>
-            </div>
-          </div>
-          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={tree.refetch}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '60vh' }}>
+      <FioriToolbarRow
+        leading={<Title level="H5">Escopo</Title>}
+        trailing={
+          <Button design="Transparent" onClick={tree.refetch}>
             Atualizar
-          </FioriButton>
-        </div>
+          </Button>
+        }
+      />
+
+      <div style={{ padding: '0.25rem 1rem 0.75rem 1rem' }}>
+        <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>Selecione para consolidar</Text>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <div
-          key="all"
-          className={`flex items-center gap-2 px-3 py-2 border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] cursor-pointer ${
-            selectedKey === 'all' ? 'bg-[var(--sapList_SelectionBackgroundColor)]' : ''
-          }`}
-          style={{ paddingLeft: 12 }}
-          role="button"
-          tabIndex={0}
-          onClick={() => setScope({ kind: 'all' })}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setScope({ kind: 'all' });
-            }
-          }}
-          aria-label="Todos os deals"
-        >
-          <span className="w-5" />
-          <div className="min-w-0">
-            <div className="text-sm text-[var(--sapTextColor,#131e29)] truncate">Todos os deals</div>
-          </div>
-        </div>
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <List separators="All">
+          <ListItemStandard
+            type="Active"
+            onClick={() => setScope({ kind: 'all' })}
+            selected={selectedKey === 'all'}
+            description="Todos os deals"
+          >
+            Todos os deals
+          </ListItemStandard>
 
-        {rows.map(({ node, depth }) => {
-          const key = node.id;
-          const rowScope = deriveScopeFromNode(node);
-          const isSelected = isSameScope(scope, rowScope);
-          const isDeal = isDealNode(node);
-          const isOpen = isDeal ? (openDeals[node.id] ?? true) : true;
-          const indent = depth * 12;
+          {rows.map(({ node, depth }) => {
+            const key = node.id;
+            const rowScope = deriveScopeFromNode(node);
+            const isSelected = isSameScope(scope, rowScope);
+            const indent = depth * 12;
 
-          return (
-            <div
-              key={key}
-              className={`flex items-center gap-2 px-3 py-2 border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] cursor-pointer ${
-                isSelected ? 'bg-[var(--sapList_SelectionBackgroundColor)]' : ''
-              }`}
-              style={{ paddingLeft: 12 + indent }}
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                if (isDeal) {
-                  setOpenDeals((prev) => ({ ...prev, [node.id]: !(prev[node.id] ?? true) }));
-                  setScope(rowScope);
-                  return;
-                }
-                setScope(rowScope);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  if (isDeal) {
-                    setOpenDeals((prev) => ({ ...prev, [node.id]: !(prev[node.id] ?? true) }));
-                    setScope(rowScope);
-                    return;
-                  }
-                  setScope(rowScope);
-                }
-              }}
-              aria-label={`${kindLabel(node.kind)} ${node.label}`}
-            >
-              {isDeal ? (
-                <button
-                  type="button"
-                  className="w-5 h-5 flex items-center justify-center text-[var(--sapContent_IconColor)]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenDeals((prev) => ({ ...prev, [node.id]: !(prev[node.id] ?? true) }));
-                  }}
-                  aria-label={isOpen ? 'Recolher' : 'Expandir'}
+            return (
+              <div key={key} style={{ paddingLeft: `${indent}px` }}>
+                <ListItemStandard
+                  type="Active"
+                  onClick={() => setScope(rowScope)}
+                  selected={isSelected}
+                  description={kindLabel(node.kind)}
                 >
-                  {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                </button>
-              ) : (
-                <span className="w-5" />
-              )}
-
-              <div className="min-w-0">
-                <div className="text-sm text-[var(--sapTextColor,#131e29)] truncate">{node.label}</div>
-                <div className="text-[11px] text-[var(--sapContent_LabelColor)]">{kindLabel(node.kind)}</div>
+                  {node.label}
+                </ListItemStandard>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </List>
       </div>
     </div>
   );

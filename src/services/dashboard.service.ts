@@ -19,6 +19,15 @@ import {
   DashboardSummary,
 } from '../types';
 
+import {
+  formatCurrency0 as canonicalFormatCurrency0,
+  formatNumberFixed as canonicalFormatNumberFixed,
+  formatPercentSigned as canonicalFormatPercentSigned,
+  formatDate as canonicalFormatDate,
+  formatDateTime as canonicalFormatDateTime,
+  formatHumanDateTime as canonicalFormatHumanDateTime,
+} from '../app/ux/format';
+
 // ============================================
 // Aluminum Market Data
 // ============================================
@@ -106,82 +115,42 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
  * Formata valor monetário com símbolo
  */
 export function formatCurrency(value: number | null | undefined, currency: string = 'USD'): string {
-  if (value === null || value === undefined) return '—';
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
+  return canonicalFormatCurrency0(value, currency);
 }
 
 /**
  * Formata número simples
  */
 export function formatNumber(value: number | null | undefined, decimals: number = 2): string {
-  if (value === null || value === undefined) return '—';
-  return new Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
+  return canonicalFormatNumberFixed(value, decimals);
 }
 
 /**
  * Formata percentual com sinal
  */
 export function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  const sign = value >= 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)}%`;
+  return canonicalFormatPercentSigned(value, 2);
 }
 
 /**
  * Formata data ISO para formato brasileiro
  */
 export function formatDate(isoDate: string | null | undefined): string {
-  if (!isoDate) return '—';
-  try {
-    return new Date(isoDate).toLocaleDateString('pt-BR');
-  } catch {
-    return isoDate;
-  }
+  return canonicalFormatDate(isoDate);
 }
 
 /**
  * Formata data/hora ISO para formato brasileiro
  */
 export function formatDateTime(isoDate: string | null | undefined): string {
-  if (!isoDate) return '—';
-  try {
-    return new Date(isoDate).toLocaleString('pt-BR');
-  } catch {
-    return isoDate;
-  }
+  return canonicalFormatDateTime(isoDate);
 }
 
 /**
  * Formata data/hora em padrão institucional (local): "18 jan 2026, 11:03"
  */
 export function formatHumanDateTime(isoDate: string | null | undefined): string {
-  if (!isoDate) return '—';
-
-  // Some backends emit RFC3339 with microseconds (JS Date parsing can fail).
-  // Normalize fractional seconds to milliseconds: .ssssss -> .sss
-  const normalized = String(isoDate)
-    .trim()
-    .replace(/\.(\d{3})\d+(?=(Z|[+-]\d{2}:\d{2})$)/, '.$1');
-
-  const d = new Date(normalized);
-  if (!Number.isFinite(d.getTime())) return '—';
-
-  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] as const;
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mon = months[d.getMonth()] ?? '';
-  const yyyy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-
-  return `${dd} ${mon} ${yyyy}, ${hh}:${mm}`;
+  return canonicalFormatHumanDateTime(isoDate);
 }
 
 /**

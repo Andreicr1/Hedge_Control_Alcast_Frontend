@@ -15,6 +15,7 @@ import {
   PnlSnapshotExecuteResponse,
   PnlSnapshotRequest,
 } from '../types';
+import { formatCurrencyFixed } from '../app/ux/format';
 
 export interface PnlAggregateQuery {
   as_of_date?: string; // YYYY-MM-DD
@@ -54,12 +55,7 @@ export async function createPnlSnapshot(payload: PnlSnapshotRequest): Promise<Pn
 
 export function formatUsd(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
-  return value.toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
+  return formatCurrencyFixed(value, 'USD', 0, 'pt-BR');
 }
 
 export default {

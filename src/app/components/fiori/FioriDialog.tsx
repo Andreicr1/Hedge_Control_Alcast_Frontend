@@ -1,41 +1,25 @@
-/**
- * FioriDialog - Alias para FioriModal
- * 
- * Compatibilidade com as páginas integradas que usam FioriDialog.
- * Internamente usa o FioriModal existente.
- */
+import type { ReactNode } from 'react';
 
-import { ReactNode } from 'react';
-import { FioriModal } from './FioriModal';
+import { Dialog } from '@ui5/webcomponents-react';
 
-interface FioriDialogProps {
+export interface FioriDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  children: ReactNode;
   footer?: ReactNode;
-  size?: 'small' | 'medium' | 'large';
+  children: ReactNode;
 }
 
-export function FioriDialog({
-  open,
-  onOpenChange,
-  title,
-  children,
-  footer,
-  size = 'medium',
-}: FioriDialogProps) {
+export function FioriDialog({ open, onOpenChange, title, footer, children }: FioriDialogProps) {
   return (
-    <FioriModal
+    <Dialog
       open={open}
+      headerText={title}
       onClose={() => onOpenChange(false)}
-      title={title}
       footer={footer}
-      size={size}
+      style={{ maxWidth: '900px' }}
     >
-      {children}
-    </FioriModal>
+      <div style={{ padding: '1rem' }}>{children}</div>
+    </Dialog>
   );
 }
-
-export default FioriDialog;

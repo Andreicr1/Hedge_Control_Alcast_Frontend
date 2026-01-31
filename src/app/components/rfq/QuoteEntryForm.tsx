@@ -9,12 +9,24 @@
  * - Backend calcula ranking automaticamente
  */
 
-import { useState, useCallback } from 'react';
-import { FioriButton } from '../fiori/FioriButton';
-import { FioriInput } from '../fiori/FioriInput';
-import { FioriSelect } from '../fiori/FioriSelect';
-import { FioriTextarea } from '../fiori/FioriTextarea';
-import { Plus, Loader2, CheckCircle } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import {
+  BusyIndicator,
+  Button,
+  Card,
+  FlexBox,
+  FlexBoxDirection,
+  Form,
+  FormItem,
+  Input,
+  Label,
+  MessageStrip,
+  Option,
+  Select,
+  Text,
+  TextArea,
+  Title,
+} from '@ui5/webcomponents-react';
 import { UX_COPY } from '../../ux/copy';
 import { RfqQuoteCreate, Counterparty } from '../../../types';
 import { useAddQuote } from '../../../hooks/useRfqs';
@@ -41,9 +53,9 @@ export function QuoteEntryForm({
   // ============================================
   // Form State
   // ============================================
-  const [counterpartyId, setCounterpartyId] = useState<number | ''>('');
+  const [counterpartyId, setCounterpartyId] = useState<string>('');
   const [quotePrice, setQuotePrice] = useState('');
-  const [legSide, setLegSide] = useState<'buy' | 'sell'>('buy');
+  const [legSide, setLegSide] = useState<string>('');
   const [quoteGroupId, setQuoteGroupId] = useState('');
   const [notes, setNotes] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -57,17 +69,18 @@ export function QuoteEntryForm({
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!counterpartyId || !quotePrice) {
+    if (!counterpartyId || !quotePrice || !legSide) {
       return;
     }
     
-    const selectedCounterparty = counterparties.find(cp => cp.id === counterpartyId);
+    const parsedCounterpartyId = Number.parseInt(counterpartyId, 10);
+    const selectedCounterparty = counterparties.find(cp => cp.id === parsedCounterpartyId);
     
     const quoteData: RfqQuoteCreate = {
-      counterparty_id: counterpartyId as number,
+      counterparty_id: parsedCounterpartyId,
       counterparty_name: selectedCounterparty?.name || 'Unknown',
       quote_price: parseFloat(quotePrice),
-      leg_side: legSide,
+      leg_side: legSide as 'buy' | 'sell',
       quote_group_id: quoteGroupId || undefined,
       notes: notes || undefined,
       status: 'received',
@@ -81,7 +94,9 @@ export function QuoteEntryForm({
       setTimeout(() => setShowSuccess(false), 2000);
       
       // Reset form
+      setCounterpartyId('');
       setQuotePrice('');
+      setLegSide('');
       setNotes('');
       setQuoteGroupId('');
       resetMutation();
@@ -94,7 +109,7 @@ export function QuoteEntryForm({
   const handleReset = useCallback(() => {
     setCounterpartyId('');
     setQuotePrice('');
-    setLegSide('buy');
+    setLegSide('');
     setQuoteGroupId('');
     setNotes('');
     resetMutation();
@@ -110,123 +125,89 @@ export function QuoteEntryForm({
   // Render
   // ============================================
   return (
-    <form onSubmit={handleSubmit} className={`bg-white rounded-lg shadow-sm p-4 ${className}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29]">
-          Adicionar Cotação
-        </h3>
-        {showSuccess && (
-          <div className="flex items-center gap-1 text-[var(--sapPositiveColor,#0f7d0f)] text-sm">
-            <CheckCircle className="w-4 h-4" />
-            Cotação adicionada!
+    <Card className={className}>
+      <div style={{ padding: '0.75rem' }}>
+        <FlexBox direction={FlexBoxDirection.Row} justifyContent="SpaceBetween" style={{ gap: '0.75rem', alignItems: 'center' }}>
+          <Title level="H5">Adicionar Cotação</Title>
+          {showSuccess ? <MessageStrip design="Positive">Cotação adicionada.</MessageStrip> : null}
+        </FlexBox>
+
+        <form onSubmit={handleSubmit} style={{ marginTop: '0.75rem' }}>
+          <Form columnsL={4} columnsM={2} columnsS={1} columnsXL={4}>
+            <FormItem labelContent={<Label>Contraparte *</Label>}>
+              <Select value={counterpartyId} onChange={(e) => setCounterpartyId(String((e.target as any).value || ''))}>
+                <Option value="">—</Option>
+                {counterparties
+                  .filter((cp) => cp.active)
+                  .map((cp) => (
+                    <Option key={cp.id} value={String(cp.id)}>
+                      {cp.name}
+                    </Option>
+                  ))}
+              </Select>
+            </FormItem>
+
+            <FormItem labelContent={<Label>Preço *</Label>}>
+              <Input
+                type="Number"
+                value={quotePrice}
+                onInput={(e) => setQuotePrice(String((e.target as any).value || ''))}
+              />
+            </FormItem>
+
+            <FormItem labelContent={<Label>Lado *</Label>}>
+              <Select value={legSide} onChange={(e) => setLegSide(String((e.target as any).value || ''))}>
+                <Option value="">—</Option>
+                <Option value="buy">Compra</Option>
+                <Option value="sell">Venda</Option>
+              </Select>
+            </FormItem>
+
+            <FormItem labelContent={<Label>Grupo (Trade)</Label>}>
+              <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem', alignItems: 'center' }}>
+                <Input value={quoteGroupId} onInput={(e) => setQuoteGroupId(String((e.target as any).value || ''))} />
+                <Button design="Transparent" onClick={generateGroupId} type="Button" title="Gerar ID de grupo">
+                  Auto
+                </Button>
+              </FlexBox>
+            </FormItem>
+          </Form>
+
+          <div style={{ marginTop: '0.75rem' }}>
+            <Label>Observações</Label>
+            <TextArea
+              value={notes}
+              rows={2}
+              onInput={(e) => setNotes(String((e.target as any).value || ''))}
+            />
           </div>
-        )}
+
+          {isError ? (
+            <div style={{ marginTop: '0.75rem' }}>
+              <MessageStrip design="Negative">{UX_COPY.errors.title}</MessageStrip>
+            </div>
+          ) : null}
+
+          <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem', marginTop: '0.75rem', alignItems: 'center' }}>
+            <Button
+              design="Emphasized"
+              type="Submit"
+              disabled={isLoading || !counterpartyId || !quotePrice || !legSide}
+            >
+              {isLoading ? 'Adicionando…' : 'Adicionar'}
+            </Button>
+            <Button design="Transparent" type="Button" onClick={handleReset} disabled={isLoading}>
+              Limpar
+            </Button>
+            {isLoading ? <BusyIndicator active delay={0} size="Small" /> : null}
+          </FlexBox>
+
+          <Text style={{ marginTop: '0.75rem', opacity: 0.75, fontSize: '0.8125rem' }}>
+            Para estruturas com duas partes, utilize o mesmo identificador de grupo para ambas as partes.
+          </Text>
+        </form>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        {/* Counterparty */}
-        <FioriSelect
-          label="Contraparte *"
-          value={counterpartyId}
-          onChange={(e) => setCounterpartyId(e.target.value ? parseInt(e.target.value) : '')}
-          fullWidth
-          required
-        >
-          <option value="">Selecione...</option>
-          {counterparties
-            .filter(cp => cp.active)
-            .map(cp => (
-              <option key={cp.id} value={cp.id}>{cp.name}</option>
-            ))}
-        </FioriSelect>
-
-        {/* Price */}
-        <FioriInput
-          label="Preço *"
-          type="number"
-          step="0.01"
-          value={quotePrice}
-          onChange={(e) => setQuotePrice(e.target.value)}
-          placeholder="Ex: 2450.50"
-          fullWidth
-          required
-        />
-
-        {/* Side */}
-        <FioriSelect
-          label="Lado *"
-          value={legSide}
-          onChange={(e) => setLegSide(e.target.value as 'buy' | 'sell')}
-          fullWidth
-        >
-          <option value="buy">Compra (Buy)</option>
-          <option value="sell">Venda (Sell)</option>
-        </FioriSelect>
-
-        {/* Group ID */}
-        <div className="flex gap-2 items-end">
-          <FioriInput
-            label="Grupo (Trade)"
-            value={quoteGroupId}
-            onChange={(e) => setQuoteGroupId(e.target.value)}
-            placeholder="Ex: GRP-001"
-            fullWidth
-          />
-          <FioriButton
-            type="button"
-            variant="ghost"
-            onClick={generateGroupId}
-            className="mb-0.5 px-2"
-            title="Gerar ID de grupo"
-          >
-            Auto
-          </FioriButton>
-        </div>
-      </div>
-
-      {/* Notes */}
-      <div className="mb-4">
-        <FioriTextarea
-          label="Observações"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Observações sobre a cotação..."
-          rows={2}
-          fullWidth
-        />
-      </div>
-
-      {/* Error */}
-      {isError && (
-        <div className="mb-4 p-3 bg-[var(--sapErrorBackground,#ffebeb)] text-[var(--sapNegativeColor,#bb0000)] rounded text-sm">
-          {UX_COPY.errors.title}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex gap-2">
-        <FioriButton
-          type="submit"
-          variant="emphasized"
-          icon={isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          disabled={isLoading || !counterpartyId || !quotePrice}
-        >
-          {isLoading ? 'Adicionando...' : 'Adicionar'}
-        </FioriButton>
-        <FioriButton
-          type="button"
-          variant="ghost"
-          onClick={handleReset}
-        >
-          Limpar
-        </FioriButton>
-      </div>
-
-      {/* Help Text */}
-      <p className="mt-3 text-xs text-[var(--sapContent_LabelColor,#6a6d70)]">
-        Para estruturas com duas partes, utilize o mesmo identificador de grupo para ambas as partes.
-      </p>
-    </form>
+    </Card>
   );
 }
 

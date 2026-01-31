@@ -2,23 +2,36 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useContracts, useContractDetail } from '../../hooks';
+import { useContracts, useContractDetail, useTimelineSubject } from '../../hooks';
 import { Contract, ContractExposureLink } from '../../types';
 import { extractTradeLegs, calculateNotional } from '../../services/contracts.service';
-import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
-import { FioriButton } from '../components/fiori/FioriButton';
-import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
 import { ContractDocumentsPanel } from '../components/contracts/ContractDocumentsPanel';
-import { LoadingState, ErrorState, EmptyState } from '../components/ui';
+import { FioriPageHeader, FioriToolbarRow } from '../components/fiori';
+import { formatDate, formatDateTime, formatHumanDateTime, formatNumber } from '../../services/dashboard.service';
 import { UX_COPY } from '../ux/copy';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
-import { 
-  Search, 
-  FileText, 
-  RefreshCw,
-  ExternalLink,
-} from 'lucide-react';
+
+import {
+  AnalyticalTable,
+  BusyIndicator,
+  Button,
+  Card,
+  FlexBox,
+  FlexBoxDirection,
+  IllustratedMessage,
+  Input,
+  Label,
+  List,
+  ListItemStandard,
+  MessageStrip,
+  ObjectStatus,
+  Option,
+  Select,
+  Text,
+  Title,
+} from '@ui5/webcomponents-react';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 
 // ============================================
 // Status Helpers
@@ -26,7 +39,7 @@ import {
 
 function computeDisplayStatus(contract: Contract): {
   key: string;
-  type: 'success' | 'error' | 'warning' | 'information' | 'neutral';
+  state: ValueState;
   label: string;
 } {
   const explicit = (contract.post_maturity_status || '').toLowerCase();
@@ -34,22 +47,11 @@ function computeDisplayStatus(contract: Contract): {
 
   let key = explicit || base || 'unknown';
 
-  // Local fallback for list endpoint: if active and past settlement_date, treat as vencido.
-  if (!explicit && base === 'active' && contract.settlement_date) {
-    const d = new Date(contract.settlement_date);
-    const today = new Date();
-    d.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    if (d.getTime() < today.getTime()) {
-      key = 'vencido';
-    }
-  }
-
-  const typeMap: Record<string, 'success' | 'error' | 'warning' | 'information' | 'neutral'> = {
-    active: 'success',
-    vencido: 'warning',
-    settled: 'information',
-    cancelled: 'error',
+  const stateMap: Record<string, ValueState> = {
+    active: ValueState.Positive,
+    vencido: ValueState.Critical,
+    settled: ValueState.Information,
+    cancelled: ValueState.Negative,
   };
   const labelMap: Record<string, string> = {
     active: 'Ativo',
@@ -60,7 +62,7 @@ function computeDisplayStatus(contract: Contract): {
 
   return {
     key,
-    type: typeMap[key] || 'neutral',
+    state: stateMap[key] || ValueState.None,
     label: labelMap[key] || contract.status || 'Desconhecido',
   };
 }
@@ -118,6 +120,15 @@ export function ContractsPageIntegrated() {
     refetch: refetchDetail,
   } = useContractDetail(selectedContractId);
 
+  // Timeline is read-only and backend-authoritative.
+  // We bind to the deal subject to avoid guessing numeric IDs for contracts.
+  const {
+    events: timelineEvents,
+    isLoading: timelineLoading,
+    isError: timelineIsError,
+    refetch: refetchTimeline,
+  } = useTimelineSubject(selectedContract ? 'deal' : null, selectedContract ? selectedContract.deal_id : null, 50);
+
   // ============================================
   // Filtered Data
   // ============================================
@@ -174,120 +185,95 @@ export function ContractsPageIntegrated() {
   // ============================================
 
   const masterContent = (
-    <>
-      {/* Header */}
-      <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-['72:Bold',sans-serif] text-base text-[var(--sapList_HeaderTextColor)]">
-            Contratos ({filteredContracts.length})
-          </h2>
-          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetch}>
-            Atualizar
-          </FioriButton>
-        </div>
-        
-        {/* Search */}
-        <div className="space-y-2">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por contrato ou cotação..."
-              className="w-full h-8 px-3 pr-8 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none focus:border-[var(--sapField_Focus_BorderColor)]"
-            />
-            <Search className="w-4 h-4 absolute right-2 top-2 text-[var(--sapContent_IconColor)]" />
-          </div>
-          
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Filtro de status"
-            title="Filtro de status"
-            className="w-full h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"
-          >
-            <option value="all">Todos os status</option>
-            <option value="active">Ativos</option>
-            <option value="settled">Liquidados</option>
-          </select>
-        </div>
-      </div>
+    <Card style={{ height: '100%' }}>
+      <div style={{ padding: '0.75rem' }}>
+        <FioriToolbarRow
+          style={{ marginBottom: '0.75rem' }}
+          leading={
+            <>
+              <Title level="H5">Contratos</Title>
+              <Text style={{ opacity: 0.7 }}>({filteredContracts.length})</Text>
+            </>
+          }
+          trailing={
+            <Button design="Transparent" onClick={refetch} disabled={isLoading}>
+              Atualizar
+            </Button>
+          }
+        />
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
+        <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.25rem' }}>
+            <Label>Busca</Label>
+            <Input
+              value={searchTerm}
+              onInput={(e) => setSearchTerm((e.target as HTMLInputElement).value)}
+              placeholder=""
+            />
+          </FlexBox>
+
+          <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.25rem' }}>
+            <Label>Status</Label>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(String((e.target as any).value || 'all'))}>
+              <Option value="all">Todos</Option>
+              <Option value="active">Ativos</Option>
+              <Option value="settled">Liquidados</Option>
+            </Select>
+          </FlexBox>
+        </FlexBox>
+
         {isLoading ? (
-          <LoadingState message="Carregando contratos..." />
+          <div style={{ padding: '0.5rem 0' }}>
+            <BusyIndicator active delay={0} />
+            <Text style={{ marginTop: '0.5rem', opacity: 0.75 }}>Carregando contratos…</Text>
+          </div>
         ) : isError ? (
-          <ErrorState error={error} onRetry={refetch} />
+          <div style={{ padding: '0.5rem 0' }}>
+            <MessageStrip design="Negative" style={{ marginBottom: '0.75rem' }}>
+              Falha ao carregar contratos.
+            </MessageStrip>
+            <Button design="Emphasized" onClick={refetch}>
+              Tentar novamente
+            </Button>
+          </div>
         ) : filteredContracts.length === 0 ? (
-          <EmptyState 
-            title="Nenhum contrato encontrado"
-            description="Não há contratos para os filtros selecionados."
-          />
+          <IllustratedMessage name="NoData" titleText="Nenhum contrato" subtitleText="Sem itens para os filtros atuais." />
         ) : (
-          filteredContracts.map((contract) => {
-            const { buyLeg, sellLeg, spread } = extractTradeLegs(contract);
-            const display = computeDisplayStatus(contract);
-            
-            return (
-              <button
-                key={contract.contract_id}
-                onClick={() => handleContractSelect(contract)}
-                className={`w-full p-4 border-b border-[var(--sapList_BorderColor)] text-left hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
-                  selectedContractId === contract.contract_id
-                    ? 'bg-[var(--sapList_SelectionBackgroundColor)] border-l-2 border-l-[var(--sapList_SelectionBorderColor)]'
-                    : ''
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="font-['72:Bold',sans-serif] text-sm text-[#0064d9] truncate max-w-[200px]">
-                    {contract.contract_id.substring(0, 8)}...
-                  </div>
-                  <FioriObjectStatus status={display.type}>
-                    {display.label}
-                  </FioriObjectStatus>
-                </div>
-                
-                <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">
-                  Estrutura nº {contract.trade_index ?? 0}
-                </div>
-                
-                {(buyLeg || sellLeg) && (
-                  <div className="flex items-center gap-2 text-xs mb-2">
-                    {buyLeg && (
-                      <span className="text-[var(--sapPositiveColor)]">
-                        Compra: {formatNumber(buyLeg.price)}
-                      </span>
-                    )}
-                    {buyLeg && sellLeg && <span>|</span>}
-                    {sellLeg && (
-                      <span className="text-[var(--sapNegativeColor)]">
-                        Venda: {formatNumber(sellLeg.price)}
-                      </span>
-                    )}
-                    {spread != null && (
-                      <span className="font-['72:Bold',sans-serif]">
-                        Δ {formatNumber(spread)}
-                      </span>
-                    )}
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between text-xs text-[var(--sapContent_LabelColor)]">
-                  <span>Operação nº {contract.deal_id}</span>
-                  <span>
-                    {contract.settlement_date 
-                      ? new Date(contract.settlement_date).toLocaleDateString('pt-BR')
-                      : '—'}
-                  </span>
-                </div>
-              </button>
-            );
-          })
+          <List style={{ width: '100%' }}>
+            {filteredContracts.map((contract) => {
+              const { buyLeg, sellLeg, spread } = extractTradeLegs(contract);
+              const display = computeDisplayStatus(contract);
+
+              const tradeBits = [
+                buyLeg ? `Compra: ${formatNumber(buyLeg.price, 2)}` : null,
+                sellLeg ? `Venda: ${formatNumber(sellLeg.price, 2)}` : null,
+                spread != null ? `Δ ${formatNumber(spread, 2)}` : null,
+              ]
+                .filter(Boolean)
+                .join(' • ');
+
+              const desc = [`Estrutura nº ${contract.trade_index ?? 0}`, `Operação nº ${contract.deal_id}`, tradeBits || null]
+                .filter(Boolean)
+                .join(' • ');
+
+              return (
+                <ListItemStandard
+                  key={contract.contract_id}
+                  type="Active"
+                  selected={selectedContractId === contract.contract_id}
+                  description={desc}
+                  additionalText={formatDate(contract.settlement_date)}
+                  additionalTextState={display.state}
+                  onClick={() => handleContractSelect(contract)}
+                >
+                  {contract.contract_id}
+                </ListItemStandard>
+              );
+            })}
+          </List>
         )}
       </div>
-    </>
+    </Card>
   );
 
   // ============================================
@@ -301,17 +287,6 @@ export function ContractsPageIntegrated() {
     if (k === 'avginter' || k === 'avg_inter' || k === 'avg inter') return 'Média de dias intermediários';
     if (k === 'c2r') return 'Preço Futuro';
     return pt || '—';
-  }
-
-  function formatAdjustment(v?: number | null) {
-    if (v === null || v === undefined) return '—';
-    return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  function formatNumber(v?: number | null, opts?: Intl.NumberFormatOptions) {
-    if (v === null || v === undefined) return '—';
-    if (Number.isNaN(v)) return '—';
-    return v.toLocaleString('pt-BR', opts);
   }
 
   const formatSourceLabel = (t?: string) => {
@@ -345,58 +320,49 @@ export function ContractsPageIntegrated() {
     const total = links.reduce((s, x) => s + (x.quantity_mt || 0), 0);
 
     return (
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-1">
-          Cobertura de exposição
-        </h3>
-        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">
-          Total alocado: {total.toLocaleString('pt-BR')} t
-        </div>
+      <Card header={<Title level="H5">Cobertura de exposição</Title>}>
+        <div style={{ padding: '0.75rem' }}>
+          <Text style={{ opacity: 0.75, fontSize: '0.8125rem', marginBottom: '0.75rem' }}>
+            Total alocado: {formatNumber(total, 0)} t
+          </Text>
 
-        <div className="space-y-4">
-          {Object.entries(grouped).map(([k, rows]) => {
-            const subtotal = rows.reduce((s, x) => s + (x.quantity_mt || 0), 0);
-            return (
-              <div key={k} className="p-3 rounded border border-[var(--sapGroup_ContentBorderColor)]">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                    {formatSourceLabel(k)}
-                  </div>
-                  <div className="text-sm font-['72:Bold',sans-serif] text-[#131e29]">
-                    {subtotal.toLocaleString('pt-BR')} t
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {rows
-                    .slice()
-                    .sort((a, b) => (a.source_id - b.source_id) || (a.exposure_id - b.exposure_id))
-                    .map((row) => (
-                      <button
-                        key={`${row.exposure_id}`}
-                        onClick={() => handleNavigateToSource(row, dealId)}
-                        className="w-full text-left p-2 rounded bg-[var(--sapGroup_ContentBackground)] hover:bg-[var(--sapList_HoverBackground)] transition-colors"
-                        title="Abrir documento de origem"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs text-[var(--sapContent_LabelColor)]">
+          <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.75rem' }}>
+            {Object.entries(grouped).map(([k, rows]) => {
+              const subtotal = rows.reduce((s, x) => s + (x.quantity_mt || 0), 0);
+              return (
+                <Card
+                  key={k}
+                  header={
+                    <FlexBox direction={FlexBoxDirection.Row} justifyContent="SpaceBetween" style={{ width: '100%' }}>
+                      <Text style={{ fontWeight: 700 }}>{formatSourceLabel(k)}</Text>
+                      <Text style={{ fontWeight: 700 }}>{formatNumber(subtotal, 0)} t</Text>
+                    </FlexBox>
+                  }
+                >
+                  <div style={{ padding: '0.5rem' }}>
+                    <List>
+                      {rows
+                        .slice()
+                        .sort((a, b) => (a.source_id - b.source_id) || (a.exposure_id - b.exposure_id))
+                        .map((row) => (
+                          <ListItemStandard
+                            key={`${row.exposure_id}`}
+                            type="Active"
+                            onClick={() => handleNavigateToSource(row, dealId)}
+                            description={`Tipo: ${formatExposureTypeLabel(String(row.exposure_type))} • Status: ${String(row.status)}`}
+                            additionalText={`${formatNumber(row.quantity_mt || 0, 0)} t`}
+                          >
                             {formatSourceLabel(String(row.source_type))} #{row.source_id} • Exposição #{row.exposure_id}
-                          </div>
-                          <div className="text-xs font-['72:Bold',sans-serif] text-[#131e29]">
-                            {(row.quantity_mt || 0).toLocaleString('pt-BR')} t
-                          </div>
-                        </div>
-                        <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                          Tipo: {formatExposureTypeLabel(String(row.exposure_type))} • Status: {String(row.status)}
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            );
-          })}
+                          </ListItemStandard>
+                        ))}
+                    </List>
+                  </div>
+                </Card>
+              );
+            })}
+          </FlexBox>
         </div>
-      </div>
+      </Card>
     );
   };
 
@@ -407,15 +373,9 @@ export function ContractsPageIntegrated() {
     const display = computeDisplayStatus(contract);
     const fixedPrice = contract.fixed_price ?? null;
     const variableLabel = contract.variable_reference_label ?? null;
-    const obsStart = contract.observation_start
-      ? new Date(contract.observation_start).toLocaleDateString('pt-BR')
-      : null;
-    const obsEnd = contract.observation_end
-      ? new Date(contract.observation_end).toLocaleDateString('pt-BR')
-      : null;
-    const maturity = contract.maturity_date
-      ? new Date(contract.maturity_date).toLocaleDateString('pt-BR')
-      : null;
+    const obsStart = contract.observation_start ? formatDate(contract.observation_start) : null;
+    const obsEnd = contract.observation_end ? formatDate(contract.observation_end) : null;
+    const maturity = contract.maturity_date ? formatDate(contract.maturity_date) : null;
     
     const legs = contract.legs || [];
 
@@ -423,347 +383,339 @@ export function ContractsPageIntegrated() {
       const k = (leg.price_type || '').toLowerCase();
       if (k === 'avg' && leg.month_name && leg.year) return `${leg.month_name} ${leg.year}`;
       if (k === 'avginter' && leg.start_date && leg.end_date) {
-        return `${new Date(leg.start_date).toLocaleDateString('pt-BR')} → ${new Date(leg.end_date).toLocaleDateString('pt-BR')}`;
+        return `${formatDate(leg.start_date)} → ${formatDate(leg.end_date)}`;
       }
-      if (k === 'c2r' && leg.fixing_date) return `Fixing: ${new Date(leg.fixing_date).toLocaleDateString('pt-BR')}`;
+      if (k === 'c2r' && leg.fixing_date) return `Fixing: ${formatDate(leg.fixing_date)}`;
       return null;
     };
 
     return (
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-4">Estrutura Econômica</h3>
+      <Card header={<Title level="H5">Estrutura Econômica</Title>}>
+        <div style={{ padding: '0.75rem' }}>
+          <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <Card style={{ minWidth: 220, flex: '1 1 220px' }}>
+              <div style={{ padding: '0.75rem' }}>
+                <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Preço fixado</Text>
+                <Title level="H5">{fixedPrice !== null ? formatNumber(fixedPrice, 2) : '—'}</Title>
+                <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>
+                  Quantidade: {formatNumber((contract.fixed_leg?.quantity_mt ?? buyLeg?.volume_mt ?? sellLeg?.volume_mt ?? 0) as number, 0)} t
+                </Text>
+              </div>
+            </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Preço fixado</div>
-            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29] tabular-nums">
-              {fixedPrice !== null
-                ? fixedPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-                : '—'}
-            </div>
-            <div className="text-xs text-[var(--sapContent_LabelColor)]">
-              Quantidade: {(contract.fixed_leg?.quantity_mt ?? buyLeg?.volume_mt ?? sellLeg?.volume_mt ?? 0).toLocaleString('pt-BR')} t
-            </div>
-          </div>
+            <Card style={{ minWidth: 220, flex: '1 1 220px' }}>
+              <div style={{ padding: '0.75rem' }}>
+                <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Referência</Text>
+                <Title level="H5">{variableLabel || formatPriceTypeLabel(contract.variable_leg?.price_type || undefined)}</Title>
+                <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>
+                  {obsStart && obsEnd ? `Janela: ${obsStart} → ${obsEnd}` : maturity ? `Vencimento: ${maturity}` : '—'}
+                </Text>
+              </div>
+            </Card>
+          </FlexBox>
 
-          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Referência</div>
-            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
-              {variableLabel || formatPriceTypeLabel(contract.variable_leg?.price_type || undefined)}
+          <AnalyticalTable
+            columns={[
+              { Header: 'Leg', accessor: 'leg' },
+              { Header: 'Preço', accessor: 'price', hAlign: 'End' },
+              { Header: 'Qtd (t)', accessor: 'qty', hAlign: 'End' },
+              { Header: 'Tipo', accessor: 'type' },
+            ]}
+            data={[
+              {
+                leg: 'Compra',
+                price: buyLeg ? formatNumber(buyLeg.price, 2) : '—',
+                qty: buyLeg ? formatNumber(buyLeg.volume_mt, 0) : '—',
+                type: buyLeg?.price_type ? formatPriceTypeLabel(buyLeg.price_type) : '—',
+              },
+              {
+                leg: 'Venda',
+                price: sellLeg ? formatNumber(sellLeg.price, 2) : '—',
+                qty: sellLeg ? formatNumber(sellLeg.volume_mt, 0) : '—',
+                type: sellLeg?.price_type ? formatPriceTypeLabel(sellLeg.price_type) : '—',
+              },
+            ]}
+            visibleRows={2}
+            minRows={2}
+            alternateRowColor
+            style={{ marginTop: '0.75rem' }}
+          />
+
+          <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+            <Card style={{ minWidth: 220, flex: '1 1 220px' }}>
+              <div style={{ padding: '0.75rem' }}>
+                <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Diferença</Text>
+                <Title level="H5">{spread != null ? formatNumber(spread, 2) : '—'}</Title>
+              </div>
+            </Card>
+            <Card style={{ minWidth: 220, flex: '1 1 220px' }}>
+              <div style={{ padding: '0.75rem' }}>
+                <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Valor nocional</Text>
+                <Title level="H5">{formatNumber(notional, 2)}</Title>
+              </div>
+            </Card>
+            <Card style={{ minWidth: 220, flex: '1 1 220px' }}>
+              <div style={{ padding: '0.75rem' }}>
+                <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Status</Text>
+                <ObjectStatus state={display.state}>{display.label}</ObjectStatus>
+                <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>Vencimento: {maturity || '—'}</Text>
+              </div>
+            </Card>
+          </FlexBox>
+
+          {legs.length > 0 ? (
+            <div style={{ marginTop: '0.75rem' }}>
+              <Title level="H6">Detalhe das legs</Title>
+              <AnalyticalTable
+                columns={[
+                  { Header: 'Side', accessor: 'side' },
+                  { Header: 'Qtd (t)', accessor: 'qty', hAlign: 'End' },
+                  { Header: 'Preço', accessor: 'price', hAlign: 'End' },
+                  { Header: 'Tipo', accessor: 'type' },
+                  { Header: 'Período', accessor: 'period' },
+                ]}
+                data={legs.map((leg, idx) => {
+                  const side = (leg.side || '').toLowerCase();
+                  const sideLabel = side === 'buy' ? 'Compra' : side === 'sell' ? 'Venda' : leg.side || '—';
+                  return {
+                    id: `${leg.side}-${idx}`,
+                    side: sideLabel,
+                    qty: formatNumber(leg.quantity_mt, 0),
+                    price: leg.price != null ? formatNumber(leg.price, 2) : '—',
+                    type: formatPriceTypeLabel(leg.price_type || null),
+                    period: renderLegTimeHint(leg) || '—',
+                  };
+                })}
+                alternateRowColor
+                visibleRows={Math.min(legs.length, 8)}
+                minRows={Math.min(legs.length, 8)}
+                style={{ marginTop: '0.5rem' }}
+              />
             </div>
-            <div className="text-xs text-[var(--sapContent_LabelColor)]">
-              {obsStart && obsEnd ? `Janela: ${obsStart} → ${obsEnd}` : maturity ? `Vencimento: ${maturity}` : '—'}
-            </div>
-          </div>
+          ) : null}
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border border-[var(--sapList_BorderColor)]">
-            <thead className="bg-[var(--sapList_HeaderBackground)]">
-              <tr>
-                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Leg</th>
-                <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Preço</th>
-                <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Qtd. (t)</th>
-                <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Tipo</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-[var(--sapList_BorderColor)]">
-                <td className="px-3 py-2 font-['72:Bold',sans-serif] text-[#131e29]">Compra</td>
-                <td className="px-3 py-2 text-right tabular-nums">{buyLeg ? formatNumber(buyLeg.price, { minimumFractionDigits: 2 }) : '—'}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{buyLeg ? formatNumber(buyLeg.volume_mt, { maximumFractionDigits: 0 }) : '—'}</td>
-                <td className="px-3 py-2">{buyLeg?.price_type ? formatPriceTypeLabel(buyLeg.price_type) : '—'}</td>
-              </tr>
-              <tr className="border-t border-[var(--sapList_BorderColor)]">
-                <td className="px-3 py-2 font-['72:Bold',sans-serif] text-[#131e29]">Venda</td>
-                <td className="px-3 py-2 text-right tabular-nums">{sellLeg ? formatNumber(sellLeg.price, { minimumFractionDigits: 2 }) : '—'}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{sellLeg ? formatNumber(sellLeg.volume_mt, { maximumFractionDigits: 0 }) : '—'}</td>
-                <td className="px-3 py-2">{sellLeg?.price_type ? formatPriceTypeLabel(sellLeg.price_type) : '—'}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Diferença</div>
-            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29] tabular-nums">
-              {spread != null ? formatNumber(spread, { minimumFractionDigits: 2 }) : '—'}
-            </div>
-          </div>
-          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Valor nocional</div>
-            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29] tabular-nums">
-              {formatNumber(notional, { minimumFractionDigits: 2 })}
-            </div>
-          </div>
-          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Status</div>
-            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
-              {display.label}
-            </div>
-            <div className="text-xs text-[var(--sapContent_LabelColor)]">Vencimento: {maturity || '—'}</div>
-          </div>
-        </div>
-
-        {legs.length > 0 && (
-          <div className="mt-4">
-            <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] mb-2">Detalhe das legs</div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border border-[var(--sapList_BorderColor)]">
-                <thead className="bg-[var(--sapList_HeaderBackground)]">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Side</th>
-                    <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Qtd (t)</th>
-                    <th className="text-right px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Preço</th>
-                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Tipo</th>
-                    <th className="text-left px-3 py-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Período</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {legs.map((leg, idx) => {
-                    const side = (leg.side || '').toLowerCase();
-                    const sideLabel = side === 'buy' ? 'Compra' : side === 'sell' ? 'Venda' : leg.side || '—';
-                    const timeHint = renderLegTimeHint(leg);
-                    return (
-                      <tr key={`${leg.side}-${idx}`} className="border-t border-[var(--sapList_BorderColor)]">
-                        <td className="px-3 py-2 font-['72:Bold',sans-serif] text-[#131e29]">{sideLabel}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(leg.quantity_mt, { maximumFractionDigits: 0 })}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{leg.price != null ? formatNumber(leg.price, { minimumFractionDigits: 2 }) : '—'}</td>
-                        <td className="px-3 py-2">{formatPriceTypeLabel(leg.price_type || null)}</td>
-                        <td className="px-3 py-2 text-[var(--sapContent_LabelColor)]">{timeHint || '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
+      </Card>
     );
   };
 
   const renderSettlementSummary = (contract: Contract) => {
-    const settlementDate = contract.settlement_date
-      ? new Date(contract.settlement_date).toLocaleDateString('pt-BR')
-      : null;
+    const settlementDate = contract.settlement_date ? formatDate(contract.settlement_date) : null;
     const adj = contract.settlement_adjustment_usd;
     const showAdjustment = adj !== null && adj !== undefined;
 
     return (
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-4">Liquidação</h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Data de liquidação</div>
-            <div className="font-['72:Black',sans-serif] text-lg text-[#131e29]">
-              {settlementDate || '—'}
-            </div>
-          </div>
-
-          <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-            <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Ajuste final (USD)</div>
-            <div
-              className={`font-['72:Black',sans-serif] text-lg ${
-                (adj ?? 0) >= 0
-                  ? 'text-[var(--sapPositiveColor)]'
-                  : 'text-[var(--sapNegativeColor)]'
-              }`}
-            >
-              {showAdjustment ? formatAdjustment(adj) : '—'}
-            </div>
-            {contract.settlement_adjustment_methodology && (
-              <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                Metodologia: {contract.settlement_adjustment_methodology}
-                {contract.settlement_adjustment_locked ? ' • bloqueado' : ''}
+      <Card header={<Title level="H5">Liquidação</Title>}>
+        <div style={{ padding: '0.75rem' }}>
+          <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+            <Card style={{ minWidth: 260, flex: '1 1 260px' }}>
+              <div style={{ padding: '0.75rem' }}>
+                <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Data de liquidação</Text>
+                <Title level="H5">{settlementDate || '—'}</Title>
               </div>
-            )}
-          </div>
-        </div>
+            </Card>
 
-        {contract.settlement_meta && (
-          <details className="mt-3">
-            <summary className="text-sm text-[#0064d9] cursor-pointer select-none">
-              Detalhes
-            </summary>
-            <pre className="mt-2 text-xs p-3 rounded border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)] overflow-auto">
-              {JSON.stringify(contract.settlement_meta, null, 2)}
-            </pre>
-          </details>
-        )}
-      </div>
+            <Card style={{ minWidth: 260, flex: '1 1 260px' }}>
+              <div style={{ padding: '0.75rem' }}>
+                <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Ajuste final (USD)</Text>
+                <Title level="H5">{showAdjustment ? formatNumber(adj, 2) : '—'}</Title>
+                {contract.settlement_adjustment_methodology ? (
+                  <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>
+                    Metodologia: {contract.settlement_adjustment_methodology}
+                    {contract.settlement_adjustment_locked ? ' • bloqueado' : ''}
+                  </Text>
+                ) : null}
+              </div>
+            </Card>
+          </FlexBox>
+
+          {contract.settlement_meta ? (
+            <div style={{ marginTop: '0.75rem' }}>
+              <Text style={{ opacity: 0.75, fontSize: '0.8125rem', marginBottom: '0.25rem' }}>Detalhes (meta)</Text>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: '0.75rem',
+                  border: '1px solid var(--sapGroup_ContentBorderColor)',
+                  background: 'var(--sapGroup_ContentBackground)',
+                  borderRadius: 8,
+                  overflow: 'auto',
+                  fontSize: '0.75rem',
+                }}
+              >
+                {JSON.stringify(contract.settlement_meta, null, 2)}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      </Card>
     );
   };
 
-  const detailContent = selectedContract ? (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h1 className="font-['72:Black',sans-serif] text-xl text-[#0064d9] m-0">
-              Contrato
-            </h1>
-            {(() => {
-              const s = computeDisplayStatus(selectedContract);
-              return (
-                <FioriObjectStatus status={s.type}>
-                  {s.label}
-                </FioriObjectStatus>
-              );
-            })()}
-          </div>
-          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetchDetail}>
+  const timelinePanel = selectedContract ? (
+    <Card
+      header={
+        <FlexBox direction={FlexBoxDirection.Row} justifyContent="SpaceBetween" style={{ width: '100%' }}>
+          <Title level="H5">Timeline (Deal)</Title>
+          <Button design="Transparent" onClick={refetchTimeline} disabled={timelineLoading}>
             Atualizar
-          </FioriButton>
-        </div>
-
-        {/* (1) Identidade, rastreabilidade e vínculos */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-['72:Black',sans-serif] text-base text-[#131e29] mb-1">
-            Identidade do Contrato
-          </h3>
-          <div className="text-xs text-[var(--sapContent_LabelColor)] mb-4">Origem e referências</div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Contrato (ID)</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] break-all">
-                {selectedContract.contract_id}
-              </div>
-            </div>
-
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Contraparte</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                {selectedContract.counterparty?.name ||
-                  selectedContract.counterparty_name ||
-                  (selectedContract.counterparty_id
-                    ? `Contraparte #${selectedContract.counterparty_id}`
-                    : '—')}
-              </div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)]">
-                {selectedContract.counterparty_id ? `ID: ${selectedContract.counterparty_id}` : '—'}
-              </div>
-            </div>
-
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Operação (Deal)</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">#{selectedContract.deal_id}</div>
-            </div>
-
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">RFQ</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">#{selectedContract.rfq_id}</div>
-            </div>
-
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Estrutura</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">#{selectedContract.trade_index ?? 0}</div>
-            </div>
-
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Grupo de cotação</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29] break-all">
-                {selectedContract.quote_group_id || '—'}
-              </div>
-            </div>
-
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Data de liquidação</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                {selectedContract.settlement_date
-                  ? new Date(selectedContract.settlement_date).toLocaleDateString('pt-BR')
-                  : '—'}
-              </div>
-            </div>
-
-            <div className="p-3 bg-[var(--sapGroup_ContentBackground)] rounded border border-[var(--sapGroup_ContentBorderColor)]">
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1">Criado em</div>
-              <div className="font-['72:Bold',sans-serif] text-sm text-[#131e29]">
-                {selectedContract.created_at
-                  ? new Date(selectedContract.created_at).toLocaleString('pt-BR')
-                  : '—'}
-              </div>
-            </div>
+          </Button>
+        </FlexBox>
+      }
+    >
+      <div style={{ padding: '0.75rem' }}>
+        {timelineLoading ? (
+          <div>
+            <BusyIndicator active delay={0} />
+            <Text style={{ marginTop: '0.5rem', opacity: 0.75 }}>Carregando timeline…</Text>
           </div>
-        </div>
+        ) : timelineIsError ? (
+          <MessageStrip design="Negative">Falha ao carregar timeline.</MessageStrip>
+        ) : timelineEvents.length === 0 ? (
+          <IllustratedMessage name="NoData" titleText="Sem eventos" subtitleText="Não há eventos de timeline para este deal." />
+        ) : (
+          <List>
+            {timelineEvents.slice(0, 50).map((ev) => (
+              <ListItemStandard
+                key={String(ev.id)}
+                description={String(ev.event_type || '—')}
+                additionalText={formatHumanDateTime(String(ev.occurred_at || ev.created_at || ''))}
+              >
+                #{ev.id}
+              </ListItemStandard>
+            ))}
+          </List>
+        )}
+      </div>
+    </Card>
+  ) : null;
 
-        {/* (2) Estrutura econômica (bloco dominante) */}
-        {renderEconomicStructure(selectedContract)}
+  const detailContent = selectedContract ? (
+    <div style={{ height: '100%', overflowY: 'auto' }}>
+      <div style={{ padding: '1rem' }}>
+        <FioriPageHeader
+          style={{ marginBottom: '0.75rem' }}
+          title={<Title level="H4">Contrato</Title>}
+          status={(() => {
+            const s = computeDisplayStatus(selectedContract);
+            return <ObjectStatus state={s.state}>{s.label}</ObjectStatus>;
+          })()}
+          actions={
+            <Button design="Transparent" onClick={refetchDetail} disabled={isLoadingDetail}>
+              Atualizar
+            </Button>
+          }
+        />
 
-        {/* (3) Liquidação e impacto financeiro */}
-        {renderSettlementSummary(selectedContract)}
+        <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.75rem' }}>
+          <Card header={<Title level="H5">Identidade do Contrato</Title>}>
+            <div style={{ padding: '0.75rem' }}>
+              <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Contrato (ID)</Text>
+                    <Text style={{ fontWeight: 700 }}>{selectedContract.contract_id}</Text>
+                  </div>
+                </Card>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Contraparte</Text>
+                    <Text style={{ fontWeight: 700 }}>
+                      {selectedContract.counterparty?.name ||
+                        selectedContract.counterparty_name ||
+                        (selectedContract.counterparty_id ? `Contraparte #${selectedContract.counterparty_id}` : '—')}
+                    </Text>
+                    <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>
+                      {selectedContract.counterparty_id ? `ID: ${selectedContract.counterparty_id}` : '—'}
+                    </Text>
+                  </div>
+                </Card>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Operação (Deal)</Text>
+                    <Text style={{ fontWeight: 700 }}>#{selectedContract.deal_id}</Text>
+                  </div>
+                </Card>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>RFQ</Text>
+                    <Text style={{ fontWeight: 700 }}>#{selectedContract.rfq_id}</Text>
+                  </div>
+                </Card>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Estrutura</Text>
+                    <Text style={{ fontWeight: 700 }}>#{selectedContract.trade_index ?? 0}</Text>
+                  </div>
+                </Card>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Grupo de cotação</Text>
+                    <Text style={{ fontWeight: 700 }}>{selectedContract.quote_group_id || '—'}</Text>
+                  </div>
+                </Card>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Data de liquidação</Text>
+                    <Text style={{ fontWeight: 700 }}>{formatDate(selectedContract.settlement_date)}</Text>
+                  </div>
+                </Card>
+                <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                  <div style={{ padding: '0.75rem' }}>
+                    <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Criado em</Text>
+                    <Text style={{ fontWeight: 700 }}>{formatDateTime(selectedContract.created_at)}</Text>
+                  </div>
+                </Card>
+              </FlexBox>
+            </div>
+          </Card>
 
-        {/* (4) Cobertura de exposição */}
-        {renderExposureCoverage(selectedContractExposures, selectedContract.deal_id)}
+          {renderEconomicStructure(selectedContract)}
+          {renderSettlementSummary(selectedContract)}
+          {renderExposureCoverage(selectedContractExposures, selectedContract.deal_id)}
+          {timelinePanel}
 
-        {/* (5) Documentos do contrato (repositório central) */}
-        <div className="rounded-lg border border-[var(--sapGroup_ContentBorderColor)] bg-[var(--sapGroup_ContentBackground)] p-1">
           <ContractDocumentsPanel contract={selectedContract} />
-        </div>
 
-        {/* (6) Links relacionados (discreto) */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
-            Links Relacionados
-          </h3>
-          <div className="space-y-2">
-            <button
-              onClick={() => handleNavigateToDeal(selectedContract.deal_id)}
-              className="w-full flex items-center justify-between p-3 bg-[var(--sapGroup_ContentBackground)] rounded hover:bg-[var(--sapList_HoverBackground)] transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-                <span className="text-sm">Abrir operação nº {selectedContract.deal_id}</span>
-              </div>
-              <ExternalLink className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-            </button>
-            <button
-              onClick={() => handleNavigateToRfq(selectedContract.rfq_id)}
-              className="w-full flex items-center justify-between p-3 bg-[var(--sapGroup_ContentBackground)] rounded hover:bg-[var(--sapList_HoverBackground)] transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-                <span className="text-sm">Abrir cotação nº {selectedContract.rfq_id}</span>
-              </div>
-              <ExternalLink className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-            </button>
-            {selectedContract.counterparty_id && (
-              <div className="flex items-center gap-2 p-3 bg-[var(--sapGroup_ContentBackground)] rounded">
-                <FileText className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
-                <span className="text-sm">
-                  Contraparte: {selectedContract.counterparty?.name ||
-                    selectedContract.counterparty_name ||
-                    `#${selectedContract.counterparty_id}`}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-
+          <Card header={<Title level="H5">Links Relacionados</Title>}>
+            <div style={{ padding: '0.75rem' }}>
+              <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.5rem' }}>
+                <Button design="Transparent" onClick={() => handleNavigateToDeal(selectedContract.deal_id)}>
+                  Abrir operação nº {selectedContract.deal_id}
+                </Button>
+                <Button design="Transparent" onClick={() => handleNavigateToRfq(selectedContract.rfq_id)}>
+                  Abrir cotação nº {selectedContract.rfq_id}
+                </Button>
+                {selectedContract.counterparty_id ? (
+                  <Text style={{ opacity: 0.75 }}>
+                    Contraparte: {selectedContract.counterparty?.name || selectedContract.counterparty_name || `#${selectedContract.counterparty_id}`}
+                  </Text>
+                ) : null}
+              </FlexBox>
+            </div>
+          </Card>
+        </FlexBox>
       </div>
     </div>
   ) : isLoadingDetail ? (
-    <LoadingState message="Carregando detalhes..." fullPage />
+    <div style={{ padding: '1rem' }}>
+      <BusyIndicator active delay={0} />
+      <Text style={{ marginTop: '0.5rem', opacity: 0.75 }}>Carregando detalhes…</Text>
+    </div>
   ) : (
-    <EmptyState
-      title="Selecione um contrato"
-      description="Escolha um contrato da lista para ver os detalhes"
-      icon={<FileText className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
-      fullPage
-    />
+    <div style={{ padding: '1rem' }}>
+      <IllustratedMessage name="NoData" titleText="Selecione um contrato" subtitleText="Escolha um contrato da lista para ver os detalhes." />
+    </div>
   );
 
   return (
-    <FioriFlexibleColumnLayout
-      masterTitle={UX_COPY.pages.contracts.title}
-      masterContent={masterContent}
-      masterWidth={340}
-      detailContent={detailContent}
-    />
+    <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '1rem', padding: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ width: 360, flex: '0 0 360px', minHeight: 600 }}>{masterContent}</div>
+      <div style={{ flex: '1 1 720px', minWidth: 320, minHeight: 600 }}>
+        <Card style={{ height: '100%' }} header={<Title level="H5">{UX_COPY.pages.contracts.title}</Title>}>
+          {detailContent}
+        </Card>
+      </div>
+    </FlexBox>
   );
 }
 

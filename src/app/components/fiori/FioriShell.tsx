@@ -1,60 +1,51 @@
-import { ReactNode, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+import { useAuthContext } from '../AuthProvider';
+import { normalizeRoleName } from '../../../utils/role';
+
 import { FioriShellBar } from './FioriShellBar';
 import { FioriSideNavigation } from './FioriSideNavigation';
 
-interface ShellProps {
+export interface FioriShellProps {
   children: ReactNode;
-  userName?: string;
+  userName: string;
   userRole?: string;
-  /** Hide shell chrome (navigation, sidebar) - used for login page or unauthenticated state */
-  hideChrome?: boolean;
-  /** Whether user is authenticated - if false, hides navigation */
-  isAuthenticated?: boolean;
+  isAuthenticated: boolean;
 }
 
-export function FioriShell({ children, userName = 'User', userRole, hideChrome, isAuthenticated = true }: ShellProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+export function FioriShell({ children, userName, userRole, isAuthenticated }: FioriShellProps) {
+  const navigate = useNavigate();
   const location = useLocation();
-  
-  // Hide chrome (shellbar + navigation) on login page or when not authenticated
-  const isLoginPage = location.pathname === '/login';
-  const showChrome = !hideChrome && !isLoginPage && isAuthenticated;
+  const auth = useAuthContext();
 
-  // If no chrome, render just the content with minimal styling
-  if (!showChrome) {
-    return (
-      <div className="sap-fiori-shell min-h-screen flex items-center justify-center">
-        {children}
-      </div>
-    );
+  const isAdmin = useMemo(() => normalizeRoleName(userRole) === 'admin', [userRole]);
+
+  if (!isAuthenticated) {
+    return <>{children}</>;
   }
 
   return (
-    <div className="sap-fiori-shell">
-      {/* Shell Bar */}
-      <FioriShellBar
-        onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
-        sidebarOpen={sidebarOpen}
-        userName={userName}
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--sapBackgroundColor)' }}>
+      <FioriSideNavigation
+        currentPath={location.pathname}
+        isAdmin={isAdmin}
+        onNavigate={(to) => navigate(to)}
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Side Navigation */}
-        {sidebarOpen && (
-          <aside
-            className="w-64 border-r overflow-y-auto bg-[var(--sapList_Background)] border-[var(--sapList_BorderColor)]"
-            role="navigation"
-            aria-label="Main navigation"
-          >
-            <FioriSideNavigation isOpen={sidebarOpen} userRole={userRole} />
-          </aside>
-        )}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        <FioriShellBar
+          userName={userName}
+          userRole={userRole}
+          onHome={() => navigate('/')}
+          onLogout={() => {
+            auth.logout();
+            navigate('/login');
+          }}
+        />
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-auto" role="main">
-          {children}
-        </main>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{children}</div>
       </div>
     </div>
   );

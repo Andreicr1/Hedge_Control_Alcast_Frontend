@@ -29,6 +29,7 @@ export const UX_COPY = {
     counterparties: 'Contrapartes',
     deals: 'Operações',
     settings: 'Administração',
+    governanceHealth: 'Saúde de Governança',
   },
 
   pages: {

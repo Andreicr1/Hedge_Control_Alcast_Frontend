@@ -4,7 +4,7 @@
  * Componente padronizado para estados de erro.
  */
 
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { Icon } from '@ui5/webcomponents-react';
 import { FioriButton } from '../fiori/FioriButton';
 import { ApiError } from '../../../types';
 import { UX_COPY } from '../../ux/copy';
@@ -29,7 +29,10 @@ export function ErrorState({
   const content = (
     <div className="flex flex-col items-center justify-center gap-4 p-6 text-center">
       <div className="w-12 h-12 rounded-full bg-[var(--sapErrorBackground,#ffebeb)] flex items-center justify-center">
-        <AlertCircle className="w-6 h-6 text-[var(--sapNegativeColor,#b00)]" />
+        <Icon
+          name="message-error"
+          style={{ width: '1.5rem', height: '1.5rem', color: 'var(--sapNegativeColor,#b00)' }}
+        />
       </div>
       
       <div>
@@ -47,13 +50,10 @@ export function ErrorState({
       </div>
       
       {onRetry && (
-        <FioriButton variant="default" onClick={onRetry}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+        <FioriButton variant="default" icon="refresh" onClick={onRetry}>
           {UX_COPY.errors.retry}
         </FioriButton>
       )}
-      
-      
     </div>
   );
 

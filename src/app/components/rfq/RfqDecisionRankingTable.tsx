@@ -1,13 +1,8 @@
 import { useMemo } from 'react';
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from '@tanstack/react-table';
-
-import { FioriButton } from '../fiori/FioriButton';
+import { AnalyticalTable, Button } from '@ui5/webcomponents-react';
+import { FioriHeaderCard } from '../fiori';
 import type { RfqQuote } from '../../../types';
+import { formatNumber } from '../../../services/dashboard.service';
 
 export type RankedTrade = {
   groupId: string;
@@ -27,11 +22,6 @@ type Row = {
   isSelected: boolean;
   selectQuote: RfqQuote | null;
 };
-
-function formatNumber(value: number | null | undefined, opts?: Intl.NumberFormatOptions): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2, ...opts });
-}
 
 export interface RfqDecisionRankingTableProps {
   trades: RankedTrade[];
@@ -73,171 +63,67 @@ export function RfqDecisionRankingTable({
     });
   }, [trades, winnerQuoteId]);
 
-  const columns = useMemo<ColumnDef<Row>[]>(
-    () => [
-      {
-        accessorKey: 'rank',
-        header: 'Rank',
-        cell: ({ row }) => {
-          const v = row.original.rank;
-          return <span className="font-['72:Bold',sans-serif]">{v}º</span>;
-        },
-      },
-      {
-        accessorKey: 'counterpartyName',
-        header: 'Contraparte',
-        cell: ({ row }) => {
-          const { counterpartyName, isSelected } = row.original;
-          return (
-            <div className="min-w-[220px]">
-              <div className={`text-sm ${isSelected ? "font-['72:Bold',sans-serif]" : "font-['72:Regular',sans-serif]"}`}>
-                {counterpartyName}
-              </div>
-              {isSelected && (
-                <div className="text-xs text-[var(--sapContent_LabelColor)]">Selecionada</div>
-              )}
-            </div>
-          );
-        },
-      },
-      {
-        id: 'buy',
-        header: 'Compra',
-        cell: ({ row }) => (
-          <span className="tabular-nums">{formatNumber(row.original.buyPrice)}</span>
-        ),
-        meta: { align: 'right' as const },
-      },
-      {
-        id: 'sell',
-        header: 'Venda',
-        cell: ({ row }) => (
-          <span className="tabular-nums">{formatNumber(row.original.sellPrice)}</span>
-        ),
-        meta: { align: 'right' as const },
-      },
-      {
-        accessorKey: 'spread',
-        header: 'Diferença',
-        cell: ({ row }) => {
-          const v = row.original.spread;
-          const emphasize = row.original.isBest || row.original.isSelected;
-          return (
-            <span
-              className={`tabular-nums ${emphasize ? "font-['72:Bold',sans-serif]" : "font-['72:Regular',sans-serif]"}`}
-            >
-              {formatNumber(v)}
-            </span>
-          );
-        },
-        meta: { align: 'right' as const },
-      },
-      {
-        id: 'action',
-        header: 'Ação',
-        cell: ({ row }) => {
-          if (!canSelect) return null;
-          const quote = row.original.selectQuote;
-          const disabled = isSelectionDisabled || !quote || !onSelect;
-          return (
-            <FioriButton variant="default" onClick={() => quote && onSelect?.(quote)} disabled={disabled}>
-              Selecionar
-            </FioriButton>
-          );
-        },
-      },
-    ],
-    [canSelect, isSelectionDisabled, onSelect]
-  );
-
-  const table = useReactTable({
-    data: rows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
   if (!rows.length) return null;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4">
-      <h3 className="font-['72:Bold',sans-serif] text-base text-[#131e29] mb-4">
-        Ranking de Cotações
-      </h3>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[760px]">
-          <thead>
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="border-b border-[var(--sapList_HeaderBorderColor)]">
-                {hg.headers.map((header) => {
-                  const meta = header.column.columnDef.meta as any;
-                  const align = meta?.align === 'right' ? 'text-right' : 'text-left';
-
-                  const isRank = header.column.id === 'rank';
-                  const isAction = header.column.id === 'action';
-
-                  return (
-                    <th
-                      key={header.id}
-                      className={`p-2 font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)] ${align} ${
-                        isRank ? 'sticky left-0 z-10 bg-[var(--sapList_HeaderBackground)]' : ''
-                      } ${isAction ? 'sticky right-0 z-10 bg-[var(--sapList_HeaderBackground)]' : ''}`}
-                      style={{ width: header.getSize() }}
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-          </thead>
-
-          <tbody>
-            {table.getRowModel().rows.map((row) => {
-              const bg = row.original.isSelected
-                ? 'bg-[var(--sapList_SelectionBackgroundColor)]'
-                : row.original.isBest
-                  ? 'bg-[var(--sapInformationBackground,#f5faff)]'
-                  : 'bg-white';
-
-              const border = row.original.isSelected
-                ? 'border-l-2 border-l-[var(--sapList_SelectionBorderColor)]'
-                : row.original.isBest
-                  ? 'border-l-2 border-l-[var(--sapPositiveColor)]'
-                  : '';
-
+    <FioriHeaderCard title="Ranking de Cotações">
+      <AnalyticalTable
+        columns={[
+          {
+            Header: 'Rank',
+            accessor: 'rank',
+            width: 80,
+            Cell: ({ cell }: any) => <span style={{ fontWeight: 700 }}>{String(cell.value)}º</span>,
+          },
+          {
+            Header: 'Contraparte',
+            accessor: 'counterpartyName',
+            width: 240,
+            Cell: ({ row }: any) => {
+              const isSelected = !!row.original?.isSelected;
+              const name = String(row.original?.counterpartyName || '—');
               return (
-                <tr
-                  key={row.id}
-                  className={`border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] ${bg} ${border}`}
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const meta = cell.column.columnDef.meta as any;
-                    const align = meta?.align === 'right' ? 'text-right' : 'text-left';
-
-                    const isRank = cell.column.id === 'rank';
-                    const isAction = cell.column.id === 'action';
-
-                    return (
-                      <td
-                        key={cell.id}
-                        className={`p-2 ${align} ${
-                          isRank ? `sticky left-0 z-10 ${bg}` : ''
-                        } ${isAction ? `sticky right-0 z-10 ${bg}` : ''}`}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    );
-                  })}
-                </tr>
+                <div>
+                  <div style={{ fontWeight: isSelected ? 700 : 400 }}>{name}</div>
+                  {isSelected ? <div style={{ opacity: 0.75, fontSize: '0.75rem' }}>Selecionada</div> : null}
+                </div>
               );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+            },
+          },
+          { Header: 'Compra', accessor: 'buyPrice', hAlign: 'End', width: 140, Cell: ({ cell }: any) => formatNumber(cell.value ?? null, 2) },
+          { Header: 'Venda', accessor: 'sellPrice', hAlign: 'End', width: 140, Cell: ({ cell }: any) => formatNumber(cell.value ?? null, 2) },
+          {
+            Header: 'Diferença',
+            accessor: 'spread',
+            hAlign: 'End',
+            width: 140,
+            Cell: ({ row }: any) => {
+              const v = row.original?.spread ?? null;
+              const emphasize = !!row.original?.isBest || !!row.original?.isSelected;
+              return <span style={{ fontWeight: emphasize ? 700 : 400 }}>{formatNumber(v, 2)}</span>;
+            },
+          },
+          {
+            Header: 'Ação',
+            accessor: 'action',
+            width: 140,
+            Cell: ({ row }: any) => {
+              if (!canSelect) return null;
+              const quote: RfqQuote | null = row.original?.selectQuote ?? null;
+              const disabled = isSelectionDisabled || !quote || !onSelect;
+              return (
+                <Button design="Transparent" disabled={disabled} onClick={() => quote && onSelect?.(quote)}>
+                  Selecionar
+                </Button>
+              );
+            },
+          },
+        ]}
+        data={rows}
+        visibleRows={Math.min(8, rows.length)}
+        minRows={Math.min(8, rows.length)}
+      />
+    </FioriHeaderCard>
   );
 }
 

@@ -10,8 +10,18 @@
  */
 
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { FileCheck, ExternalLink, TrendingUp, Calendar, Building2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Card,
+  FlexBox,
+  FlexBoxDirection,
+  Link,
+  ObjectStatus,
+  Text,
+  Title,
+} from '@ui5/webcomponents-react';
+import { formatNumberAuto, formatNumberMinFractionDigits } from '../../ux/format';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 import { Contract } from '../../../types';
 
 // ============================================
@@ -49,6 +59,8 @@ export function AwardedContractInfo({
   rfqId,
   className = '',
 }: AwardedContractInfoProps) {
+  const navigate = useNavigate();
+
   // Filter contracts for this RFQ
   const rfqContracts = useMemo(() => {
     return contracts.filter(c => c.rfq_id === rfqId);
@@ -58,87 +70,63 @@ export function AwardedContractInfo({
     return null;
   }
 
+  const statusState = (status: string): ValueState => {
+    if (status === 'active') return ValueState.Success;
+    if (status === 'settled') return ValueState.Information;
+    return ValueState.None;
+  };
+
   return (
-    <div className={`bg-[var(--sapInformationBackground,#e5f0fa)] border border-[var(--sapInformationBorderColor,#0854a0)] rounded-lg p-4 ${className}`}>
-      <div className="flex items-center gap-2 mb-3">
-        <FileCheck className="w-5 h-5 text-[var(--sapInformativeColor,#0854a0)]" />
-        <h3 className="font-['72:Bold',sans-serif] text-base text-[var(--sapInformativeTextColor,#0854a0)]">
-          Contrato(s) Criados
-        </h3>
+    <Card className={className}>
+      <div style={{ padding: '0.75rem' }}>
+        <Title level="H5">Contrato(s) Criados</Title>
+        <Text>{rfqContracts.length} contrato(s) foram criados automaticamente a partir desta RFQ.</Text>
+
+        <div className="mt-3 space-y-2">
+          {rfqContracts.map((contract) => {
+            const tradeInfo = extractTradeInfo(contract);
+
+            return (
+              <Card key={contract.contract_id} className="mb-2">
+                <div style={{ padding: '0.75rem' }}>
+                  <FlexBox direction={FlexBoxDirection.Row} justifyContent="SpaceBetween" alignItems="Center">
+                    <Link
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate(`/financeiro/contratos?id=${contract.contract_id}`);
+                      }}
+                      href="#"
+                    >
+                      {contract.contract_id}
+                    </Link>
+                    <ObjectStatus state={statusState(contract.status)}>{contract.status}</ObjectStatus>
+                  </FlexBox>
+
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {tradeInfo.counterparty ? <Text>{tradeInfo.counterparty}</Text> : null}
+                    {tradeInfo.quantity > 0 ? <Text>{formatNumberAuto(tradeInfo.quantity, 'pt-BR')} MT</Text> : null}
+                    {tradeInfo.price != null ? <Text>{formatNumberMinFractionDigits(tradeInfo.price, 2, 'pt-BR')}</Text> : null}
+                    {tradeInfo.period ? <Text>{tradeInfo.period}</Text> : null}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+
+        <div className="mt-3">
+          <Link
+            onClick={(e) => {
+              e.preventDefault();
+              navigate(`/financeiro/contratos?rfq_id=${rfqId}`);
+            }}
+            href="#"
+          >
+            Ver todos os contratos desta RFQ
+          </Link>
+        </div>
       </div>
-
-      <p className="text-sm text-[var(--sapContent_LabelColor,#6a6d70)] mb-3">
-        {rfqContracts.length} contrato(s) foram criados automaticamente a partir desta RFQ:
-      </p>
-
-      <div className="space-y-2">
-        {rfqContracts.map((contract) => {
-          const tradeInfo = extractTradeInfo(contract);
-          
-          return (
-            <div 
-              key={contract.contract_id}
-              className="bg-white rounded p-3 border border-[var(--sapTile_BorderColor,#e5e5e5)]"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Link 
-                  to={`/financeiro/contratos?id=${contract.contract_id}`}
-                  className="font-['72:Bold',sans-serif] text-sm text-[#0064d9] hover:underline flex items-center gap-1"
-                >
-                  {contract.contract_id}
-                  <ExternalLink className="w-3 h-3" />
-                </Link>
-                <span className={`
-                  px-2 py-0.5 rounded text-[10px] font-semibold uppercase
-                  ${contract.status === 'active' ? 'bg-green-100 text-green-700' : 
-                    contract.status === 'settled' ? 'bg-gray-100 text-gray-700' : 
-                    'bg-blue-100 text-blue-700'}
-                `}>
-                  {contract.status}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                {tradeInfo.counterparty && (
-                  <div className="flex items-center gap-1 text-[var(--sapContent_LabelColor,#6a6d70)]">
-                    <Building2 className="w-3 h-3" />
-                    {tradeInfo.counterparty}
-                  </div>
-                )}
-                {tradeInfo.quantity > 0 && (
-                  <div className="flex items-center gap-1 text-[var(--sapContent_LabelColor,#6a6d70)]">
-                    <TrendingUp className="w-3 h-3" />
-                    {tradeInfo.quantity.toLocaleString('pt-BR')} MT
-                  </div>
-                )}
-                {tradeInfo.price && (
-                  <div className="flex items-center gap-1 text-[var(--sapContent_LabelColor,#6a6d70)]">
-                    <span className="font-semibold">$</span>
-                    {tradeInfo.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </div>
-                )}
-                {tradeInfo.period && (
-                  <div className="flex items-center gap-1 text-[var(--sapContent_LabelColor,#6a6d70)]">
-                    <Calendar className="w-3 h-3" />
-                    {tradeInfo.period}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mt-3 text-center">
-        <Link 
-          to={`/financeiro/contratos?rfq_id=${rfqId}`}
-          className="text-sm text-[#0064d9] hover:underline inline-flex items-center gap-1"
-        >
-          Ver todos os contratos desta RFQ
-          <ExternalLink className="w-3 h-3" />
-        </Link>
-      </div>
-    </div>
+    </Card>
   );
 }
 

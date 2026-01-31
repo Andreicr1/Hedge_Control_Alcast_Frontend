@@ -1,331 +1,58 @@
-import { useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { normalizeRoleName } from '../../../utils/role';
-import svgPaths from '../../../imports/svg-usjkinc271';
-import svgPathsPaidLeave from '../../../imports/svg-jmreoh7plc';
-import { UX_COPY } from '../../ux/copy';
+import { List, ListItemStandard, Title } from '@ui5/webcomponents-react';
 
-interface NavItem {
-  label: string;
-  path: string;
-  icon: ReactNode;
-  children?: { label: string; path: string }[];
+export interface FioriSideNavigationProps {
+  currentPath: string;
+  isAdmin: boolean;
+  onNavigate: (path: string) => void;
 }
 
-interface FioriSideNavigationProps {
-  isOpen: boolean;
-  userRole?: string;
-}
+type NavigationItem = { label: string; path: string };
 
-// Navigation Icons using SVG paths from Figma
-function HomeIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_home)" id="Icon">
-          <path d={svgPaths.p1b28d080} fill="var(--fill-0, #131E29)" id="Icon_2" />
-        </g>
-        <defs>
-          <clipPath id="clip0_home">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
+const FINANCE_ITEMS_BASE: NavigationItem[] = [
+  { label: 'Exposições', path: '/financeiro/exposicoes' },
+  { label: 'RFQs', path: '/financeiro/rfqs' },
+  { label: 'Contratos', path: '/financeiro/contratos' },
+  { label: 'Cashflow', path: '/financeiro/cashflow' },
+  { label: 'Relatórios', path: '/financeiro/relatorios' },
+  { label: 'Contrapartes', path: '/financeiro/contrapartes' },
+];
 
+export function FioriSideNavigation({ currentPath, isAdmin, onNavigate }: FioriSideNavigationProps) {
+  const financeItems: NavigationItem[] = isAdmin
+    ? [...FINANCE_ITEMS_BASE, { label: 'Governança • Saúde', path: '/financeiro/governanca/saude' }]
+    : FINANCE_ITEMS_BASE;
 
-function PaidLeaveIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Icon">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g clipPath="url(#clip0_paid_leave)" id="paid-leave">
-          <path d={svgPathsPaidLeave.p2fe12180} fill="var(--fill-0, #131E29)" id="Icon" />
-        </g>
-        <defs>
-          <clipPath id="clip0_paid_leave">
-            <rect fill="white" height="16" width="16" />
-          </clipPath>
-        </defs>
-      </svg>
-    </div>
-  );
-}
-
-
-
-function ChevronDownIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Navigation Indicator">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g id="Navigation Indicator">
-          <path d={svgPaths.p1663edb0} fill="var(--fill-0, #131E29)" id="Icon" />
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <div className="relative shrink-0 size-[16px]" data-name="Navigation Indicator">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-        <g id="Navigation Indicator">
-          <path d={svgPaths.p628ea00} fill="var(--fill-0, #131E29)" id="Icon" />
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-
-// Single Navigation Item (No Children)
-interface NavigationItemProps {
-  label: string;
-  path: string;
-  icon: React.ReactNode;
-  isActive?: boolean;
-}
-
-function NavigationItem({ label, path, icon, isActive }: NavigationItemProps) {
-  return (
-    <Link to={path} className="no-underline">
-      <div
-        className={`h-[32px] relative rounded-[8px] shrink-0 w-full transition-colors ${
-          isActive ? 'bg-[#ebf8ff]' : 'bg-white hover:bg-[#f7f7f7]'
-        }`}
-        data-name="Navigation Item"
-      >
-        <div className="flex flex-row items-center overflow-clip rounded-[inherit] size-full">
-          <div className="content-stretch flex gap-[8px] items-center pl-[16px] pr-[6px] py-0 relative size-full">
-            {icon}
-            <div className="basis-0 flex flex-col font-['72:Semibold_Duplex',sans-serif] grow justify-center leading-[0] min-h-px min-w-px not-italic overflow-ellipsis overflow-hidden relative shrink-0 text-[#131e29] text-[14px] text-nowrap">
-              <p className="leading-[normal] overflow-ellipsis overflow-hidden">{label}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-// Navigation Group Header
-interface NavigationGroupProps {
-  label: string;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function NavigationGroup({ label, isExpanded, onToggle }: NavigationGroupProps) {
-  return (
-    <div className="bg-white relative rounded-[8px] shrink-0 w-full hover:bg-[#f7f7f7] transition-colors" data-name="Navigation Item">
-      <button
-        onClick={onToggle}
-        className="flex flex-row items-center overflow-clip rounded-[inherit] size-full border-0 bg-transparent cursor-pointer w-full"
-      >
-        <div className="content-stretch flex gap-[4px] items-center pb-0 pl-[16px] pr-[6px] pt-[10px] relative w-full">
-          <div className="basis-0 content-stretch flex grow h-[44px] items-center min-h-px min-w-px relative shrink-0">
-            <div className="basis-0 flex flex-col font-['72:Regular',sans-serif] grow justify-center leading-[0] min-h-px min-w-px not-italic overflow-ellipsis overflow-hidden relative shrink-0 text-[#556b82] text-[14px] text-nowrap">
-              <p className="leading-[normal] overflow-ellipsis overflow-hidden">{label}</p>
-            </div>
-          </div>
-          <div className="flex flex-row items-center self-stretch">
-            <div className="content-stretch flex h-full items-center justify-center px-[12px] py-[8px] relative shrink-0 w-[36px]">
-              <div
-                className={`transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
-              >
-                <ChevronDownIcon />
-              </div>
-            </div>
-          </div>
-        </div>
-      </button>
-    </div>
-  );
-}
-
-// Navigation Item with Arrow (Expandable)
-interface NavigationItemExpandableProps {
-  label: string;
-  icon: React.ReactNode;
-  isExpanded: boolean;
-  onToggle: () => void;
-  hasChildren?: boolean;
-}
-
-function NavigationItemExpandable({ label, icon, isExpanded, onToggle, hasChildren }: NavigationItemExpandableProps) {
-  return (
-    <div className="bg-white h-[32px] relative rounded-[8px] shrink-0 w-full hover:bg-[#f7f7f7] transition-colors" data-name="Navigation Item">
-      <button
-        onClick={onToggle}
-        className="flex flex-row items-center overflow-clip rounded-[inherit] size-full border-0 bg-transparent cursor-pointer w-full"
-      >
-        <div className="content-stretch flex gap-[8px] items-center pl-[16px] pr-[6px] py-0 relative size-full">
-          {icon}
-          <div className="basis-0 flex flex-col font-['72:Semibold_Duplex',sans-serif] grow justify-center leading-[0] min-h-px min-w-px not-italic overflow-ellipsis overflow-hidden relative shrink-0 text-[#131e29] text-[14px] text-nowrap">
-            <p className="leading-[normal] overflow-ellipsis overflow-hidden">{label}</p>
-          </div>
-          {hasChildren && (
-            <div className="content-stretch flex h-full items-center relative shrink-0">
-              <div className="content-stretch flex h-full items-center justify-center px-[12px] py-[8px] relative shrink-0 w-[36px]">
-                <div
-                  className={`transition-transform ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
-                >
-                  <ChevronRightIcon />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </button>
-    </div>
-  );
-}
-
-// Child Navigation Item (Indented)
-interface ChildNavigationItemProps {
-  label: string;
-  path: string;
-  isActive?: boolean;
-}
-
-function ChildNavigationItem({ label, path, isActive }: ChildNavigationItemProps) {
-  return (
-    <Link to={path} className="no-underline">
-      <div
-        className={`h-[32px] relative rounded-[8px] shrink-0 w-full transition-colors ${
-          isActive ? 'bg-[#ebf8ff]' : 'bg-white hover:bg-[#f7f7f7]'
-        }`}
-        data-name="Navigation Item"
-      >
-        <div className="flex flex-row items-center overflow-clip rounded-[inherit] size-full">
-          <div className="content-stretch flex gap-[4px] items-center pl-[40px] pr-0 py-0 relative size-full">
-            <div className="basis-0 flex flex-col font-['72:Regular',sans-serif] grow justify-center leading-[0] min-h-px min-w-px not-italic overflow-ellipsis overflow-hidden relative shrink-0 text-[#131e29] text-[14px] text-nowrap">
-              <p className="leading-[normal] overflow-ellipsis overflow-hidden">{label}</p>
-            </div>
-            {isActive && (
-              <div className="absolute bg-[#0064d9] bottom-0 left-0 top-0 w-[3px]" data-name="Navigation Indicator" />
-            )}
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-export function FioriSideNavigation({ isOpen, userRole }: FioriSideNavigationProps) {
-  const location = useLocation();
-  const [expandedGroups, setExpandedGroups] = useState<string[]>([
-    UX_COPY.nav.finance,
-  ]);
-
-  const role = normalizeRoleName(userRole);
-
-  const financeiroChildren = [
-    { label: UX_COPY.nav.riskExposure, path: '/financeiro/exposicoes' },
-    { label: UX_COPY.nav.rfqs, path: '/financeiro/rfqs' },
-    { label: UX_COPY.nav.contracts, path: '/financeiro/contratos' },
-    { label: UX_COPY.nav.cashflow, path: '/financeiro/cashflow' },
-    { label: UX_COPY.nav.reports, path: '/financeiro/relatorios' },
-    { label: UX_COPY.nav.counterparties, path: '/financeiro/contrapartes' },
-  ];
-  const filterByRole = (items: NavItem[]): NavItem[] => {
-    if (!role) return items;
-    return items.filter((item) => {
-      if (item.path === '/') return true;
-      if (item.path === '/financeiro') return role === 'financeiro' || role === 'auditoria' || role === 'admin';
-      return true;
-    });
+  const handleItemClick = (event: any) => {
+    const path = event?.detail?.item?.dataset?.path;
+    if (typeof path === 'string' && path.length > 0) {
+      onNavigate(path);
+    }
   };
 
-  const navItems: NavItem[] = [
-    { label: UX_COPY.nav.dashboard, path: '/', icon: <HomeIcon /> },
-    {
-      label: UX_COPY.nav.finance,
-      path: '/financeiro',
-      icon: <PaidLeaveIcon />,
-      children: financeiroChildren,
-    },
-  ];
-
-  const visibleNavItems = filterByRole(navItems);
-
-  const toggleGroup = (label: string) => {
-    setExpandedGroups((prev) =>
-      prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]
-    );
-  };
-
-  const isActive = (path: string) => location.pathname === path;
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="bg-white content-stretch flex flex-col items-start justify-between relative shadow-[0px_0px_2px_0px_rgba(34,53,72,0.2),0px_2px_4px_0px_rgba(34,53,72,0.2)] size-full"
-      data-name="Side Navigation"
-    >
-      {/* Content Container */}
-      <div className="basis-0 bg-white grow min-h-px min-w-px relative shrink-0 w-full" data-name="Content Container">
-        <div className="overflow-x-clip overflow-y-auto size-full">
-          <div className="content-stretch flex flex-col gap-[4px] items-start pb-0 pt-[8px] px-[8px] relative size-full">
-            {visibleNavItems.map((item) => {
-              if (item.children) {
-                const isExpanded = expandedGroups.includes(item.label);
-                return (
-                  <div key={item.label} className="w-full">
-                    <NavigationItemExpandable
-                      label={item.label}
-                      icon={item.icon}
-                      isExpanded={isExpanded}
-                      onToggle={() => toggleGroup(item.label)}
-                      hasChildren={true}
-                    />
-                    {isExpanded && (
-                      <div className="flex flex-col gap-[4px] mt-[4px] w-full">
-                        {item.children.map((child) => (
-                          <ChildNavigationItem
-                            key={child.path}
-                            label={child.label}
-                            path={child.path}
-                            isActive={isActive(child.path)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              return (
-                <NavigationItem
-                  key={item.path}
-                  label={item.label}
-                  path={item.path}
-                  icon={item.icon}
-                  isActive={isActive(item.path)}
-                />
-              );
-            })}
-          </div>
-        </div>
+    <div style={{ padding: 8 }}>
+      <List onItemClick={handleItemClick}>
+        <ListItemStandard type="Navigation" data-path="/" selected={currentPath === '/'}>
+          Dashboard
+        </ListItemStandard>
+      </List>
+
+      <div style={{ marginTop: 12, marginBottom: 6, paddingLeft: 8 }}>
+        <Title level="H6">Financeiro</Title>
       </div>
 
-      {/* Footer */}
-      <div className="bg-white relative shrink-0 w-full" data-name="Footer">
-        <div className="overflow-clip rounded-[inherit] size-full">
-          <div className="content-stretch flex flex-col gap-[4px] items-start pb-[8px] pt-[4px] px-[8px] relative w-full">
-            <div className="h-0 relative shrink-0 w-full" data-name="Separator">
-              <div className="absolute inset-[-1px_0_0_0] sap-stroke-separator">
-                <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 240 1">
-                  <line id="Separator" stroke="var(--stroke-0, #D9D9D9)" x2="240" y1="0.5" y2="0.5" />
-                </svg>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <List onItemClick={handleItemClick}>
+        {financeItems.map((item) => (
+          <ListItemStandard
+            key={item.path}
+            type="Navigation"
+            data-path={item.path}
+            selected={currentPath === item.path}
+          >
+            {item.label}
+          </ListItemStandard>
+        ))}
+      </List>
     </div>
   );
 }

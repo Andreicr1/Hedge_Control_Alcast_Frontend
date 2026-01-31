@@ -1,12 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Save, X } from 'lucide-react';
-import { FioriButton } from '../fiori/FioriButton';
-import { FioriInput } from '../fiori/FioriInput';
-import { FioriSelect } from '../fiori/FioriSelect';
 import { DealCommercialStatus, OrderStatus, PriceType } from '../../../types';
 import type { Customer, Deal, DealCreate, SalesOrderCreate } from '../../../types';
 import { listCustomers } from '../../../services/customers.service';
 import { createDeal, listDeals } from '../../../services/deals.service';
+
+import {
+  Bar,
+  Button,
+  DatePicker,
+  Dialog,
+  FlexBox,
+  FlexBoxDirection,
+  Form,
+  FormItem,
+  Input,
+  Label,
+  MessageStrip,
+  Option,
+  Select,
+  Text,
+  TextArea,
+  Title,
+} from '@ui5/webcomponents-react';
+import InputType from '@ui5/webcomponents-base/dist/types/InputType.js';
 
 interface SalesOrderFormProps {
   onClose: () => void;
@@ -237,228 +253,208 @@ export function SalesOrderForm({ onClose, onSave }: SalesOrderFormProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--sapList_BorderColor)]">
-          <h2 className="font-['72:Bold',sans-serif] text-xl text-[#131e29]">Nova Sales Order</h2>
-          <button
-            onClick={onClose}
-            className="text-[var(--sapContent_IconColor)] hover:text-[#131e29] transition-colors"
-            type="button"
-            aria-label="Fechar"
-            title="Fechar"
-            disabled={saving}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Dialog
+      open
+      headerText="Nova Sales Order"
+      showCloseButton
+      onAfterClose={onClose}
+      footer={
+        <Bar
+          endContent={
+            <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem' }}>
+              <Button design="Transparent" onClick={onClose} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button design="Emphasized" onClick={() => void handleSubmit()} disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </FlexBox>
+          }
+        />
+      }
+    >
+      <div style={{ padding: '1rem' }}>
+        {error ? (
+          <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>
+            {error}
+          </MessageStrip>
+        ) : null}
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {error && (
-            <div className="p-3 rounded border border-[var(--sapField_InvalidColor,#bb0000)] text-[var(--sapField_InvalidColor,#bb0000)] text-sm">
-              {error}
-            </div>
-          )}
+        <Form>
+          <FormItem labelContent={<Label>Deal</Label>}>
+            <Select value={dealId} onChange={(e) => setDealId(String((e.target as any).value || ''))} disabled={loadingDeals || saving}>
+              {dealOptions.map((o) => (
+                <Option key={o.value} value={o.value}>
+                  {o.label}
+                </Option>
+              ))}
+            </Select>
+          </FormItem>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FioriSelect
-              label="Deal"
-              value={dealId}
-              onChange={(e) => setDealId(e.target.value)}
-              options={dealOptions}
-              disabled={loadingDeals || saving}
-              required
-            />
+          {dealId === '__new__' ? (
+            <>
+              <FormItem labelContent={<Label>Deal (referência)</Label>}>
+                <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.25rem', width: '100%' }}>
+                  <Input
+                    value={newDealReferenceName}
+                    onInput={(e) => setNewDealReferenceName((e.target as HTMLInputElement).value)}
+                    disabled={saving}
+                    placeholder=""
+                  />
+                  <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>Ex.: AB-ALU-Q1-2026</Text>
+                </FlexBox>
+              </FormItem>
 
-            {dealId === '__new__' && (
-              <>
-                <FioriInput
-                  label="Deal (referência)"
-                  value={newDealReferenceName}
-                  onChange={(e) => setNewDealReferenceName(e.target.value)}
-                  placeholder="Ex.: AB-ALU-Q1-2026"
-                  disabled={saving}
-                />
-
-                <FioriInput
-                  label="Empresa"
+              <FormItem labelContent={<Label>Empresa</Label>}>
+                <Input
                   value={newDealCompany}
-                  onChange={(e) => setNewDealCompany(e.target.value)}
-                  placeholder="Ex.: Alcast Brasil"
+                  onInput={(e) => setNewDealCompany((e.target as HTMLInputElement).value)}
                   disabled={saving}
+                  placeholder=""
                 />
+              </FormItem>
 
-                <FioriInput
-                  label="Período econômico"
+              <FormItem labelContent={<Label>Período econômico</Label>}>
+                <Input
                   value={newDealEconomicPeriod}
-                  onChange={(e) => setNewDealEconomicPeriod(e.target.value)}
-                  placeholder="Ex.: 2026-Q1"
+                  onInput={(e) => setNewDealEconomicPeriod((e.target as HTMLInputElement).value)}
                   disabled={saving}
+                  placeholder=""
                 />
-              </>
-            )}
+              </FormItem>
+            </>
+          ) : null}
 
-            <FioriSelect
-              label="Cliente"
+          <FormItem labelContent={<Label>Cliente</Label>}>
+            <Select
               value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-              options={customerOptions}
+              onChange={(e) => setCustomerId(String((e.target as any).value || ''))}
               disabled={loadingCustomers || saving}
-              required
-            />
-
-            <FioriSelect
-              label="Status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as OrderStatus)}
-              options={[
-                { value: OrderStatus.DRAFT, label: 'Rascunho' },
-                { value: OrderStatus.ACTIVE, label: 'Ativo' },
-                { value: OrderStatus.COMPLETED, label: 'Concluído' },
-                { value: OrderStatus.CANCELLED, label: 'Cancelado' },
-              ]}
-              disabled={saving}
-            />
-
-            <FioriInput
-              label="Produto"
-              value={product}
-              onChange={(e) => setProduct(e.target.value)}
-              placeholder="Ex.: Aluminum"
-              disabled={saving}
-            />
-
-            <FioriInput
-              label="Quantidade (MT)"
-              type="number"
-              value={quantityMt}
-              onChange={(e) => setQuantityMt(e.target.value)}
-              placeholder="0"
-              disabled={saving}
-              required
-            />
-
-            <FioriInput
-              label="Entrega prevista"
-              type="date"
-              value={expectedDeliveryDate}
-              onChange={(e) => setExpectedDeliveryDate(e.target.value)}
-              disabled={saving}
-            />
-          </div>
-
-          <div className="border-t border-[var(--sapGroup_ContentBorderColor,#e5e5e5)] pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FioriSelect
-                label="PriceType"
-                value={pricingType}
-                onChange={(e) => setPricingType(e.target.value as PriceTypeUi)}
-                options={priceTypeOptions}
-                disabled={saving}
-                required
-              />
-
-              {pricingType === PriceType.FIX && (
-                <FioriInput
-                  label="Preço unitário (USD/t)"
-                  type="number"
-                  value={unitPrice}
-                  onChange={(e) => setUnitPrice(e.target.value)}
-                  disabled={saving}
-                  required
-                />
-              )}
-
-              {pricingType === PriceType.C2R && (
-                <FioriInput
-                  label="Fixing date (C2R)"
-                  type="date"
-                  value={fixingDeadline}
-                  onChange={(e) => setFixingDeadline(e.target.value)}
-                  disabled={saving}
-                  required
-                />
-              )}
-
-              {pricingType === PriceType.AVG && (
-                <>
-                  <FioriSelect
-                    label="Mês"
-                    value={avgMonth}
-                    onChange={(e) => setAvgMonth(e.target.value)}
-                    options={[{ value: '', label: 'Selecione...' }, ...MONTH_OPTIONS]}
-                    disabled={saving}
-                    required
-                  />
-                  <FioriSelect
-                    label="Ano"
-                    value={avgYear}
-                    onChange={(e) => setAvgYear(e.target.value)}
-                    options={yearOptions}
-                    disabled={saving}
-                    required
-                  />
-                </>
-              )}
-
-              {pricingType === PriceType.AVG_INTER && (
-                <>
-                  <FioriInput
-                    label="Start date"
-                    type="date"
-                    value={avgInterStart}
-                    onChange={(e) => setAvgInterStart(e.target.value)}
-                    disabled={saving}
-                    required
-                  />
-                  <FioriInput
-                    label="End date"
-                    type="date"
-                    value={avgInterEnd}
-                    onChange={(e) => setAvgInterEnd(e.target.value)}
-                    disabled={saving}
-                    required
-                  />
-                </>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label
-              htmlFor="sales-order-notes"
-              className="font-['72:Regular',sans-serif] text-[14px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]"
             >
-              Observações
-            </label>
-            <textarea
-              id="sales-order-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full mt-1 px-3 py-2 bg-[var(--sapField_Background,#ffffff)] border border-[var(--sapField_BorderColor,#89919a)] rounded-[4px] font-['72:Regular',sans-serif] text-[14px] text-[var(--sapField_TextColor,#131e29)]"
-              rows={3}
+              {customerOptions.map((o) => (
+                <Option key={o.value} value={o.value}>
+                  {o.label}
+                </Option>
+              ))}
+            </Select>
+          </FormItem>
+
+          <FormItem labelContent={<Label>Status</Label>}>
+            <Select value={status} onChange={(e) => setStatus(String((e.target as any).value || OrderStatus.DRAFT) as OrderStatus)} disabled={saving}>
+              <Option value={OrderStatus.DRAFT}>Rascunho</Option>
+              <Option value={OrderStatus.ACTIVE}>Ativo</Option>
+              <Option value={OrderStatus.COMPLETED}>Concluído</Option>
+              <Option value={OrderStatus.CANCELLED}>Cancelado</Option>
+            </Select>
+          </FormItem>
+
+          <FormItem labelContent={<Label>Produto</Label>}>
+            <Input value={product} onInput={(e) => setProduct((e.target as HTMLInputElement).value)} disabled={saving} placeholder="" />
+          </FormItem>
+
+          <FormItem labelContent={<Label>Quantidade (MT)</Label>}>
+            <Input
+              value={quantityMt}
+              type={InputType.Number}
+              onInput={(e) => setQuantityMt((e.target as HTMLInputElement).value)}
+              disabled={saving}
+              placeholder=""
+            />
+          </FormItem>
+
+          <FormItem labelContent={<Label>Entrega prevista</Label>}>
+            <DatePicker
+              value={expectedDeliveryDate}
+              onChange={(e) => setExpectedDeliveryDate(String((e.target as any).value || ''))}
               disabled={saving}
             />
-          </div>
-        </div>
+          </FormItem>
 
-        <div className="px-6 py-4 border-t border-[var(--sapList_BorderColor)] flex justify-end gap-2">
-          <FioriButton variant="ghost" onClick={onClose} type="button" disabled={saving}>
-            Cancelar
-          </FioriButton>
-          <FioriButton
-            variant="emphasized"
-            icon={<Save className="w-4 h-4" />}
-            onClick={() => {
-              void handleSubmit();
-            }}
-            type="button"
-            disabled={saving}
-          >
-            Salvar
-          </FioriButton>
+          <FormItem labelContent={<Label>PriceType</Label>}>
+            <Select value={pricingType} onChange={(e) => setPricingType(String((e.target as any).value || '') as PriceTypeUi)} disabled={saving}>
+              {priceTypeOptions.map((o) => (
+                <Option key={o.value} value={o.value}>
+                  {o.label}
+                </Option>
+              ))}
+            </Select>
+          </FormItem>
+
+          {pricingType === PriceType.FIX ? (
+            <FormItem labelContent={<Label>Preço unitário (USD/t)</Label>}>
+              <Input
+                value={unitPrice}
+                type={InputType.Number}
+                onInput={(e) => setUnitPrice((e.target as HTMLInputElement).value)}
+                disabled={saving}
+                placeholder=""
+              />
+            </FormItem>
+          ) : null}
+
+          {pricingType === PriceType.C2R ? (
+            <FormItem labelContent={<Label>Fixing date (C2R)</Label>}>
+              <DatePicker
+                value={fixingDeadline}
+                onChange={(e) => setFixingDeadline(String((e.target as any).value || ''))}
+                disabled={saving}
+              />
+            </FormItem>
+          ) : null}
+
+          {pricingType === PriceType.AVG ? (
+            <>
+              <FormItem labelContent={<Label>Mês</Label>}>
+                <Select value={avgMonth} onChange={(e) => setAvgMonth(String((e.target as any).value || ''))} disabled={saving}>
+                  <Option value="">Selecione...</Option>
+                  {MONTH_OPTIONS.map((m) => (
+                    <Option key={m.value} value={m.value}>
+                      {m.label}
+                    </Option>
+                  ))}
+                </Select>
+              </FormItem>
+              <FormItem labelContent={<Label>Ano</Label>}>
+                <Select value={avgYear} onChange={(e) => setAvgYear(String((e.target as any).value || ''))} disabled={saving}>
+                  {yearOptions.map((y) => (
+                    <Option key={y.value} value={y.value}>
+                      {y.label}
+                    </Option>
+                  ))}
+                </Select>
+              </FormItem>
+            </>
+          ) : null}
+
+          {pricingType === PriceType.AVG_INTER ? (
+            <>
+              <FormItem labelContent={<Label>Start date</Label>}>
+                <DatePicker
+                  value={avgInterStart}
+                  onChange={(e) => setAvgInterStart(String((e.target as any).value || ''))}
+                  disabled={saving}
+                />
+              </FormItem>
+              <FormItem labelContent={<Label>End date</Label>}>
+                <DatePicker
+                  value={avgInterEnd}
+                  onChange={(e) => setAvgInterEnd(String((e.target as any).value || ''))}
+                  disabled={saving}
+                />
+              </FormItem>
+            </>
+          ) : null}
+
+          <FormItem labelContent={<Label>Observações</Label>}>
+            <TextArea value={notes} onInput={(e) => setNotes((e.target as any).value)} disabled={saving} growing rows={3} />
+          </FormItem>
+        </Form>
+
+        <div style={{ marginTop: '0.75rem', opacity: 0.75 }}>
+          <Title level="H6">Validação</Title>
+          <Text>{pricingType ? `pricing_period: ${pricingPeriod || '—'}` : 'Selecione um PriceType para calcular o período.'}</Text>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

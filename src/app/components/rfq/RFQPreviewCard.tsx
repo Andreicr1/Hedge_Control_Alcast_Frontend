@@ -6,12 +6,21 @@
  */
 
 import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
-import { Button } from '../ui/button';
-import { Alert, AlertDescription } from '../ui/alert';
-import { Badge } from '../ui/badge';
-import { Copy, Check, RefreshCw, Send, AlertCircle, Loader2 } from 'lucide-react';
+import {
+  BusyIndicator,
+  Button,
+  Card,
+  FlexBox,
+  FlexBoxDirection,
+  MessageStrip,
+  ObjectStatus,
+  Text,
+  TextArea,
+  Title,
+} from '@ui5/webcomponents-react';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 import type { RfqPreviewResponse } from '../../../types/models';
+import { formatNumberAuto } from '../../ux/format';
 
 interface RFQPreviewCardProps {
   preview: RfqPreviewResponse | null;
@@ -51,118 +60,82 @@ export const RFQPreviewCard: React.FC<RFQPreviewCardProps> = ({
 
   return (
     <Card className="mb-4">
-      <CardHeader>
-        <CardTitle>Preview da Mensagem RFQ</CardTitle>
-        <CardDescription>
-          Mensagem que será enviada às contrapartes
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Loading State */}
-        {isLoading && (
-          <div className="flex justify-center items-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div style={{ padding: '0.75rem' }}>
+        <Title level="H5">Preview da Mensagem RFQ</Title>
+        <Text>Mensagem que será enviada às contrapartes</Text>
+
+        {isLoading ? (
+          <div className="mt-4 flex items-center justify-center">
+            <BusyIndicator active delay={0} />
           </div>
-        )}
+        ) : null}
 
-        {/* Error State */}
-        {isError && !isLoading && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              {errorMessage || 'Erro ao gerar preview da mensagem RFQ.'}
-            </AlertDescription>
-          </Alert>
-        )}
+        {isError && !isLoading ? (
+          <div className="mt-4">
+            <MessageStrip design="Negative">{errorMessage || 'Erro ao gerar preview da mensagem RFQ.'}</MessageStrip>
+          </div>
+        ) : null}
 
-        {/* Preview Content */}
-        {!isLoading && !isError && preview && (
+        {!isLoading && !isError && preview ? (
           <>
-            {/* Metadata */}
-            <div className="flex flex-wrap gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">
-                  Tipo de Trade
-                </p>
-                <Badge variant="outline">
-                  {preview.trade_type || '--'}
-                </Badge>
+            <FlexBox className="mt-4" direction={FlexBoxDirection.Row} wrap>
+              <div className="mr-6 mb-2">
+                <Text>Tipo de Trade</Text>
+                <ObjectStatus state={ValueState.None}>{preview.trade_type || '—'}</ObjectStatus>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">
-                  Legs
-                </p>
-                <Badge variant="outline">
-                  {preview.leg_count || 0}
-                </Badge>
+              <div className="mr-6 mb-2">
+                <Text>Legs</Text>
+                <ObjectStatus state={ValueState.None}>{String(preview.leg_count || 0)}</ObjectStatus>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">
-                  Quantidade Total
-                </p>
-                <Badge variant="outline">
-                  {preview.total_quantity_mt?.toLocaleString() || '--'} MT
-                </Badge>
+              <div className="mr-6 mb-2">
+                <Text>Quantidade Total</Text>
+                <ObjectStatus state={ValueState.None}>
+                        {preview.total_quantity_mt != null ? `${formatNumberAuto(preview.total_quantity_mt, 'pt-BR')} MT` : '—'}
+                </ObjectStatus>
               </div>
+            </FlexBox>
+
+            <div className="mt-4">
+              <Text>Mensagem LME</Text>
+              <TextArea
+                className="mt-2 font-['Courier_New',monospace] text-[11px]"
+                rows={12}
+                readonly
+                value={preview.text}
+              />
             </div>
 
-            {/* Message Preview */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Mensagem LME</p>
-              <pre className="bg-muted p-4 rounded-lg border font-mono text-sm whitespace-pre-wrap break-words max-h-80 overflow-y-auto">
-                {preview.text}
-              </pre>
-            </div>
-
-            {/* Actions */}
-            <div className="flex justify-end gap-2">
-              {onRegenerate && (
-                <Button
-                  variant="ghost"
-                  onClick={onRegenerate}
-                  disabled={disabled || isLoading}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
+            <div className="mt-4 flex justify-end gap-2">
+              {onRegenerate ? (
+                <Button design="Transparent" icon="refresh" onClick={onRegenerate} disabled={disabled || isLoading}>
                   Regenerar
                 </Button>
-              )}
+              ) : null}
+
               <Button
-                variant="outline"
+                design="Transparent"
+                icon={copied ? 'accept' : 'copy'}
                 onClick={handleCopy}
                 disabled={disabled || isLoading || !preview.text}
               >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    Copiado!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar
-                  </>
-                )}
+                {copied ? 'Copiado' : 'Copiar'}
               </Button>
-              {onConfirm && (
-                <Button
-                  onClick={onConfirm}
-                  disabled={disabled || isLoading}
-                >
-                  <Send className="h-4 w-4 mr-2" />
+
+              {onConfirm ? (
+                <Button design="Emphasized" icon="paper-plane" onClick={onConfirm} disabled={disabled || isLoading}>
                   Confirmar e Enviar
                 </Button>
-              )}
+              ) : null}
             </div>
           </>
-        )}
+        ) : null}
 
-        {/* Empty State */}
-        {!isLoading && !isError && !preview && (
-          <div className="flex justify-center items-center py-12 text-muted-foreground">
-            Configure os legs e clique em "Gerar Preview" para ver a mensagem.
+        {!isLoading && !isError && !preview ? (
+          <div className="mt-4">
+            <Text>Preview indisponível.</Text>
           </div>
-        )}
-      </CardContent>
+        ) : null}
+      </div>
     </Card>
   );
 };

@@ -14,6 +14,7 @@ import {
   useDeleteCounterparty 
 } from '../../hooks';
 import { Counterparty, CounterpartyType } from '../../types';
+import { Icon } from '@ui5/webcomponents-react';
 import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
@@ -23,19 +24,6 @@ import { FioriSelect } from '../components/fiori/FioriSelect';
 import { LoadingState, ErrorState, EmptyState, DataContainer } from '../components/ui';
 import { TimelinePanel } from '../components/timeline/TimelinePanel';
 import { getInstitutionalErrorMessage } from '../../utils/errors';
-import { 
-  Search, 
-  Plus,
-  Building2,
-  Phone,
-  Mail,
-  Globe,
-  Edit,
-  Trash2,
-  RefreshCw,
-  Check,
-  X,
-} from 'lucide-react';
 
 // ============================================
 // Type Helpers
@@ -369,8 +357,8 @@ export function CounterpartiesPageIntegrated() {
             Contrapartes ({filteredCounterparties.length})
           </h2>
           <div className="flex items-center gap-2">
-            <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetch} />
-            <FioriButton variant="emphasized" icon={<Plus className="w-4 h-4" />} onClick={handleOpenCreateModal}>
+            <FioriButton variant="ghost" icon="refresh" onClick={refetch} />
+            <FioriButton variant="emphasized" icon="add" onClick={handleOpenCreateModal}>
               Nova
             </FioriButton>
           </div>
@@ -386,7 +374,17 @@ export function CounterpartiesPageIntegrated() {
               placeholder="Buscar contraparte..."
               className="w-full h-8 px-3 pr-8 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none focus:border-[var(--sapField_Focus_BorderColor)]"
             />
-            <Search className="w-4 h-4 absolute right-2 top-2 text-[var(--sapContent_IconColor)]" />
+            <Icon
+              name="search"
+              style={{
+                width: '1rem',
+                height: '1rem',
+                position: 'absolute',
+                right: 8,
+                top: 8,
+                color: 'var(--sapContent_IconColor)',
+              }}
+            />
           </div>
           
           {/* Type Filter */}
@@ -439,7 +437,7 @@ export function CounterpartiesPageIntegrated() {
               <div className="flex items-center gap-2 text-xs text-[var(--sapContent_LabelColor)]">
                 {cp.contact_email && (
                   <span className="flex items-center gap-1">
-                    <Mail className="w-3 h-3" />
+                    <Icon name="email" style={{ width: '0.75rem', height: '0.75rem' }} />
                     {cp.contact_email}
                   </span>
                 )}
@@ -467,16 +465,16 @@ export function CounterpartiesPageIntegrated() {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <Building2 className="w-6 h-6 text-[#0064d9]" />
+            <Icon name="building" style={{ width: '1.5rem', height: '1.5rem', color: '#0064d9' }} />
             <h1 className="font-['72:Black',sans-serif] text-xl text-[#131e29] m-0">
               {selectedCounterparty.name}
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <FioriButton variant="default" icon={<Edit className="w-4 h-4" />} onClick={handleOpenEditModal}>
+            <FioriButton variant="default" icon="edit" onClick={handleOpenEditModal}>
               Editar
             </FioriButton>
-            <FioriButton variant="negative" icon={<Trash2 className="w-4 h-4" />} onClick={handleOpenDeleteModal}>
+            <FioriButton variant="negative" icon="delete" onClick={handleOpenDeleteModal}>
               Excluir
             </FioriButton>
           </div>
@@ -501,7 +499,7 @@ export function CounterpartiesPageIntegrated() {
           <div className="space-y-3">
             {selectedCounterparty.contact_email && (
               <div className="flex items-center gap-3 p-3 bg-[var(--sapGroup_ContentBackground)] rounded">
-                <Mail className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
+                <Icon name="email" style={{ width: '1rem', height: '1rem', color: 'var(--sapContent_IconColor)' }} />
                 <div>
                   <div className="text-xs text-[var(--sapContent_LabelColor)]">Email</div>
                   <div className="text-sm">{selectedCounterparty.contact_email}</div>
@@ -511,7 +509,7 @@ export function CounterpartiesPageIntegrated() {
             
             {selectedCounterparty.contact_phone && (
               <div className="flex items-center gap-3 p-3 bg-[var(--sapGroup_ContentBackground)] rounded">
-                <Phone className="w-4 h-4 text-[var(--sapContent_IconColor)]" />
+                <Icon name="phone" style={{ width: '1rem', height: '1rem', color: 'var(--sapContent_IconColor)' }} />
                 <div>
                   <div className="text-xs text-[var(--sapContent_LabelColor)]">Telefone</div>
                   <div className="text-sm">{selectedCounterparty.contact_phone}</div>
@@ -556,7 +554,7 @@ export function CounterpartiesPageIntegrated() {
     <EmptyState
       title="Selecione uma contraparte"
       description="Escolha uma contraparte da lista para ver os detalhes"
-      icon={<Building2 className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
+      icon={<Icon name="building" style={{ width: '2rem', height: '2rem', color: 'var(--sapContent_IconColor)' }} />}
       fullPage
     />
   );

@@ -12,3 +12,6 @@ export * from './models';
 
 // API Response wrappers
 export * from './api';
+
+// Governance (observability)
+export * from './governance';

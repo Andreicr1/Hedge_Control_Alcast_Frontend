@@ -1,6 +1,9 @@
-import { Link } from 'react-router-dom';
+import type { ReactNode } from 'react';
 
-interface FioriTeamCardProps {
+import { useNavigate } from 'react-router-dom';
+import { Avatar, Button, FlexBox, FlexBoxDirection, Text } from '@ui5/webcomponents-react';
+
+export interface FioriTeamCardProps {
   actor: string;
   initials: string;
   timestamp: string;
@@ -10,65 +13,35 @@ interface FioriTeamCardProps {
   backgroundColor?: string;
 }
 
-export function FioriTeamCard({
-  actor,
-  initials,
-  timestamp,
-  description,
-  object,
-  href,
-  backgroundColor = '#0064d9',
-}: FioriTeamCardProps) {
-  const content = (
-    <>
-      {/* Avatar */}
-      <div
-        className="shrink-0 w-[40px] h-[40px] rounded-full flex items-center justify-center font-['72:Semibold_Duplex',sans-serif] text-white text-[16px]"
-        style={{ backgroundColor }}
-      >
-        {initials}
-      </div>
+export function FioriTeamCard({ actor, initials, timestamp, description, object, href, backgroundColor }: FioriTeamCardProps) {
+  const navigate = useNavigate();
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-2 mb-1">
-          <span className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapContent_ForegroundTextColor,#131e29)] leading-[normal] truncate">
-            {description}
-          </span>
-        </div>
-
-        {object ? (
-          <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_ForegroundTextColor,#131e29)] leading-[normal] mb-1 truncate">
-            {object}
-          </div>
-        ) : null}
-
-        <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal] mb-1">
-          {actor}
-        </div>
-
-        <div className="font-['72:Regular',sans-serif] text-[12px] text-[var(--sapContent_LabelColor,#556b82)] leading-[normal]">
-          {timestamp}
-        </div>
-      </div>
-    </>
-  );
-
-  if (href) {
-    return (
-      <Link
-        to={href}
-        className="flex gap-3 p-3 rounded-[4px] hover:bg-[var(--sapList_HoverBackground,#f7f7f7)] transition-colors cursor-pointer"
-        title="Abrir detalhes"
-      >
-        {content}
-      </Link>
-    );
-  }
+  const handleClick = () => {
+    if (!href) return;
+    if (href.startsWith('/')) {
+      navigate(href);
+      return;
+    }
+    window.open(href, '_blank', 'noopener,noreferrer');
+  };
 
   return (
-    <div className="flex gap-3 p-3 rounded-[4px] hover:bg-[var(--sapList_HoverBackground,#f7f7f7)] transition-colors">
-      {content}
-    </div>
+    <Button
+      design="Transparent"
+      onClick={href ? handleClick : undefined}
+      style={{ width: '100%', justifyContent: 'flex-start' }}
+    >
+      <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.75rem', alignItems: 'center', width: '100%' }}>
+        <Avatar initials={initials} style={backgroundColor ? { backgroundColor } : undefined} />
+        <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.125rem', alignItems: 'flex-start', width: '100%' }}>
+          <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem', alignItems: 'baseline', width: '100%' }}>
+            <Text style={{ fontSize: '0.875rem' }}>{actor}</Text>
+            <Text style={{ fontSize: '0.75rem', opacity: 0.75 }}>{timestamp}</Text>
+          </FlexBox>
+          <Text style={{ fontSize: '0.8125rem', opacity: 0.85 }}>{description}</Text>
+          {object ? <Text style={{ fontSize: '0.75rem', opacity: 0.75 }}>{object}</Text> : null}
+        </FlexBox>
+      </FlexBox>
+    </Button>
   );
 }

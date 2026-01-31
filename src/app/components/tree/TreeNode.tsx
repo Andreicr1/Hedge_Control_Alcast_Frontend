@@ -1,6 +1,4 @@
-import * as Checkbox from '@radix-ui/react-checkbox';
-import * as Collapsible from '@radix-ui/react-collapsible';
-import { Check, ChevronDown, ChevronRight, Minus } from 'lucide-react';
+import { Button, CheckBox } from '@ui5/webcomponents-react';
 
 import type { TreeNode as ScopeTreeNode } from '../../stores/cashflowScopeTree.store';
 
@@ -24,45 +22,35 @@ export function TreeNode({
     <div>
       <div className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${level * 14}px` }}>
         {hasChildren ? (
-          <button
-            type="button"
-            className="w-5 h-5 inline-flex items-center justify-center text-[var(--sapContent_IconColor)] hover:bg-black/5 rounded"
+          <Button
+            design="Transparent"
             onClick={() => onToggleExpanded(node.id)}
-            title={expanded ? 'Recolher' : 'Expandir'}
+            style={{ minWidth: '2rem' }}
           >
-            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </button>
+            {expanded ? '▾' : '▸'}
+          </Button>
         ) : (
           <span className="w-5" />
         )}
 
-        <Checkbox.Root
-          checked={indeterminate ? 'indeterminate' : checked}
-          onCheckedChange={(v) => {
-            const nextChecked = v === true;
-            onToggleChecked(node.id, nextChecked);
+        <CheckBox
+          checked={checked}
+          indeterminate={indeterminate}
+          accessibleName={node.label}
+          onChange={(e) => {
+            onToggleChecked(node.id, e.target.checked);
           }}
-          className="w-4 h-4 shrink-0 rounded border border-[var(--sapField_BorderColor)] bg-white flex items-center justify-center"
-          aria-label={node.label}
-        >
-          <Checkbox.Indicator className="text-[var(--sapContent_IconColor)]">
-            {indeterminate ? <Minus className="w-3 h-3" /> : checked ? <Check className="w-3 h-3" /> : null}
-          </Checkbox.Indicator>
-        </Checkbox.Root>
+        />
 
         <span className={level <= 1 ? "font-['72:Bold',sans-serif]" : ''}>{node.label}</span>
       </div>
 
-      {hasChildren ? (
-        <Collapsible.Root open={expanded}>
-          <Collapsible.Content>
-            <div>
-              {node.children!.map((c) => (
-                <TreeNode key={c.id} node={c} level={level + 1} onToggleExpanded={onToggleExpanded} onToggleChecked={onToggleChecked} />
-              ))}
-            </div>
-          </Collapsible.Content>
-        </Collapsible.Root>
+      {hasChildren && expanded ? (
+        <div>
+          {node.children!.map((c) => (
+            <TreeNode key={c.id} node={c} level={level + 1} onToggleExpanded={onToggleExpanded} onToggleChecked={onToggleChecked} />
+          ))}
+        </div>
       ) : null}
     </div>
   );

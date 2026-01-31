@@ -3,20 +3,35 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { RefreshCw, Layers } from 'lucide-react';
-
 import { useExposures } from '../../hooks';
 import { Exposure, ExposureStatus, MarketObjectType } from '../../types';
+
+import { formatDate, formatNumber } from '../../services/dashboard.service';
+
+import { FioriBusyText, FioriErrorRetryBlock } from '../components/fiori';
+
+import {
+  Button,
+  Card,
+  AnalyticalTable,
+  FlexBox,
+  FlexBoxDirection,
+  IllustratedMessage,
+  List,
+  ListItemStandard,
+  MessageStrip,
+  ObjectStatus,
+  Text,
+  Title,
+  Toolbar,
+  ToolbarSpacer,
+} from '@ui5/webcomponents-react';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 
 import { AnalyticScopeTree } from '../analytics/AnalyticScopeTree';
 import { useAnalyticScope } from '../analytics/ScopeProvider';
 import { useAnalyticScopeUrlSync } from '../analytics/useAnalyticScopeUrlSync';
 import { useAnalyticsEntityTreeContext } from '../analytics/EntityTreeProvider';
-
-import { EmptyState, ErrorState, LoadingState } from '../components/ui';
-import { FioriButton } from '../components/fiori/FioriButton';
-import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
-import { FioriObjectStatus } from '../components/fiori/FioriObjectStatus';
 import { UX_COPY } from '../ux/copy';
 
 function formatSourceTypeLabel(sourceType?: string | null): string {
@@ -27,18 +42,18 @@ function formatSourceTypeLabel(sourceType?: string | null): string {
   return String(sourceType);
 }
 
-function getStatusType(status?: ExposureStatus): 'success' | 'error' | 'warning' | 'information' | 'neutral' {
+function getStatusValueState(status?: ExposureStatus): ValueState {
   switch (status) {
     case ExposureStatus.OPEN:
-      return 'warning';
+      return ValueState.Critical;
     case ExposureStatus.PARTIALLY_HEDGED:
-      return 'information';
+      return ValueState.Information;
     case ExposureStatus.HEDGED:
-      return 'success';
+      return ValueState.Positive;
     case ExposureStatus.CLOSED:
-      return 'neutral';
+      return ValueState.None;
     default:
-      return 'neutral';
+      return ValueState.None;
   }
 }
 
@@ -54,7 +69,7 @@ function getStatusLabel(status?: ExposureStatus): string {
 
 function formatMt(value: number | null | undefined): string {
   if (typeof value !== 'number' || Number.isNaN(value)) return '—';
-  return value.toLocaleString('pt-BR');
+  return formatNumber(value, 0);
 }
 
 export function ExposuresPageIntegrated() {
@@ -108,8 +123,9 @@ export function ExposuresPageIntegrated() {
   const filteredExposures = useMemo(() => {
     const all = exposures || [];
 
-    // Institutional requirement: fully hedged items should not appear in this (risk) menu.
-    const base = all.filter((exp) => exp.status !== ExposureStatus.HEDGED);
+    // Backend is authoritative for eligibility/visibility semantics.
+    // Frontend must not exclude economic entities based on derived governance meaning.
+    const base = all;
 
     if (scope.kind === 'none') return [];
     if (scope.kind === 'all') return base;
@@ -135,6 +151,60 @@ export function ExposuresPageIntegrated() {
     return filteredExposures.find((e) => e.id === selectedId) || null;
   }, [filteredExposures, selectedId]);
 
+  const tableData = useMemo(() => {
+    return filteredExposures.slice().sort((a, b) => a.id - b.id);
+  }, [filteredExposures]);
+
+  const tableColumns = useMemo(
+    () =>
+      [
+        {
+          Header: 'Item',
+          accessor: 'id',
+          Cell: ({ cell }: any) => <Text>Exposição #{cell.value}</Text>,
+        },
+        {
+          Header: 'Origem',
+          id: 'source',
+          accessor: (row: Exposure) => `${formatSourceTypeLabel(row.source_type)} #${row.source_id}`,
+          Cell: ({ cell }: any) => <Text>{cell.value || '—'}</Text>,
+        },
+        {
+          Header: 'Produto',
+          accessor: 'product',
+          Cell: ({ cell }: any) => <Text>{cell.value || '—'}</Text>,
+        },
+        {
+          Header: 'Volume (MT)',
+          id: 'qty',
+          accessor: (row: Exposure) => row.quantity_mt ?? null,
+          hAlign: 'End',
+          Cell: ({ cell }: any) => <Text>{formatMt(cell.value)}</Text>,
+        },
+        {
+          Header: 'Não coberto (MT)',
+          id: 'unhedged',
+          accessor: (row: Exposure) => row.unhedged_quantity_mt ?? null,
+          hAlign: 'End',
+          Cell: ({ cell }: any) => <Text>{formatMt(cell.value)}</Text>,
+        },
+        {
+          Header: 'Data',
+          id: 'date',
+          accessor: (row: Exposure) => row.delivery_date || row.maturity_date || row.payment_date || null,
+          Cell: ({ cell }: any) => <Text>{formatDate(cell.value)}</Text>,
+        },
+        {
+          Header: 'Status',
+          accessor: 'status',
+          Cell: ({ cell }: any) => (
+            <ObjectStatus state={getStatusValueState(cell.value)}>{getStatusLabel(cell.value)}</ObjectStatus>
+          ),
+        },
+      ] as any,
+    []
+  );
+
   const stats = useMemo(() => {
     if (!filteredExposures.length) return null;
     const totalVolume = filteredExposures.reduce((sum, e) => sum + (e.quantity_mt ?? 0), 0);
@@ -159,197 +229,150 @@ export function ExposuresPageIntegrated() {
   };
 
   return (
-    <FioriFlexibleColumnLayout
-      masterTitle="Escopo"
-      masterContent={<AnalyticScopeTree />}
-      masterWidth={340}
-      detailContent={
-        <div className="sap-fiori-page h-full overflow-y-auto">
-          <div className="bg-[var(--sapPageHeader_Background)] border-b border-[var(--sapPageHeader_BorderColor)] -mx-4 -mt-4 px-4 py-4 mb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-[var(--sapPageHeader_TextColor)] text-xl font-normal m-0">{UX_COPY.pages.riskExposure.title}</h1>
-                <p className="text-[var(--sapContent_LabelColor)] text-sm mt-1">
-                  Seleção: <span className="font-['72:Bold',sans-serif]">{selectionTitle}</span>
-                  {isLoading && exposures ? <span className="ml-2 text-xs">(atualizando…)</span> : null}
-                </p>
-              </div>
-              <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={refetch}>
-                Atualizar
-              </FioriButton>
-            </div>
+    <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '1rem', height: '100%' }}>
+      <div style={{ width: 340, minWidth: 340, maxWidth: 340 }}>
+        <Card header={<Title level="H5">Escopo</Title>} style={{ height: '100%' }}>
+          <div style={{ height: '100%' }}>
+            <AnalyticScopeTree />
+          </div>
+        </Card>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Card style={{ height: '100%' }}>
+          <Toolbar>
+            <Title level="H4">{UX_COPY.pages.riskExposure.title}</Title>
+            <ToolbarSpacer />
+            <Button design="Transparent" onClick={refetch}>
+              Atualizar
+            </Button>
+          </Toolbar>
+
+          <div style={{ padding: '0 1rem 0.5rem 1rem' }}>
+            <Text style={{ opacity: 0.8 }}>
+              Seleção: <strong>{selectionTitle}</strong>
+              {isLoading && exposures ? <span style={{ marginLeft: '0.5rem', fontSize: '0.8125rem' }}>(atualizando…)</span> : null}
+            </Text>
           </div>
 
           {scope.kind === 'none' ? (
-            <div className="p-6">
-              <EmptyState
-                title="Sem seleção"
-                description="Selecione um deal para visualizar."
-                icon={<Layers className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
-              />
+            <div style={{ padding: '1rem' }}>
+              <IllustratedMessage name="NoData" titleText="Sem seleção" subtitleText="Selecione um deal para visualizar." />
             </div>
-          ) : isLoading ? (
-            <LoadingState message="Carregando exposições..." />
+          ) : isLoading && !exposures ? (
+            <div style={{ padding: '1rem' }}>
+              <FioriBusyText message="Carregando exposições..." />
+            </div>
           ) : isError ? (
-            <ErrorState error={error} onRetry={refetch} />
+            <div style={{ padding: '1rem' }}>
+              <FioriErrorRetryBlock message="Falha ao carregar exposições." onRetry={refetch} />
+            </div>
           ) : filteredExposures.length === 0 ? (
-            <div className="p-6">
-              <EmptyState
-                title="Sem exposições"
-                description="Sem itens para a seleção atual."
-                icon={<Layers className="w-8 h-8 text-[var(--sapContent_IconColor)]" />}
-              />
+            <div style={{ padding: '1rem' }}>
+              <IllustratedMessage name="NoData" titleText="Sem exposições" subtitleText="Sem itens para a seleção atual." />
             </div>
           ) : (
-            <div className="sap-fiori-section">
-              <div className="sap-fiori-section-content">
-                {stats ? (
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-                    <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                      <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Exposições</div>
-                      <div className="text-sm font-['72:Bold',sans-serif]">{filteredExposures.length}</div>
+            <div style={{ padding: '0 1rem 1rem 1rem' }}>
+              {stats ? (
+                <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                  <Card style={{ minWidth: 200, flex: '1 1 200px' }}>
+                    <div style={{ padding: '0.75rem' }}>
+                      <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Exposições</Text>
+                      <Title level="H5">{filteredExposures.length}</Title>
                     </div>
-                    <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                      <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Volume (MT)</div>
-                      <div className="text-sm font-['72:Bold',sans-serif]">{formatMt(stats.totalVolume)}</div>
+                  </Card>
+                  <Card style={{ minWidth: 200, flex: '1 1 200px' }}>
+                    <div style={{ padding: '0.75rem' }}>
+                      <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Volume (MT)</Text>
+                      <Title level="H5">{formatMt(stats.totalVolume)}</Title>
                     </div>
-                    <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                      <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Não coberto (MT)</div>
-                      <div className="text-sm font-['72:Bold',sans-serif]">{formatMt(stats.totalUnhedged)}</div>
+                  </Card>
+                  <Card style={{ minWidth: 200, flex: '1 1 200px' }}>
+                    <div style={{ padding: '0.75rem' }}>
+                      <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Não coberto (MT)</Text>
+                      <Title level="H5">{formatMt(stats.totalUnhedged)}</Title>
                     </div>
-                    <div className="p-3 rounded border border-[var(--sapTile_BorderColor)] bg-white">
-                      <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Status</div>
-                      <div className="text-sm font-['72:Bold',sans-serif]">
-                        {stats.openCount} aberta(s) · {stats.partialCount} parcial
-                      </div>
+                  </Card>
+                  <Card style={{ minWidth: 240, flex: '1 1 240px' }}>
+                    <div style={{ padding: '0.75rem' }}>
+                      <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Status</Text>
+                      <Text style={{ fontWeight: 700 }}>{stats.openCount} aberta(s) · {stats.partialCount} parcial</Text>
                     </div>
-                  </div>
-                ) : null}
+                  </Card>
+                </FlexBox>
+              ) : null}
 
-                <div className="border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
-                  <div className="overflow-auto">
-                    <table className="min-w-[980px] w-full">
-                      <thead>
-                        <tr className="border-b border-[var(--sapList_BorderColor)] bg-white">
-                          <th className="text-left p-3 text-xs">Item</th>
-                          <th className="text-left p-3 text-xs">Origem</th>
-                          <th className="text-left p-3 text-xs">Produto</th>
-                          <th className="text-right p-3 text-xs">Volume (MT)</th>
-                          <th className="text-right p-3 text-xs">Não coberto (MT)</th>
-                          <th className="text-left p-3 text-xs">Data</th>
-                          <th className="text-left p-3 text-xs">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredExposures
-                          .slice()
-                          .sort((a, b) => a.id - b.id)
-                          .map((exp) => {
-                            const did = dealIdForExposure(exp);
-                            const isSelected = selectedId === exp.id;
-                            const date = exp.delivery_date || exp.maturity_date || exp.payment_date || null;
+              <AnalyticalTable
+                columns={tableColumns}
+                data={tableData as any}
+                loading={isLoading && !exposures}
+                alwaysShowBusyIndicator
+                visibleRows={12}
+                minRows={12}
+                selectionMode="Single"
+                selectionBehavior="RowOnly"
+                selectedRowIds={selectedId ? { [String(selectedId)]: true } : {}}
+                reactTableOptions={{ getRowId: (row: any) => String(row.id) }}
+                onRowClick={(e) => {
+                  const row = (e as any).detail?.row;
+                  const original = row?.original as Exposure | undefined;
+                  if (original?.id) setSelectedId(original.id);
+                }}
+              />
 
-                            return (
-                              <tr
-                                key={String(exp.id)}
-                                className={`border-b border-[var(--sapList_BorderColor)] hover:bg-[var(--sapList_HoverBackground)] cursor-pointer ${
-                                  isSelected ? 'bg-[var(--sapList_SelectionBackgroundColor)]' : 'bg-white'
-                                }`}
-                                onClick={() => setSelectedId(exp.id)}
-                              >
-                                <td className="p-3 text-xs whitespace-nowrap">Exposição #{exp.id}</td>
-                                <td className="p-3 text-xs whitespace-nowrap">
-                                  {formatSourceTypeLabel(exp.source_type)} #{exp.source_id}
-                                  {did ? (
-                                    <button
-                                      type="button"
-                                      className="ml-2 text-[11px] text-[#0064d9] hover:underline"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onOpenDeal(did);
-                                      }}
-                                    >
-                                      Deal #{did}
-                                    </button>
-                                  ) : null}
-                                </td>
-                                <td className="p-3 text-xs">{exp.product || '—'}</td>
-                                <td className="p-3 text-xs text-right whitespace-nowrap">{formatMt(exp.quantity_mt)}</td>
-                                <td className="p-3 text-xs text-right whitespace-nowrap">{formatMt(exp.unhedged_quantity_mt ?? null)}</td>
-                                <td className="p-3 text-xs whitespace-nowrap">
-                                  {date ? new Date(date).toLocaleDateString('pt-BR') : '—'}
-                                </td>
-                                <td className="p-3 text-xs whitespace-nowrap">
-                                  <FioriObjectStatus status={getStatusType(exp.status)}>
-                                    {getStatusLabel(exp.status)}
-                                  </FioriObjectStatus>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {selectedExposure ? (
-                  <div className="mt-4 border border-[var(--sapList_BorderColor)] rounded overflow-hidden bg-white">
-                    <div className="p-3 border-b border-[var(--sapList_BorderColor)] bg-[var(--sapList_HeaderBackground)]">
-                      <div className="flex items-center justify-between gap-3">
+              {selectedExposure ? (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <Card header={<Title level="H5">Exposição #{selectedExposure.id}</Title>}>
+                    <div style={{ padding: '0.75rem' }}>
+                      <FlexBox direction={FlexBoxDirection.Row} justifyContent="SpaceBetween" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
                         <div>
-                          <div className="text-sm font-['72:Bold',sans-serif]">Exposição #{selectedExposure.id}</div>
-                          <div className="text-xs text-[var(--sapContent_LabelColor)]">{selectedExposure.product || '—'}</div>
+                          <Text style={{ opacity: 0.75 }}>{selectedExposure.product || '—'}</Text>
                         </div>
-                        <FioriObjectStatus status={getStatusType(selectedExposure.status)}>
+                        <ObjectStatus state={getStatusValueState(selectedExposure.status)}>
                           {getStatusLabel(selectedExposure.status)}
-                        </FioriObjectStatus>
-                      </div>
-                    </div>
+                        </ObjectStatus>
+                      </FlexBox>
 
-                    <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Volume (MT)</div>
-                        <div className="text-sm font-['72:Bold',sans-serif]">{formatMt(selectedExposure.quantity_mt)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Não coberto (MT)</div>
-                        <div className="text-sm font-['72:Bold',sans-serif]">{formatMt(selectedExposure.unhedged_quantity_mt ?? null)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[var(--sapContent_LabelColor)]">Referência</div>
-                        <div className="text-sm font-['72:Bold',sans-serif]">{selectedExposure.pricing_reference || '—'}</div>
-                      </div>
-                    </div>
-
-                    {Array.isArray(selectedExposure.hedges) && selectedExposure.hedges.length > 0 ? (
-                      <div className="px-4 pb-4">
-                        <div className="text-xs text-[var(--sapContent_LabelColor)] mb-2">Coberturas registradas</div>
-                        <div className="space-y-2">
-                          {selectedExposure.hedges.slice(0, 5).map((h) => (
-                            <div
-                              key={String(h.hedge_id)}
-                              className="p-2 rounded border border-[var(--sapTile_BorderColor)] bg-[var(--sapGroup_ContentBackground)]"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs font-['72:Bold',sans-serif] text-[#131e29]">Hedge #{h.hedge_id}</div>
-                                <div className="text-xs text-[var(--sapContent_LabelColor)]">{formatMt(Number(h.quantity_mt || 0))} MT</div>
-                              </div>
-                              <div className="mt-1 text-[11px] text-[var(--sapContent_LabelColor)]">
-                                {[h.counterparty_name, h.instrument, h.period].filter(Boolean).join(' • ') || '—'}
-                              </div>
-                            </div>
-                          ))}
+                      <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '1.25rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                        <div>
+                          <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Volume (MT)</Text>
+                          <Text style={{ fontWeight: 700 }}>{formatMt(selectedExposure.quantity_mt)}</Text>
                         </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                        <div>
+                          <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Não coberto (MT)</Text>
+                          <Text style={{ fontWeight: 700 }}>{formatMt(selectedExposure.unhedged_quantity_mt ?? null)}</Text>
+                        </div>
+                        <div>
+                          <Text style={{ opacity: 0.75, fontSize: '0.75rem' }}>Referência</Text>
+                          <Text style={{ fontWeight: 700 }}>{selectedExposure.pricing_reference || '—'}</Text>
+                        </div>
+                      </FlexBox>
+
+                      {Array.isArray(selectedExposure.hedges) && selectedExposure.hedges.length > 0 ? (
+                        <>
+                          <Title level="H6">Coberturas registradas</Title>
+                          <List style={{ marginTop: '0.5rem' }}>
+                            {selectedExposure.hedges.slice(0, 5).map((h) => (
+                              <ListItemStandard
+                                key={String(h.hedge_id)}
+                                description={[h.counterparty_name, h.instrument, h.period].filter(Boolean).join(' • ') || '—'}
+                                additionalText={`${formatMt(Number(h.quantity_mt || 0))} MT`}
+                              >
+                                Hedge #{h.hedge_id}
+                              </ListItemStandard>
+                            ))}
+                          </List>
+                        </>
+                      ) : null}
+                    </div>
+                  </Card>
+                </div>
+              ) : null}
             </div>
           )}
-        </div>
-      }
-    />
+        </Card>
+      </div>
+    </FlexBox>
   );
 }
 

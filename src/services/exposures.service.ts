@@ -10,6 +10,7 @@
 
 import { api, endpoints } from '../api';
 import { Exposure, ExposureType, ExposureStatus } from '../types';
+import { formatMonthYearLongLocal } from '../app/ux/format';
 
 // ============================================
 // List Exposures
@@ -95,7 +96,7 @@ export function groupExposuresByMonth(exposures: Exposure[]): Record<string, Exp
   for (const exp of exposures) {
     const date = exp.maturity_date ? new Date(exp.maturity_date) : null;
     const key = date 
-      ? date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })
+      ? formatMonthYearLongLocal(date, 'pt-BR')
       : 'Sem data';
     
     if (!grouped[key]) {

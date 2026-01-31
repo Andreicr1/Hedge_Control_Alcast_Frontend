@@ -11,6 +11,7 @@
 
 import { api, endpoints } from '../api';
 import { Deal, DealCreate, DealPnlResponse } from '../types';
+import { formatCurrencySigned } from '../app/ux/format';
 
 // ============================================
 // List Deals
@@ -65,15 +66,9 @@ export function formatPnl(value: number, currency: string = 'USD'): {
 } {
   const isPositive = value > 0;
   const isNegative = value < 0;
-  
-  const formatter = new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency,
-    signDisplay: 'always',
-  });
-  
+
   return {
-    formatted: formatter.format(value),
+    formatted: formatCurrencySigned(value, currency, 'pt-BR'),
     isPositive,
     isNegative,
   };

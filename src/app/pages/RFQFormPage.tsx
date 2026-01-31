@@ -1,12 +1,25 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { FioriCard } from '../components/fiori/FioriCard';
-import { FioriInput } from '../components/fiori/FioriInput';
-import { FioriSelect } from '../components/fiori/FioriSelect';
-import { FioriRadioGroup } from '../components/fiori/FioriRadioGroup';
-import { FioriTextarea } from '../components/fiori/FioriTextarea';
-import { FioriButton } from '../components/fiori/FioriButton';
-import { Plus, Copy, ChevronLeft, Loader2, Send, Users, CheckCircle, AlertCircle, Trash2, MessageCircle } from 'lucide-react';
+import {
+  BusyIndicator,
+  Button,
+  Card,
+  DatePicker,
+  FlexBox,
+  FlexBoxDirection,
+  Input,
+  Label,
+  MessageStrip,
+  ObjectStatus,
+  Option,
+  Select,
+  Text,
+  TextArea,
+  Title,
+  Toolbar,
+  ToolbarSpacer,
+} from '@ui5/webcomponents-react';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 import {
   ApiError,
   KycGateErrorDetail,
@@ -990,57 +1003,48 @@ export function RFQFormPage() {
       case RfqPriceType.AVG:
         return (
           <div className="grid grid-cols-2 gap-3">
-            <FioriSelect
-              label="Mês"
-              value={trade.leg1Month}
-              onChange={(e) => updateTrade(index, { leg1Month: e.target.value })}
-              fullWidth
-            >
-              <option value="">Selecione...</option>
-              {MONTH_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </FioriSelect>
-            <FioriSelect
-              label="Ano"
-              value={trade.leg1Year}
-              onChange={(e) => updateTrade(index, { leg1Year: e.target.value })}
-              fullWidth
-            >
-              {YEAR_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </FioriSelect>
+            <div>
+              <Label>Mês</Label>
+              <Select value={trade.leg1Month} onChange={(e) => updateTrade(index, { leg1Month: String((e.target as any).value || '') })}>
+                <Option value="">—</Option>
+                {MONTH_OPTIONS.map((opt) => (
+                  <Option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </Option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label>Ano</Label>
+              <Select value={trade.leg1Year} onChange={(e) => updateTrade(index, { leg1Year: String((e.target as any).value || '') })}>
+                {YEAR_OPTIONS.map((opt) => (
+                  <Option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </Option>
+                ))}
+              </Select>
+            </div>
           </div>
         );
       case RfqPriceType.AVG_INTER:
         return (
           <div className="grid grid-cols-2 gap-3">
-            <FioriInput
-              label="Data Início"
-              type="date"
-              value={trade.leg1StartDate}
-              onChange={(e) => updateTrade(index, { leg1StartDate: e.target.value })}
-              fullWidth
-            />
-            <FioriInput
-              label="Data Fim"
-              type="date"
-              value={trade.leg1EndDate}
-              onChange={(e) => updateTrade(index, { leg1EndDate: e.target.value })}
-              fullWidth
-            />
+            <div>
+              <Label>Data Início</Label>
+              <DatePicker value={trade.leg1StartDate} onChange={(e) => updateTrade(index, { leg1StartDate: String((e.target as any).value || '') })} />
+            </div>
+            <div>
+              <Label>Data Fim</Label>
+              <DatePicker value={trade.leg1EndDate} onChange={(e) => updateTrade(index, { leg1EndDate: String((e.target as any).value || '') })} />
+            </div>
           </div>
         );
       case RfqPriceType.C2R:
         return (
-          <FioriInput
-            label="Data de Referência"
-            type="date"
-            value={trade.leg1EndDate}
-            onChange={(e) => updateTrade(index, { leg1EndDate: e.target.value })}
-            fullWidth
-          />
+          <div>
+            <Label>Data de Referência</Label>
+            <DatePicker value={trade.leg1EndDate} onChange={(e) => updateTrade(index, { leg1EndDate: String((e.target as any).value || '') })} />
+          </div>
         );
       default:
         return null;
@@ -1052,21 +1056,17 @@ export function RFQFormPage() {
   // ============================================
   const renderTradeCard = (trade: TradeState, index: number) => {
     return (
-      <FioriCard key={trade.id} className="mb-4">
+      <Card key={trade.id} className="mb-4">
+        <div style={{ padding: '0.75rem' }}>
         {/* Trade Header with Templates */}
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--sapTile_BorderColor,#e5e5e5)]">
           <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] m-0">
             Estrutura {index + 1}
           </h3>
           {trades.length > 1 && (
-            <FioriButton
-              variant="ghost"
-              icon={<Trash2 className="w-4 h-4" />}
-              onClick={() => removeTrade(index)}
-              className="text-[var(--sapNegativeColor,#bb0000)]"
-            >
+            <Button design="Transparent" onClick={() => removeTrade(index)}>
               Remover
-            </FioriButton>
+            </Button>
           )}
         </div>
 
@@ -1097,28 +1097,27 @@ export function RFQFormPage() {
               Parte 1 <span className="font-normal text-[var(--sapContent_LabelColor)]">(Flutuante)</span>
             </h4>
             <div className="space-y-3">
-              <FioriRadioGroup
-                label="Operação"
-                name={`leg1Op-${trade.id}`}
-                value={trade.leg1Operation}
-                onChange={(v) => updateTrade(index, { leg1Operation: v as 'Compra' | 'Venda' })}
-                options={[
-                  { value: 'Compra', label: 'Compra' },
-                  { value: 'Venda', label: 'Venda' },
-                ]}
-                horizontal
-              />
-              <FioriSelect
-                label="Tipo de Preço"
-                value={trade.leg1PriceType}
-                onChange={(e) => updateTrade(index, { leg1PriceType: e.target.value as RfqPriceType })}
-                fullWidth
-              >
-                <option value="">Selecione...</option>
-                {PRICE_TYPE_OPTIONS.filter(opt => opt.value !== 'Fix').map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </FioriSelect>
+              <div>
+                <Label>Operação</Label>
+                <Select value={trade.leg1Operation} onChange={(e) => updateTrade(index, { leg1Operation: String((e.target as any).value || '') as any })}>
+                  <Option value="Compra">Compra</Option>
+                  <Option value="Venda">Venda</Option>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo de Preço</Label>
+                <Select
+                  value={trade.leg1PriceType}
+                  onChange={(e) => updateTrade(index, { leg1PriceType: String((e.target as any).value || '') as RfqPriceType })}
+                >
+                  <Option value="">—</Option>
+                  {PRICE_TYPE_OPTIONS.filter((opt) => opt.value !== 'Fix').map((opt) => (
+                    <Option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
               {renderLeg1Fields(trade, index)}
             </div>
           </div>
@@ -1129,35 +1128,28 @@ export function RFQFormPage() {
               Parte 2 <span className="font-normal text-[var(--sapContent_LabelColor)]">(Fixo)</span>
             </h4>
             <div className="space-y-3">
-              <FioriRadioGroup
-                label="Operação"
-                name={`leg2Op-${trade.id}`}
-                value={trade.leg2Operation}
-                onChange={(v) => updateTrade(index, { leg2Operation: v as 'Compra' | 'Venda' })}
-                options={[
-                  { value: 'Compra', label: 'Compra' },
-                  { value: 'Venda', label: 'Venda' },
-                ]}
-                horizontal
-              />
-              <FioriSelect
-                label="Tipo de Preço"
-                value={trade.leg2PriceType}
-                onChange={(e) => updateTrade(index, { leg2PriceType: e.target.value as RfqPriceType })}
-                fullWidth
-                disabled
-              >
-                <option value="">Selecione...</option>
-                <option value="Fix">Preço fixo</option>
-              </FioriSelect>
-              <FioriInput
-                label="Data de referência (sincronizada)"
-                type="date"
-                value={trade.leg2FixingDate}
-                onChange={(e) => updateTrade(index, { leg2FixingDate: e.target.value })}
-                fullWidth
-                disabled
-              />
+              <div>
+                <Label>Operação</Label>
+                <Select value={trade.leg2Operation} onChange={(e) => updateTrade(index, { leg2Operation: String((e.target as any).value || '') as any })}>
+                  <Option value="Compra">Compra</Option>
+                  <Option value="Venda">Venda</Option>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo de Preço</Label>
+                <Select value={trade.leg2PriceType} disabled onChange={(e) => updateTrade(index, { leg2PriceType: String((e.target as any).value || '') as RfqPriceType })}>
+                  <Option value="">—</Option>
+                  <Option value="Fix">Preço fixo</Option>
+                </Select>
+              </div>
+              <div>
+                <Label>Data de referência (sincronizada)</Label>
+                <DatePicker
+                  value={trade.leg2FixingDate}
+                  disabled
+                  onChange={(e) => updateTrade(index, { leg2FixingDate: String((e.target as any).value || '') })}
+                />
+              </div>
               {trade.leg2FixingDate && (
                 <div className="text-[11px] text-[var(--sapContent_LabelColor,#6a6d70)] italic">
                   Data sincronizada: {new Date(trade.leg2FixingDate).toLocaleDateString('pt-BR')}
@@ -1166,7 +1158,8 @@ export function RFQFormPage() {
             </div>
           </div>
         </div>
-      </FioriCard>
+        </div>
+      </Card>
     );
   };
 
@@ -1178,26 +1171,21 @@ export function RFQFormPage() {
       <div className="max-w-[1200px] mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-4">
-          <FioriButton 
-            variant="ghost" 
-            icon={<ChevronLeft className="w-4 h-4" />}
-            onClick={() => navigate('/financeiro/rfqs')}
-          >
+          <Button design="Transparent" onClick={() => navigate('/financeiro/rfqs')}>
             Voltar
-          </FioriButton>
+          </Button>
           <h1 className="font-['72:Regular',sans-serif] text-[24px] text-[var(--sapPageHeader_TextColor,#131e29)] leading-[normal] m-0 flex-1">
             Nova cotação
           </h1>
           
           {/* Company Header Selector */}
-          <FioriSelect
-            value={companyHeader}
-            onChange={(e) => setCompanyHeader(e.target.value as 'Alcast Brasil' | 'Alcast Trading')}
-          >
-            {COMPANY_HEADER_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+          <Select value={companyHeader} onChange={(e) => setCompanyHeader(String((e.target as any).value || '') as any)}>
+            {COMPANY_HEADER_OPTIONS.map((opt) => (
+              <Option key={opt.value} value={opt.value}>
+                {opt.label}
+              </Option>
             ))}
-          </FioriSelect>
+          </Select>
         </div>
 
         {/* Contexto de origem (quando aplicável) */}
@@ -1212,57 +1200,56 @@ export function RFQFormPage() {
         )}
 
         {/* Deal + SO selection */}
-        <FioriCard className="mb-4">
+        <Card className="mb-4">
+          <div style={{ padding: '0.75rem' }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)] mb-1">
                 Deal (obrigatório)
               </div>
-              <FioriSelect
-                value={selectedDealId ?? ''}
+              <Select
+                value={String(selectedDealId ?? '')}
                 onChange={(e) => {
-                  const next = e.target.value ? Number.parseInt(e.target.value, 10) : null;
-                  setSelectedDealId(next);
+                  const raw = String((e.target as any).value || '');
+                  const next = raw ? Number.parseInt(raw, 10) : null;
+                  setSelectedDealId(Number.isFinite(next as any) ? next : null);
                 }}
                 disabled={isLookupLoading}
               >
-                <option value="" disabled>
-                  {isLookupLoading ? 'Carregando...' : 'Selecione um Deal'}
-                </option>
+                <Option value="">{isLookupLoading ? 'Carregando…' : '—'}</Option>
                 {deals
                   .slice()
                   .sort((a, b) => (a.reference_name || '').localeCompare(b.reference_name || ''))
                   .map((d) => (
-                    <option key={d.id} value={d.id}>
+                    <Option key={d.id} value={String(d.id)}>
                       {d.reference_name ? d.reference_name : `Deal #${d.id}`}
-                    </option>
+                    </Option>
                   ))}
-              </FioriSelect>
+              </Select>
             </div>
 
             <div>
               <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)] mb-1">
                 Pedido de Venda (SO) (obrigatório)
               </div>
-              <FioriSelect
-                value={selectedSoId ?? ''}
+              <Select
+                value={String(selectedSoId ?? '')}
                 onChange={(e) => {
-                  const next = e.target.value ? Number.parseInt(e.target.value, 10) : null;
-                  setSelectedSoId(next);
+                  const raw = String((e.target as any).value || '');
+                  const next = raw ? Number.parseInt(raw, 10) : null;
+                  setSelectedSoId(Number.isFinite(next as any) ? next : null);
                 }}
                 disabled={!selectedDealId || isLookupLoading}
               >
-                <option value="" disabled>
-                  {!selectedDealId ? 'Selecione o Deal primeiro' : isLookupLoading ? 'Carregando...' : 'Selecione um SO'}
-                </option>
+                <Option value="">{!selectedDealId ? 'Selecione o Deal primeiro' : isLookupLoading ? 'Carregando…' : '—'}</Option>
                 {salesOrdersForSelectedDeal.map((so) => {
                   return (
-                    <option key={so.id} value={so.id}>
+                    <Option key={so.id} value={String(so.id)}>
                       {so.so_number}
-                    </option>
+                    </Option>
                   );
                 })}
-              </FioriSelect>
+              </Select>
             </div>
           </div>
 
@@ -1322,58 +1309,46 @@ export function RFQFormPage() {
               )}
             </div>
           )}
-        </FioriCard>
+          </div>
+        </Card>
 
         {/* Quantity */}
-        <FioriCard className="mb-4">
-          <div className="w-full md:w-[30%]">
-            <FioriInput
-              label="Quantidade (t)"
-              type="number"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder=""
-              fullWidth
-            />
+        <Card className="mb-4">
+          <div style={{ padding: '0.75rem' }}>
+            <div className="w-full md:w-[30%]">
+              <Label>Quantidade (t)</Label>
+              <Input type="Number" value={quantity} onInput={(e) => setQuantity(String((e.target as any).value || ''))} />
+            </div>
           </div>
-        </FioriCard>
+        </Card>
 
         {/* Trade Cards */}
         {trades.map((trade, index) => renderTradeCard(trade, index))}
 
         {/* Add Trade Button */}
         <div className="mb-4">
-          <FioriButton 
-            variant="default" 
-            icon={<Plus className="w-4 h-4" />}
-            onClick={addTrade}
-          >
+          <Button design="Default" icon="add" onClick={addTrade}>
             Adicionar estrutura
-          </FioriButton>
+          </Button>
         </div>
 
         {/* Texto para envio */}
-        <FioriCard className="mb-4">
+        <Card className="mb-4">
+          <div style={{ padding: '0.75rem' }}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] leading-[normal] m-0">
               Texto para envio
             </h3>
             <div className="flex gap-2">
-              <FioriButton 
-                variant="default" 
-                onClick={handleGeneratePreview}
-                disabled={isPreviewLoading || !canGeneratePreview}
-                icon={isPreviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
-              >
-                {isPreviewLoading ? 'Gerando...' : 'Gerar texto'}
-              </FioriButton>
+              <Button design="Default" onClick={handleGeneratePreview} disabled={isPreviewLoading || !canGeneratePreview}>
+                {isPreviewLoading ? 'Gerando…' : 'Gerar texto'}
+              </Button>
+              {isPreviewLoading ? <BusyIndicator active delay={0} size="Small" /> : null}
             </div>
           </div>
           
           {(previewFormError || previewError) && (
-            <div className="mb-3 p-3 bg-[var(--sapErrorBackground,#ffebeb)] text-[var(--sapNegativeColor,#bb0000)] rounded text-sm">
-              {previewFormError || previewError?.detail || UX_COPY.errors.title}
-            </div>
+            <MessageStrip design="Negative">{previewFormError || previewError?.detail || UX_COPY.errors.title}</MessageStrip>
           )}
           
           {/* Dual Preview - Side by Side */}
@@ -1384,22 +1359,22 @@ export function RFQFormPage() {
                 <h4 className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapTile_TitleTextColor,#131e29)]">
                     Texto em inglês (quando aplicável)
                 </h4>
-                <FioriButton 
-                  variant="ghost" 
-                  icon={<Copy className="w-3 h-3" />}
+                <Button
+                  design="Transparent"
+                  icon="copy"
                   onClick={() => brokerPreviewText && navigator.clipboard.writeText(brokerPreviewText)}
                   disabled={!brokerPreviewText}
                 >
                   Copiar
-                </FioriButton>
+                </Button>
               </div>
-              <FioriTextarea
-                value={brokerPreviewText || '(Clique em "Gerar texto")'}
-                readOnly
+              <TextArea
+                value={brokerPreviewText || ''}
                 rows={12}
-                fullWidth
-                className="font-['Courier_New',monospace] text-[11px] bg-[var(--sapField_ReadOnly_Background,#f7f7f7)]"
+                readonly
+                className="font-['Courier_New',monospace] text-[11px]"
               />
+              {!brokerPreviewText ? <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>Gere o texto para visualizar.</Text> : null}
             </div>
 
             {/* Banks Preview (Portuguese) */}
@@ -1408,31 +1383,32 @@ export function RFQFormPage() {
                 <h4 className="font-['72:Semibold_Duplex',sans-serif] text-[14px] text-[var(--sapTile_TitleTextColor,#131e29)]">
                   Texto em português
                 </h4>
-                <FioriButton 
-                  variant="ghost" 
-                  icon={<Copy className="w-3 h-3" />}
+                <Button
+                  design="Transparent"
+                  icon="copy"
                   onClick={() => bankPreviewText && navigator.clipboard.writeText(bankPreviewText)}
                   disabled={!bankPreviewText}
                 >
                   Copiar
-                </FioriButton>
+                </Button>
               </div>
-              <FioriTextarea
-                value={bankPreviewText || '(Clique em "Gerar texto")'}
-                readOnly
+              <TextArea
+                value={bankPreviewText || ''}
                 rows={12}
-                fullWidth
-                className="font-['Courier_New',monospace] text-[11px] bg-[var(--sapField_ReadOnly_Background,#f7f7f7)]"
+                readonly
+                className="font-['Courier_New',monospace] text-[11px]"
               />
+              {!bankPreviewText ? <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>Gere o texto para visualizar.</Text> : null}
             </div>
           </div>
-        </FioriCard>
+          </div>
+        </Card>
 
         {/* Counterparty Selection Section */}
-        <FioriCard>
+        <Card>
+          <div style={{ padding: '0.75rem' }}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-[var(--sapContent_IconColor,#0854a0)]" />
               <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] leading-[normal] m-0">
                 Contrapartes
               </h3>
@@ -1444,12 +1420,10 @@ export function RFQFormPage() {
 
           {/* Search and Filters */}
           <div className="flex flex-wrap gap-3 mb-4">
-            <FioriInput
-              placeholder="Buscar contraparte..."
-              value={counterpartySearch}
-              onChange={(e) => setCounterpartySearch(e.target.value)}
-              className="flex-1 min-w-[200px]"
-            />
+            <div className="flex-1 min-w-[200px]">
+              <Label>Buscar contraparte</Label>
+              <Input value={counterpartySearch} onInput={(e) => setCounterpartySearch(String((e.target as any).value || ''))} />
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -1505,7 +1479,8 @@ export function RFQFormPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2">
             {isCounterpartiesLoading ? (
               <div className="col-span-2 flex items-center justify-center p-8 text-[var(--sapContent_LabelColor,#6a6d70)]">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando contrapartes...
+                <BusyIndicator active delay={0} />
+                <span className="ml-2">Carregando contrapartes…</span>
               </div>
             ) : filteredCounterparties.length === 0 ? (
               <div className="col-span-2 text-center p-8 text-[var(--sapContent_LabelColor,#6a6d70)]">
@@ -1576,7 +1551,8 @@ export function RFQFormPage() {
                 <div className="text-[12px] text-[var(--sapContent_LabelColor,#6a6d70)]">
                   {isKycPreflightLoading ? (
                     <span className="inline-flex items-center">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> checando...
+                          <BusyIndicator active delay={0} size="Small" />
+                          <span className="ml-1">checando…</span>
                     </span>
                   ) : isKycBlocked ? (
                     <span className="text-[var(--sapNegativeColor,#bb0000)]">
@@ -1614,26 +1590,16 @@ export function RFQFormPage() {
 
           {/* Send + WhatsApp Share */}
           <div className="mt-4 pt-4 border-t border-[var(--sapTile_BorderColor,#e5e5e5)] flex items-center justify-end gap-2">
-            <FioriButton
-              variant="ghost"
-              icon={<MessageCircle className="w-4 h-4" />}
+            <Button
+              design="Transparent"
               onClick={handleShareWhatsApp}
               disabled={!selectedDealId || !selectedSoId}
-              title="Compartilhar resumo por WhatsApp"
             >
               WhatsApp
-            </FioriButton>
-            <FioriButton 
-              variant="emphasized" 
-              icon={sendingStatus === 'creating' || sendingStatus === 'sending' 
-                ? <Loader2 className="w-4 h-4 animate-spin" /> 
-                : sendingStatus === 'done'
-                ? <CheckCircle className="w-4 h-4" />
-                : sendingStatus === 'error'
-                ? <AlertCircle className="w-4 h-4" />
-                : <Send className="w-4 h-4" />
-              }
-                disabled={!selectedDealId || !selectedSoId || (!brokerPreviewText && !bankPreviewText) || selectedCounterpartyIds.length === 0 || sendingStatus !== 'idle' || (ENABLE_COUNTERPARTY_KYC && (isKycPreflightLoading || isKycBlocked))}
+            </Button>
+            <Button
+              design="Emphasized"
+              disabled={!selectedDealId || !selectedSoId || (!brokerPreviewText && !bankPreviewText) || selectedCounterpartyIds.length === 0 || sendingStatus !== 'idle' || (ENABLE_COUNTERPARTY_KYC && (isKycPreflightLoading || isKycBlocked))}
               onClick={handleCreateAndSendRfq}
               className="min-w-[180px]"
             >
@@ -1642,21 +1608,28 @@ export function RFQFormPage() {
                sendingStatus === 'done' ? 'Cotação enviada!' :
                sendingStatus === 'error' ? UX_COPY.errors.title :
                `Enviar cotação (${selectedCounterpartyIds.length})`}
-            </FioriButton>
+            </Button>
+            {sendingStatus === 'creating' || sendingStatus === 'sending' ? <BusyIndicator active delay={0} size="Small" /> : null}
           </div>
-        </FioriCard>
+          </div>
+        </Card>
 
         {/* Send Progress Feedback */}
         {sendingStatus !== 'idle' && (
-          <FioriCard className="mt-4">
+          <Card className="mt-4">
+            <div style={{ padding: '0.75rem' }}>
             <div className="flex items-center gap-3 mb-3">
-              {sendingStatus === 'done' ? (
-                <CheckCircle className="w-5 h-5 text-[var(--sapPositiveColor,#0f7d0f)]" />
-              ) : sendingStatus === 'error' ? (
-                <AlertCircle className="w-5 h-5 text-[var(--sapNegativeColor,#bb0000)]" />
-              ) : (
-                <Loader2 className="w-5 h-5 text-[var(--sapContent_IconColor,#0854a0)] animate-spin" />
-              )}
+              <ObjectStatus
+                state={
+                  sendingStatus === 'done'
+                    ? ValueState.Success
+                    : sendingStatus === 'error'
+                      ? ValueState.Error
+                      : ValueState.Information
+                }
+              >
+                {sendingStatus === 'creating' ? 'Registrando…' : sendingStatus === 'sending' ? 'Enviando…' : sendingStatus === 'done' ? 'Concluído' : 'Erro'}
+              </ObjectStatus>
               <h3 className="font-['72:Semibold_Duplex',sans-serif] text-[16px] text-[var(--sapTile_TitleTextColor,#131e29)] leading-[normal] m-0">
                 {sendingStatus === 'creating' ? 'Registrando cotação...' :
                  sendingStatus === 'sending' ? 'Enviando para Contrapartes...' :
@@ -1684,18 +1657,15 @@ export function RFQFormPage() {
 
             {/* Error Messages */}
             {sendProgress.errors.length > 0 && (
-              <div className="p-3 bg-[var(--sapErrorBackground,#ffebeb)] rounded text-sm text-[var(--sapNegativeColor,#bb0000)] whitespace-pre-line">
-                {UX_COPY.errors.message}
-              </div>
+              <MessageStrip design="Negative">{UX_COPY.errors.message}</MessageStrip>
             )}
 
             {/* Success Message */}
             {sendingStatus === 'done' && sendProgress.errors.length === 0 && (
-              <div className="p-3 bg-[var(--sapSuccessBackground,#f1fdf1)] rounded text-sm text-[var(--sapPositiveColor,#0f7d0f)]">
-                Cotação registrada com sucesso. Abrindo detalhes...
-              </div>
+              <MessageStrip design="Positive">Cotação registrada com sucesso. Abrindo detalhes…</MessageStrip>
             )}
-          </FioriCard>
+            </div>
+          </Card>
         )}
       </div>
     </div>

@@ -1,4 +1,6 @@
-import { Clock, Database, RefreshCw } from 'lucide-react';
+import { Button, Text } from '@ui5/webcomponents-react';
+
+import '@ui5/webcomponents-icons/dist/refresh.js';
 
 interface FioriGovernanceMetadataProps {
   lastUpdated?: string;
@@ -23,39 +25,40 @@ export function FioriGovernanceMetadata({
     <div className="bg-[var(--sapInfobar_Background,#fafafa)] border border-[var(--sapList_BorderColor)] rounded px-3 py-2 flex items-center gap-4 flex-wrap">
       {lastUpdated && (
         <div className="flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5 text-[var(--sapContent_IconColor)] opacity-70" />
-          <span className="font-['72:Regular',sans-serif] text-xs text-[var(--sapContent_LabelColor)]">
-            Last Updated: <span className="font-['72:Semibold_Duplex',sans-serif]">{lastUpdated}</span>
-          </span>
+          <Text>
+            <span className="font-['72:Regular',sans-serif] text-xs text-[var(--sapContent_LabelColor)]">
+              Last Updated: <span className="font-['72:Semibold_Duplex',sans-serif]">{lastUpdated}</span>
+            </span>
+          </Text>
         </div>
       )}
 
       {calculatedAt && (
         <div className="flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5 text-[var(--sapContent_IconColor)] opacity-70" />
-          <span className="font-['72:Regular',sans-serif] text-xs text-[var(--sapContent_LabelColor)]">
-            Calculated At: <span className="font-['72:Semibold_Duplex',sans-serif]">{calculatedAt}</span>
-          </span>
+          <Text>
+            <span className="font-['72:Regular',sans-serif] text-xs text-[var(--sapContent_LabelColor)]">
+              Calculated At: <span className="font-['72:Semibold_Duplex',sans-serif]">{calculatedAt}</span>
+            </span>
+          </Text>
         </div>
       )}
 
       {source && (
         <div className="flex items-center gap-1.5">
-          <Database className="w-3.5 h-3.5 text-[var(--sapContent_IconColor)] opacity-70" />
-          <span className="font-['72:Regular',sans-serif] text-xs text-[var(--sapContent_LabelColor)]">
-            Source: <span className="font-['72:Semibold_Duplex',sans-serif]">{source}</span>
-          </span>
+          <Text>
+            <span className="font-['72:Regular',sans-serif] text-xs text-[var(--sapContent_LabelColor)]">
+              Source: <span className="font-['72:Semibold_Duplex',sans-serif]">{source}</span>
+            </span>
+          </Text>
         </div>
       )}
 
       {refreshable && onRefresh && (
-        <button
-          onClick={onRefresh}
-          className="ml-auto flex items-center gap-1 px-2 py-1 text-xs font-['72:Regular',sans-serif] text-[var(--sapButton_TextColor)] bg-[var(--sapButton_Background)] border border-[var(--sapButton_BorderColor)] rounded hover:bg-[var(--sapButton_Hover_Background)] transition-colors"
-        >
-          <RefreshCw className="w-3 h-3" />
-          Refresh
-        </button>
+        <div className="ml-auto">
+          <Button icon="refresh" design="Transparent" onClick={onRefresh}>
+            Refresh
+          </Button>
+        </div>
       )}
     </div>
   );

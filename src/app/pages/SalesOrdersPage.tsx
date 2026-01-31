@@ -1,14 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { FioriObjectStatus, mapStatusToType } from '../components/fiori/FioriObjectStatus';
-import { FioriButton } from '../components/fiori/FioriButton';
-import { FioriFlexibleColumnLayout } from '../components/fiori/FioriFlexibleColumnLayout';
-import { FioriTile } from '../components/fiori/FioriTile';
 import { SalesOrderForm } from '../components/forms/SalesOrderForm';
 import type { SalesOrder, SalesOrderCreate } from '../../types';
 import { OrderStatus } from '../../types';
 import { createSalesOrder, getSalesOrder, listSalesOrders } from '../../services/salesOrders.service';
-import { Download, Search, Package, DollarSign, Calendar, User, Plus } from 'lucide-react';
+
+import {
+  BusyIndicator,
+  Button,
+  Card,
+  FlexBox,
+  FlexBoxAlignItems,
+  FlexBoxDirection,
+  FlexBoxJustifyContent,
+  Form,
+  FormItem,
+  Input,
+  Label,
+  Link,
+  List,
+  MessageStrip,
+  ObjectStatus,
+  Option,
+  Select,
+  StandardListItem,
+  Text,
+  Title,
+} from '@ui5/webcomponents-react';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
+import { formatNumberAuto, formatNumberFixedNoGrouping } from '../ux/format';
 
 export function SalesOrdersPage() {
   const navigate = useNavigate();
@@ -45,6 +65,21 @@ export function SalesOrdersPage() {
     }
   };
 
+  const statusValueState = (status: OrderStatus | string): ValueState => {
+    switch (status) {
+      case OrderStatus.ACTIVE:
+        return ValueState.Positive;
+      case OrderStatus.COMPLETED:
+        return ValueState.Positive;
+      case OrderStatus.CANCELLED:
+        return ValueState.Negative;
+      case OrderStatus.DRAFT:
+        return ValueState.Information;
+      default:
+        return ValueState.None;
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -66,7 +101,7 @@ export function SalesOrdersPage() {
       cancelled = true;
     };
   }, []);
-
+                  const qtyLabel = `${formatNumberAuto(order.total_quantity_mt ?? 0)} t`;
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
       order.so_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -110,245 +145,247 @@ export function SalesOrdersPage() {
     setOrders(refreshed);
     setSelectedOrder(created);
     navigate(`/vendas/sales-orders/${created.id}`);
-  };
-
-  // Master Column Content
-  const masterContent = (
-    <>
-      {/* Master Header */}
-      <div className="border-b border-[var(--sapList_HeaderBorderColor)] p-4 bg-[var(--sapList_HeaderBackground)]">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-['72:Bold',sans-serif] text-base text-[var(--sapList_HeaderTextColor)]">
-            Pedidos de Venda ({filteredOrders.length})
-          </h2>
-          <FioriButton
-            variant="emphasized"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setShowForm(true)}
-          >
-            Novo pedido
-          </FioriButton>
-        </div>
-        <div className="space-y-2">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por número ou cliente..."
-              className="w-full h-8 px-3 pr-8 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none focus:border-[var(--sapField_Focus_BorderColor)]"
-            />
-            <Search className="w-4 h-4 absolute right-2 top-2 text-[var(--sapContent_IconColor)]" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="so-status-filter" className="text-[var(--sapContent_LabelColor)] text-xs font-['72:Regular',sans-serif]">Status</label>
-            <select
-              id="so-status-filter"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'All' | OrderStatus)}
-              className="h-8 px-2 text-sm bg-[var(--sapField_Background)] border border-[var(--sapField_BorderColor)] rounded outline-none"
-            >
-              <option value="All">Todos os status</option>
-              <option value={OrderStatus.DRAFT}>Rascunho</option>
-              <option value={OrderStatus.ACTIVE}>Ativo</option>
-              <option value={OrderStatus.COMPLETED}>Concluído</option>
-              <option value={OrderStatus.CANCELLED}>Cancelado</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Master List */}
-      <div className="flex-1 overflow-y-auto">
-        {error && (
-          <div className="p-4 text-sm text-[var(--sapField_InvalidColor,#bb0000)]">{error}</div>
-        )}
-        {loading && !error && orders.length === 0 && (
-          <div className="p-4 text-sm text-[var(--sapContent_LabelColor)]">Carregando...</div>
-        )}
-        {filteredOrders.map((order) => {
-          const isSelected = selectedOrder?.id === order.id;
-          return (
-            <button
-              key={order.id}
-              onClick={() => handleOrderSelect(order)}
-              className={`w-full p-4 border-b border-[var(--sapList_BorderColor)] text-left hover:bg-[var(--sapList_HoverBackground)] transition-colors ${
-                isSelected
-                  ? 'bg-[var(--sapList_SelectionBackgroundColor)] border-l-2 border-l-[var(--sapList_SelectionBorderColor)]'
-                  : ''
-              }`}
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapLink_TextColor,#0a6ed1)]">
-                  {order.so_number}
-                </div>
-                <FioriObjectStatus status={mapStatusToType(formatStatusLabel(order.status))}>
-                  {formatStatusLabel(order.status)}
-                </FioriObjectStatus>
-              </div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)] mb-1 font-['72:Regular',sans-serif]">
-                {order.customer?.name || `Cliente #${order.customer_id}`}
-              </div>
-              <div className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">
-                {order.product} • {order.total_quantity_mt?.toLocaleString()} t
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-xs text-[var(--sapContent_LabelColor)]">
-                  {order.expected_delivery_date}
-                </span>
-                <span className="text-sm font-['72:Bold',sans-serif] text-[var(--sapLink_TextColor,#0a6ed1)]">
-                  {order.unit_price ? `US$ ${((order.unit_price || 0) * (order.total_quantity_mt || 0) / 1000).toFixed(0)}K` : '—'}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </>
-  );
-
-  // Detail Column Content
-  const detailContent = selectedOrder ? (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h1 className="font-['72:Black',sans-serif] text-2xl text-[var(--sapLink_TextColor,#0a6ed1)] m-0">
-              {selectedOrder.so_number}
-            </h1>
-            <FioriObjectStatus status={mapStatusToType(formatStatusLabel(selectedOrder.status))}>
-              {formatStatusLabel(selectedOrder.status)}
-            </FioriObjectStatus>
-          </div>
-          <div className="flex gap-2">
-            <FioriButton variant="default">Editar</FioriButton>
-            <FioriButton variant="ghost" icon={<Download className="w-4 h-4" />}>
-              Exportar
-            </FioriButton>
-          </div>
-        </div>
-
-        {/* KPI Tiles */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <FioriTile
-            title="Quantidade"
-            value={`${selectedOrder.total_quantity_mt?.toLocaleString() || 0} t`}
-            icon={<Package className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Preço unitário"
-            value={selectedOrder.unit_price ? `US$ ${selectedOrder.unit_price.toLocaleString()}` : '—'}
-            icon={<DollarSign className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Valor total"
-            value={selectedOrder.unit_price ? `US$ ${((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0) / 1000).toFixed(0)}K` : '—'}
-            valueColor="positive"
-            icon={<DollarSign className="w-4 h-4" />}
-          />
-          <FioriTile
-            title="Data de entrega"
-            value={selectedOrder.expected_delivery_date ?? undefined}
-            icon={<Calendar className="w-4 h-4" />}
-          />
-        </div>
-
-        {/* General Information */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-['72:Bold',sans-serif] text-base text-[var(--sapTextColor,#32363a)] mb-4">Informações gerais</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Cliente</label>
-              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{selectedOrder.customer?.name || `Cliente #${selectedOrder.customer_id}`}</p>
-            </div>
-            <div>
-              <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Produto</label>
-              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{selectedOrder.product}</p>
-            </div>
-            <div>
-              <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Número do pedido</label>
-              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{selectedOrder.so_number || '—'}</p>
-            </div>
-            <div>
-              <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Entrega prevista</label>
-              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{selectedOrder.expected_delivery_date}</p>
-            </div>
-            <div>
-              <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Status</label>
-              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{formatStatusLabel(selectedOrder.status || '—')}</p>
-            </div>
-            <div>
-              <label className="text-xs text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Operação</label>
-              <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapTextColor,#32363a)] mt-1">{selectedOrder.deal_id || '—'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Pricing Details */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-['72:Bold',sans-serif] text-base text-[var(--sapTextColor,#32363a)] mb-4">Detalhes de preço</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center pb-2 border-b border-[var(--sapGroup_ContentBorderColor,#e5e5e5)]">
-              <span className="text-sm text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Preço unitário</span>
-              <span className="text-sm font-['72:Bold',sans-serif] text-[var(--sapTextColor,#32363a)]">
-                {selectedOrder.unit_price ? `US$ ${selectedOrder.unit_price.toLocaleString()} / t` : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between items-center pb-2 border-b border-[var(--sapGroup_ContentBorderColor,#e5e5e5)]">
-              <span className="text-sm text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Quantidade</span>
-              <span className="text-sm font-['72:Bold',sans-serif] text-[var(--sapTextColor,#32363a)]">
-                {selectedOrder.total_quantity_mt?.toLocaleString() || 0} t
-              </span>
-            </div>
-            <div className="flex justify-between items-center pt-2">
-              <span className="text-base font-['72:Bold',sans-serif] text-[var(--sapTextColor,#32363a)]">Valor total</span>
-              <span className="text-lg font-['72:Bold',sans-serif] text-[var(--sapLink_TextColor,#0a6ed1)]">
-                {selectedOrder.unit_price ? `US$ ${((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0)).toLocaleString()}` : '—'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Related Deal */}
-        {selectedOrder.deal_id && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="font-['72:Bold',sans-serif] text-base text-[var(--sapTextColor,#32363a)] mb-3">Operação relacionada</h3>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--sapContent_LabelColor)] font-['72:Regular',sans-serif]">Identificador</span>
-              <a
-                href={`/financeiro/deals/${selectedOrder.deal_id}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate(`/financeiro/deals/${selectedOrder.deal_id}`);
-                }}
-                className="text-[var(--sapLink_TextColor,#0a6ed1)] hover:underline font-['72:Regular',sans-serif] text-sm"
-              >
-                {selectedOrder.deal_id}
-              </a>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  ) : (
-    <div className="flex items-center justify-center h-full text-[var(--sapContent_LabelColor)]">
-      <div className="text-center">
-        <Package className="w-12 h-12 mx-auto mb-3 text-[var(--sapContent_IconColor)]" />
-        <p className="font-['72:Regular',sans-serif] text-base mb-2">Selecione um pedido de venda para visualizar os detalhes</p>
-        <p className="font-['72:Regular',sans-serif] text-sm text-[var(--sapContent_LabelColor)]">Escolha um item na lista à esquerda</p>
-      </div>
-    </div>
-  );
+                      <Text style={{ fontWeight: 700 }}>{formatNumberAuto(selectedOrder.total_quantity_mt ?? 0)} t</Text>
 
   return (
     <>
-      <FioriFlexibleColumnLayout
-        masterTitle="Pedidos de Venda"
-        masterContent={masterContent}
-        masterWidth={360}
-        detailContent={detailContent}
-      />
+      <div className="sap-fiori-page" style={{ height: '100%' }}>
+        <FlexBox direction={FlexBoxDirection.Row} style={{ height: '100%' }}>
+                      <Text style={{ fontWeight: 700 }}>{selectedOrder.unit_price ? `US$ ${formatNumberAuto(selectedOrder.unit_price)}` : '—'}</Text>
+          <FlexBox
+            direction={FlexBoxDirection.Column}
+            style={{ width: 360, height: '100%', borderRight: '1px solid var(--sapList_BorderColor)' }}
+          >
+            <Card style={{ borderRadius: 0 }}>
+                      <Text style={{ fontWeight: 700 }}>
+                        {selectedOrder.unit_price
+                          ? `US$ ${formatNumberAuto((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0))}`
+                          : '—'}
+                      </Text>
+                  direction={FlexBoxDirection.Row}
+                  justifyContent={FlexBoxJustifyContent.SpaceBetween}
+                  alignItems={FlexBoxAlignItems.Center}
+                  style={{ marginBottom: '0.75rem' }}
+                >
+                  <Title level="H3">Pedidos de Venda ({filteredOrders.length})</Title>
+                  <Button design="Emphasized" onClick={() => setShowForm(true)}>
+                    Novo pedido
+                  </Button>
+                </FlexBox>
+
+                <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.5rem' }}>
+                  <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.25rem' }}>
+                    <Label>Busca</Label>
+                    <Input
+                      value={searchTerm}
+                      onInput={(e) => setSearchTerm((e.target as HTMLInputElement).value)}
+                      showClearIcon
+                      placeholder=""
+                    />
+                  </FlexBox>
+
+                  <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.25rem' }}>
+                    <Label>Status</Label>
+                    <Select
+                      value={String(statusFilter)}
+                      onChange={(e) => setStatusFilter(((e.target as any).value || 'All') as 'All' | OrderStatus)}
+                    >
+                      <Option value="All">Todos os status</Option>
+                      <Option value={OrderStatus.DRAFT}>Rascunho</Option>
+                      <Option value={OrderStatus.ACTIVE}>Ativo</Option>
+                      <Option value={OrderStatus.COMPLETED}>Concluído</Option>
+                      <Option value={OrderStatus.CANCELLED}>Cancelado</Option>
+                    </Select>
+                  </FlexBox>
+                </FlexBox>
+              </FlexBox>
+            </Card>
+
+            {error ? (
+              <MessageStrip design="Negative" hideCloseButton style={{ margin: '0.75rem' }}>
+                {error}
+              </MessageStrip>
+            ) : null}
+
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              {loading && orders.length === 0 ? (
+                <FlexBox
+                  direction={FlexBoxDirection.Row}
+                  alignItems={FlexBoxAlignItems.Center}
+                  justifyContent={FlexBoxJustifyContent.Center}
+                  style={{ padding: '1rem' }}
+                >
+                  <BusyIndicator active size="M" />
+                </FlexBox>
+              ) : (
+                <List noDataText="Nenhum pedido encontrado." selectionMode="SingleSelectMaster">
+                  {filteredOrders.map((order) => {
+                    const isSelected = selectedOrder?.id === order.id;
+                    const customerLabel = order.customer?.name || `Cliente #${order.customer_id}`;
+                    const qtyLabel = `${formatNumberAuto(order.total_quantity_mt ?? 0)} t`;
+                    const totalK = order.unit_price
+                      ? `US$ ${formatNumberFixedNoGrouping(((order.unit_price || 0) * (order.total_quantity_mt || 0)) / 1000, 0, 'en-US')}K`
+                      : '—';
+                    return (
+                      <StandardListItem
+                        key={order.id}
+                        selected={isSelected}
+                        onClick={() => handleOrderSelect(order)}
+                        description={`${customerLabel} • ${order.product} • ${qtyLabel}`}
+                        additionalText={totalK}
+                        info={formatStatusLabel(order.status)}
+                        infoState={statusValueState(order.status)}
+                      >
+                        {order.so_number}
+                      </StandardListItem>
+                    );
+                  })}
+                </List>
+              )}
+            </div>
+          </FlexBox>
+
+          {/* Detail */}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            {selectedOrder ? (
+              <div style={{ padding: '1rem' }}>
+                <FlexBox
+                  direction={FlexBoxDirection.Row}
+                  justifyContent={FlexBoxJustifyContent.SpaceBetween}
+                  alignItems={FlexBoxAlignItems.Center}
+                  style={{ marginBottom: '1rem' }}
+                >
+                  <FlexBox direction={FlexBoxDirection.Row} alignItems={FlexBoxAlignItems.Center} style={{ gap: '0.75rem' }}>
+                    <Title level="H2">{selectedOrder.so_number}</Title>
+                    <ObjectStatus state={statusValueState(selectedOrder.status)}>
+                      {formatStatusLabel(selectedOrder.status)}
+                    </ObjectStatus>
+                  </FlexBox>
+                  <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem' }}>
+                    <Button design="Default" disabled>
+                      Editar
+                    </Button>
+                    <Button design="Transparent" disabled>
+                      Exportar
+                    </Button>
+                  </FlexBox>
+                </FlexBox>
+
+                <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  <Card style={{ width: 240 }}>
+                    <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '0.75rem', gap: '0.25rem' }}>
+                      <Label>Quantidade</Label>
+                      <Text style={{ fontWeight: 700 }}>{formatNumberAuto(selectedOrder.total_quantity_mt ?? 0)} t</Text>
+                    </FlexBox>
+                  </Card>
+                  <Card style={{ width: 240 }}>
+                    <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '0.75rem', gap: '0.25rem' }}>
+                      <Label>Preço unitário</Label>
+                      <Text style={{ fontWeight: 700 }}>
+                        {selectedOrder.unit_price ? `US$ ${formatNumberAuto(selectedOrder.unit_price)}` : '—'}
+                      </Text>
+                    </FlexBox>
+                  </Card>
+                  <Card style={{ width: 240 }}>
+                    <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '0.75rem', gap: '0.25rem' }}>
+                      <Label>Valor total</Label>
+                      <Text style={{ fontWeight: 700 }}>
+                        {selectedOrder.unit_price
+                          ? `US$ ${formatNumberAuto((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0))}`
+                          : '—'}
+                      </Text>
+                    </FlexBox>
+                  </Card>
+                  <Card style={{ width: 240 }}>
+                    <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '0.75rem', gap: '0.25rem' }}>
+                      <Label>Data de entrega</Label>
+                      <Text style={{ fontWeight: 700 }}>{selectedOrder.expected_delivery_date ?? '—'}</Text>
+                    </FlexBox>
+                  </Card>
+                </FlexBox>
+
+                <Card style={{ marginBottom: '1rem' }}>
+                  <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '1rem', gap: '0.75rem' }}>
+                    <Title level="H3">Informações gerais</Title>
+                    <Form>
+                      <FormItem labelContent={<Label>Cliente</Label>}>
+                        <Text>{selectedOrder.customer?.name || `Cliente #${selectedOrder.customer_id}`}</Text>
+                      </FormItem>
+                      <FormItem labelContent={<Label>Produto</Label>}>
+                        <Text>{selectedOrder.product || '—'}</Text>
+                      </FormItem>
+                      <FormItem labelContent={<Label>Número do pedido</Label>}>
+                        <Text>{selectedOrder.so_number || '—'}</Text>
+                      </FormItem>
+                      <FormItem labelContent={<Label>Entrega prevista</Label>}>
+                        <Text>{selectedOrder.expected_delivery_date || '—'}</Text>
+                      </FormItem>
+                      <FormItem labelContent={<Label>Status</Label>}>
+                        <Text>{formatStatusLabel(selectedOrder.status || '—')}</Text>
+                      </FormItem>
+                      <FormItem labelContent={<Label>Operação</Label>}>
+                        <Text>{selectedOrder.deal_id ? String(selectedOrder.deal_id) : '—'}</Text>
+                      </FormItem>
+                    </Form>
+                  </FlexBox>
+                </Card>
+
+                <Card style={{ marginBottom: '1rem' }}>
+                  <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '1rem', gap: '0.75rem' }}>
+                    <Title level="H3">Detalhes de preço</Title>
+                    <Form>
+                      <FormItem labelContent={<Label>Preço unitário</Label>}>
+                        <Text>{selectedOrder.unit_price ? `US$ ${formatNumberAuto(selectedOrder.unit_price)} / t` : '—'}</Text>
+                      </FormItem>
+                      <FormItem labelContent={<Label>Quantidade</Label>}>
+                        <Text>{formatNumberAuto(selectedOrder.total_quantity_mt ?? 0)} t</Text>
+                      </FormItem>
+                      <FormItem labelContent={<Label>Total</Label>}>
+                        <Text>
+                          {selectedOrder.unit_price
+                            ? `US$ ${formatNumberAuto((selectedOrder.unit_price || 0) * (selectedOrder.total_quantity_mt || 0))}`
+                            : '—'}
+                        </Text>
+                      </FormItem>
+                    </Form>
+                  </FlexBox>
+                </Card>
+
+                {selectedOrder.deal_id ? (
+                  <Card>
+                    <FlexBox direction={FlexBoxDirection.Column} style={{ padding: '1rem', gap: '0.75rem' }}>
+                      <Title level="H3">Operação relacionada</Title>
+                      <Form>
+                        <FormItem labelContent={<Label>Identificador</Label>}>
+                          <Link
+                            href={`/financeiro/deals/${selectedOrder.deal_id}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              navigate(`/financeiro/deals/${selectedOrder.deal_id}`);
+                            }}
+                          >
+                            {String(selectedOrder.deal_id)}
+                          </Link>
+                        </FormItem>
+                      </Form>
+                    </FlexBox>
+                  </Card>
+                ) : null}
+              </div>
+            ) : (
+              <FlexBox
+                direction={FlexBoxDirection.Column}
+                alignItems={FlexBoxAlignItems.Center}
+                justifyContent={FlexBoxJustifyContent.Center}
+                style={{ height: '100%', padding: '2rem', opacity: 0.8 }}
+              >
+                <Title level="H3">Selecione um pedido de venda</Title>
+                <Text>Escolha um item na lista à esquerda.</Text>
+              </FlexBox>
+            )}
+          </div>
+        </FlexBox>
+      </div>
       {showForm && (
         <SalesOrderForm
           onClose={() => setShowForm(false)}

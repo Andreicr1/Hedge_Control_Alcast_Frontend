@@ -10,21 +10,14 @@ import {
   useDashboard,
 } from '../../hooks';
 import { formatNumber, formatCurrency, formatDate, formatHumanDateTime } from '../../services/dashboard.service';
+import { formatNumberFixedNoGrouping } from '../ux/format';
+import { Icon } from '@ui5/webcomponents-react';
 import { FioriCard, FioriCardHeader, FioriCardMetric } from '../components/fiori/FioriCard';
 import { FioriBadge } from '../components/fiori/FioriBadge';
 import { FioriQuickLink } from '../components/fiori/FioriQuickLink';
 import { FioriTeamCard } from '../components/fiori/FioriTeamCard';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { 
-  Users, 
-  BarChart3, 
-  FileText, 
-  Inbox, 
-  FileCheck,
-  TrendingUp,
-  MoreHorizontal,
-} from 'lucide-react';
 
 // ============================================
 // Helpers
@@ -121,7 +114,7 @@ export function DashboardPageIntegrated() {
       })(),
       liquidationDate: formatDate(item.settlement_date),
       mtm: item.mtm_today_usd 
-        ? `${Math.abs(item.mtm_today_usd / 1000).toFixed(0)}K USD` 
+        ? `${formatNumberFixedNoGrouping(Math.abs(item.mtm_today_usd / 1000), 0, 'en-US')}K USD` 
         : '—',
       mtmNegative: (item.mtm_today_usd || 0) < 0,
     }));
@@ -587,7 +580,7 @@ export function DashboardPageIntegrated() {
                 title="Mais opções"
                 aria-label="Mais opções"
               >
-                <MoreHorizontal className="w-4 h-4" />
+                <Icon name="overflow" style={{ width: '1rem', height: '1rem' }} />
               </button>
             </div>
             
@@ -627,7 +620,7 @@ export function DashboardPageIntegrated() {
               >
                 Ver todas
               </button>
-              <TrendingUp className="w-5 h-5 text-[var(--sapButton_TextColor,#0064d9)]" />
+              <Icon name="trend-up" style={{ width: '1.25rem', height: '1.25rem', color: 'var(--sapButton_TextColor,#0064d9)' }} />
             </div>
           </FioriCard>
 
@@ -667,7 +660,7 @@ export function DashboardPageIntegrated() {
                     <div className={`font-['72:Semibold_Duplex',sans-serif] text-[24px] leading-[normal] ${
                       todaySettlementsTotal < 0 ? 'text-[var(--sapNegativeTextColor,#bb0000)]' : 'text-[var(--sapContent_ForegroundTextColor,#131e29)]'
                     }`}>
-                      {(todaySettlementsTotal / 1000).toFixed(0)}K
+                      {formatNumberFixedNoGrouping(todaySettlementsTotal / 1000, 0, 'en-US')}K
                     </div>
                   </div>
                 </div>
@@ -899,12 +892,12 @@ export function DashboardPageIntegrated() {
               </h3>
             </div>
             <div className="flex flex-col">
-              <FioriQuickLink icon={<FileText className="w-4 h-4" />} label="Nova cotação" href="/financeiro/rfqs/novo" />
-              <FioriQuickLink icon={<BarChart3 className="w-4 h-4" />} label="Exposições" href="/financeiro/exposicoes" />
-              <FioriQuickLink icon={<FileCheck className="w-4 h-4" />} label="Contrapartes" href="/financeiro/contrapartes" />
-              <FioriQuickLink icon={<FileCheck className="w-4 h-4" />} label="Contratos" href="/financeiro/contratos" />
-              <FioriQuickLink icon={<Users className="w-4 h-4" />} label="Pedidos de Venda" href="/vendas/sales-orders" />
-              <FioriQuickLink icon={<Inbox className="w-4 h-4" />} label="Pedidos de Compra" href="/compras/purchase-orders" />
+              <FioriQuickLink icon={<Icon name="document" style={{ width: '1rem', height: '1rem' }} />} label="Nova cotação" href="/financeiro/rfqs/novo" />
+              <FioriQuickLink icon={<Icon name="bar-chart" style={{ width: '1rem', height: '1rem' }} />} label="Exposições" href="/financeiro/exposicoes" />
+              <FioriQuickLink icon={<Icon name="customer" style={{ width: '1rem', height: '1rem' }} />} label="Contrapartes" href="/financeiro/contrapartes" />
+              <FioriQuickLink icon={<Icon name="document-text" style={{ width: '1rem', height: '1rem' }} />} label="Contratos" href="/financeiro/contratos" />
+              <FioriQuickLink icon={<Icon name="sales-order" style={{ width: '1rem', height: '1rem' }} />} label="Pedidos de Venda" href="/vendas/sales-orders" />
+              <FioriQuickLink icon={<Icon name="purchase-order" style={{ width: '1rem', height: '1rem' }} />} label="Pedidos de Compra" href="/compras/purchase-orders" />
             </div>
           </FioriCard>
 

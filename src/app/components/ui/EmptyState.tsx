@@ -4,9 +4,9 @@
  * Componente padronizado para estados vazios.
  */
 
-import { FileX, Plus } from 'lucide-react';
+import { Icon } from '@ui5/webcomponents-react';
 import { FioriButton } from '../fiori/FioriButton';
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 interface EmptyStateProps {
   title?: string;
@@ -28,7 +28,9 @@ export function EmptyState({
   const content = (
     <div className="flex flex-col items-center justify-center gap-4 p-6 text-center">
       <div className="w-16 h-16 rounded-full bg-[var(--sapNeutralBackground,#f5f5f5)] flex items-center justify-center">
-        {icon || <FileX className="w-8 h-8 text-[var(--sapContent_IconColor,#556b82)]" />}
+        {icon || (
+          <Icon name="document" style={{ width: '2rem', height: '2rem', color: 'var(--sapContent_IconColor,#556b82)' }} />
+        )}
       </div>
       
       <div>
@@ -41,8 +43,7 @@ export function EmptyState({
       </div>
       
       {onAction && actionLabel && (
-        <FioriButton variant="emphasized" onClick={onAction}>
-          <Plus className="w-4 h-4 mr-2" />
+        <FioriButton variant="emphasized" icon="add" onClick={onAction}>
           {actionLabel}
         </FioriButton>
       )}

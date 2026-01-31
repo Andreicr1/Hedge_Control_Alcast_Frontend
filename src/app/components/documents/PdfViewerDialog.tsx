@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { pdfjs, Document, Page } from 'react-pdf';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/dialog';
+
+import { Bar, Button, BusyIndicator, Dialog, FlexBox, FlexBoxDirection, Text } from '@ui5/webcomponents-react';
 
 // Vite-friendly worker resolution
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -40,58 +36,74 @@ export function PdfViewerDialog({ open, onOpenChange, title, fileUrl }: PdfViewe
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-
+    <Dialog
+      open={open}
+      headerText={title}
+      stretch
+      onClose={() => onOpenChange(false)}
+      footer={
+        <Bar
+          endContent={
+            <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem' }}>
+              <Button design="Transparent" onClick={() => onOpenChange(false)}>
+                Fechar
+              </Button>
+            </FlexBox>
+          }
+        />
+      }
+    >
+      <div style={{ padding: '1rem' }}>
         {!fileUrl ? (
-          <div className="text-sm text-[var(--sapContent_LabelColor)]">Arquivo indisponível.</div>
+          <Text style={{ opacity: 0.75 }}>Arquivo indisponível.</Text>
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-[var(--sapContent_LabelColor)]">
+          <FlexBox direction={FlexBoxDirection.Column} style={{ gap: '0.75rem' }}>
+            <FlexBox direction={FlexBoxDirection.Row} justifyContent="SpaceBetween" style={{ gap: '0.75rem', alignItems: 'center' }}>
+              <Text style={{ opacity: 0.75, fontSize: '0.8125rem' }}>
                 {numPages ? `Página ${pageNumber} de ${numPages}` : 'Carregando…'}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!canPrev}
-                  onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-                  className="h-8 px-3 text-sm rounded border border-[var(--sapButton_BorderColor)] disabled:opacity-50"
-                >
+              </Text>
+              <FlexBox direction={FlexBoxDirection.Row} style={{ gap: '0.5rem' }}>
+                <Button design="Transparent" disabled={!canPrev} onClick={() => setPageNumber((p) => Math.max(1, p - 1))}>
                   Anterior
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  design="Transparent"
                   disabled={!canNext}
                   onClick={() => setPageNumber((p) => (numPages ? Math.min(numPages, p + 1) : p + 1))}
-                  className="h-8 px-3 text-sm rounded border border-[var(--sapButton_BorderColor)] disabled:opacity-50"
                 >
                   Próxima
-                </button>
-              </div>
-            </div>
+                </Button>
+              </FlexBox>
+            </FlexBox>
 
             <div
-              className="rounded border border-[var(--sapGroup_ContentBorderColor)] bg-white overflow-auto"
-              style={containerStyle}
+              style={{
+                ...containerStyle,
+                border: '1px solid var(--sapGroup_ContentBorderColor)',
+                borderRadius: 8,
+                background: 'white',
+                overflow: 'auto',
+              }}
             >
-              <div className="p-3">
+              <div style={{ padding: '0.75rem' }}>
                 <Document
                   file={fileUrl}
                   onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-                  loading={<div className="text-sm text-[var(--sapContent_LabelColor)]">Carregando PDF…</div>}
-                  error={<div className="text-sm text-[var(--sapNegativeColor)]">Não foi possível abrir o PDF.</div>}
+                  loading={
+                    <div>
+                      <BusyIndicator active delay={0} />
+                      <Text style={{ marginTop: '0.5rem', opacity: 0.75 }}>Carregando PDF…</Text>
+                    </div>
+                  }
+                  error={<Text style={{ color: 'var(--sapNegativeColor)' }}>Não foi possível abrir o PDF.</Text>}
                 >
                   <Page pageNumber={pageNumber} width={1000} renderTextLayer={false} renderAnnotationLayer={false} />
                 </Document>
               </div>
             </div>
-          </div>
+          </FlexBox>
         )}
-      </DialogContent>
+      </div>
     </Dialog>
   );
 }

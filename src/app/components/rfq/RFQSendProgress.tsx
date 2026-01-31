@@ -6,10 +6,17 @@
  */
 
 import React from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
-import { Progress } from '../ui/progress';
-import { Badge } from '../ui/badge';
-import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import {
+  BusyIndicator,
+  Card,
+  List,
+  ObjectStatus,
+  ProgressIndicator,
+  StandardListItem,
+  Text,
+  Title,
+} from '@ui5/webcomponents-react';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 import { SendStatus } from '../../../types/enums';
 import { UX_COPY } from '../../ux/copy';
 
@@ -29,26 +36,10 @@ interface RFQSendProgressProps {
   onRetry?: (target: SendTarget) => void;
 }
 
-const STATUS_CONFIG: Record<SendStatus, { 
-  variant: 'default' | 'secondary' | 'destructive' | 'outline';
-  icon: React.ReactNode;
-  text: string;
-}> = {
-  [SendStatus.QUEUED]: { 
-    variant: 'outline', 
-    icon: <Clock className="h-3 w-3" />, 
-    text: 'Na fila' 
-  },
-  [SendStatus.SENT]: { 
-    variant: 'default', 
-    icon: <CheckCircle2 className="h-3 w-3" />, 
-    text: 'Enviado' 
-  },
-  [SendStatus.FAILED]: { 
-    variant: 'destructive', 
-    icon: <XCircle className="h-3 w-3" />, 
-    text: 'Falhou' 
-  },
+const STATUS_LABEL: Record<SendStatus, { text: string; state: ValueState }> = {
+  [SendStatus.QUEUED]: { text: 'Na fila', state: ValueState.Information },
+  [SendStatus.SENT]: { text: 'Enviado', state: ValueState.Success },
+  [SendStatus.FAILED]: { text: 'Falhou', state: ValueState.Error },
 };
 
 function channelLabel(channel: SendTarget['channel']): string {
@@ -71,66 +62,57 @@ export const RFQSendProgress: React.FC<RFQSendProgressProps> = ({
 
   return (
     <Card className="mb-4">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>
-          {completedCount}/{totalCount} enviados
-          {failedCount > 0 && ` • ${failedCount} falha(s)`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Progress Bar */}
-        <div className="space-y-2">
-          <Progress value={progressPercent} className="h-2" />
-          <p className="text-xs text-muted-foreground">
-            {completedCount} de {totalCount} contrapartes notificadas
-          </p>
+      <div style={{ padding: '0.75rem' }}>
+        <Title level="H5">{title}</Title>
+        <Text>
+          {completedCount}/{totalCount} enviados{failedCount > 0 ? ` • ${failedCount} falha(s)` : ''}
+        </Text>
+
+        <div className="mt-3">
+          <ProgressIndicator value={progressPercent} valueState={failedCount > 0 ? ValueState.Error : ValueState.Success} />
+          <div className="mt-1">
+            <Text>
+              {completedCount} de {totalCount} contrapartes notificadas
+            </Text>
+          </div>
         </div>
 
-        {/* Target List */}
         {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <div className="mt-4 flex items-center justify-center">
+            <BusyIndicator active delay={0} />
+          </div>
+        ) : targets.length === 0 ? (
+          <div className="mt-4">
+            <Text>Nenhuma contraparte selecionada para envio.</Text>
           </div>
         ) : (
-          <div className="space-y-2 max-h-72 overflow-y-auto">
-            {targets.map((target, index) => {
-              const statusConfig = STATUS_CONFIG[target.status] || STATUS_CONFIG[SendStatus.QUEUED];
-              const channel = channelLabel(target.channel);
+          <div className="mt-4 max-h-72 overflow-y-auto">
+            <List>
+              {targets.map((target, index) => {
+                const status = STATUS_LABEL[target.status] || STATUS_LABEL[SendStatus.QUEUED];
+                const channel = channelLabel(target.channel);
 
-              return (
-                <div
-                  key={`${target.counterpartyId}-${target.channel}-${index}`}
-                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                    target.status === SendStatus.FAILED ? 'bg-destructive/5 border-destructive/20' : 'bg-muted/50'
-                  }`}
-                >
-                  <div className="flex flex-col">
-                    <span className="font-medium text-sm">
-                      {target.counterpartyName}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {channel}
-                      {target.error && ` — ${UX_COPY.errors.title}`}
-                    </span>
-                  </div>
-                  <Badge variant={statusConfig.variant} className="gap-1">
-                    {statusConfig.icon}
-                    {statusConfig.text}
-                  </Badge>
-                </div>
-              );
-            })}
+                return (
+                  <StandardListItem
+                    key={`${target.counterpartyId}-${target.channel}-${index}`}
+                    description={target.error ? `${channel} — ${UX_COPY.errors.title}` : channel}
+                    additionalText={status.text}
+                    additionalTextState={status.state}
+                  >
+                    {target.counterpartyName}
+                  </StandardListItem>
+                );
+              })}
+            </List>
           </div>
         )}
 
-        {/* Empty State */}
-        {!isLoading && targets.length === 0 && (
-          <div className="flex justify-center items-center py-8 text-muted-foreground">
-            Nenhuma contraparte selecionada para envio.
+        {failedCount > 0 ? (
+          <div className="mt-3">
+            <ObjectStatus state={ValueState.Error}>{UX_COPY.errors.title}</ObjectStatus>
           </div>
-        )}
-      </CardContent>
+        ) : null}
+      </div>
     </Card>
   );
 };

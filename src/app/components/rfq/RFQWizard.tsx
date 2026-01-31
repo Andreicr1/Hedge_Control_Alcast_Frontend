@@ -9,24 +9,24 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
-import { Button } from '../ui/button';
-import { Alert, AlertDescription } from '../ui/alert';
-import { Badge } from '../ui/badge';
-import { Checkbox } from '../ui/checkbox';
-import { Label } from '../ui/label';
-import { 
-  ChevronRight, 
-  ChevronLeft, 
-  FileText, 
-  Settings, 
-  Users, 
-  Send,
-  Plus,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-} from 'lucide-react';
+import {
+  Button,
+  Card,
+  CheckBox,
+  CustomListItem,
+  FlexBox,
+  FlexBoxDirection,
+  List,
+  MessageStrip,
+  ObjectStatus,
+  Option,
+  Select,
+  Text,
+  Title,
+  Toolbar,
+  ToolbarSpacer,
+} from '@ui5/webcomponents-react';
+import ValueState from '@ui5/webcomponents-base/dist/types/ValueState.js';
 import { RFQLegConfigurator } from './RFQLegConfigurator';
 import { RFQPreviewCard } from './RFQPreviewCard';
 import { RFQSendProgress } from './RFQSendProgress';
@@ -58,20 +58,19 @@ interface RFQWizardProps {
 }
 
 // Default leg template
-const createDefaultLeg = (): RfqLegInput => ({
-  side: RfqSide.BUY,
-  price_type: RfqPriceType.AVG,
-  quantity_mt: 0,
+const createDefaultLeg = (): Partial<RfqLegInput> => ({
+  side: undefined,
+  price_type: undefined,
+  quantity_mt: undefined,
   start_date: '',
   end_date: '',
 });
 
-// Step indicators
 const STEPS = [
-  { id: 0, title: 'Sales Order', icon: FileText },
-  { id: 1, title: 'Configuração', icon: Settings },
-  { id: 2, title: 'Contrapartes', icon: Users },
-  { id: 3, title: 'Enviar', icon: Send },
+  { id: 0, title: 'Sales Order' },
+  { id: 1, title: 'Configuração' },
+  { id: 2, title: 'Contrapartes' },
+  { id: 3, title: 'Enviar' },
 ];
 
 export const RFQWizard: React.FC<RFQWizardProps> = ({
@@ -88,7 +87,7 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
 
   // Step 2: Trade configuration
   const [tradeType, setTradeType] = useState<RfqTradeType>(RfqTradeType.SWAP);
-  const [legs, setLegs] = useState<RfqLegInput[]>([createDefaultLeg()]);
+  const [legs, setLegs] = useState<Array<Partial<RfqLegInput>>>([createDefaultLeg()]);
 
   // Step 3: Selected counterparties
   const [selectedCounterparties, setSelectedCounterparties] = useState<Set<number>>(new Set());
@@ -109,9 +108,9 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
 
   // Validation states
   const isStep1Valid = selectedSO !== null;
-  const isStep2Valid = legs.length > 0 && legs.every(
-    l => l.side && l.price_type && l.quantity_mt > 0 && l.start_date && l.end_date
-  );
+  const isStep2Valid =
+    legs.length > 0 &&
+    legs.every((l) => Boolean(l.side) && Boolean(l.price_type) && (l.quantity_mt ?? 0) > 0 && Boolean(l.start_date) && Boolean(l.end_date));
   const isStep3Valid = selectedCounterparties.size > 0;
 
   // Handlers
@@ -154,11 +153,16 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
 
   const handleGeneratePreview = async () => {
     if (legs.length === 0) return;
+
+    if (!isStep2Valid) return;
+
+    const leg1 = legs[0] as RfqLegInput;
+    const leg2 = legs.length > 1 ? (legs[1] as RfqLegInput) : undefined;
     
     const request: RfqPreviewRequest = {
       trade_type: tradeType,
-      leg1: legs[0],
-      leg2: legs.length > 1 ? legs[1] : undefined,
+      leg1,
+      leg2,
     };
     await preview.generatePreview(request);
   };
@@ -166,15 +170,19 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
   const handleSendRfq = async () => {
     if (!selectedSO || !preview.preview) return;
 
+    if (!isStep2Valid) return;
+
+    const finalizedLegs = legs as RfqLegInput[];
+
     // Calculate total quantity from legs
-    const totalQty = legs.reduce((sum, leg) => sum + (leg.quantity_mt || 0), 0);
+    const totalQty = finalizedLegs.reduce((sum, leg) => sum + (leg.quantity_mt || 0), 0);
 
     // Create RFQ first
     const rfqData: RfqCreate = {
       rfq_number: `RFQ-${Date.now()}`,
       so_id: selectedSO.id,
       quantity_mt: totalQty,
-      period: legs[0]?.start_date || new Date().toISOString().slice(0, 7),
+      period: finalizedLegs[0]?.start_date || '',
       message_text: preview.preview.text,
     };
 
@@ -236,93 +244,61 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Criar Nova RFQ</h2>
-        {onCancel && (
-          <Button variant="ghost" onClick={onCancel}>
+      <Toolbar>
+        <Title level="H4">Criar Nova RFQ</Title>
+        <ToolbarSpacer />
+        {onCancel ? (
+          <Button design="Transparent" onClick={onCancel}>
             Cancelar
           </Button>
-        )}
-      </div>
+        ) : null}
+      </Toolbar>
 
-      {/* Step Indicator */}
-      <div className="flex items-center justify-between px-4">
-        {STEPS.map((step, index) => {
-          const Icon = step.icon;
-          const isActive = currentStep === index;
-          const isCompleted = currentStep > index;
-          
-          return (
-            <React.Fragment key={step.id}>
-              <div className="flex flex-col items-center gap-2">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
-                    isActive 
-                      ? 'bg-primary text-primary-foreground border-primary' 
-                      : isCompleted 
-                        ? 'bg-primary/20 text-primary border-primary/50'
-                        : 'bg-muted text-muted-foreground border-muted'
-                  }`}
-                >
-                  {isCompleted ? (
-                    <CheckCircle2 className="h-5 w-5" />
-                  ) : (
-                    <Icon className="h-5 w-5" />
-                  )}
-                </div>
-                <span className={`text-xs font-medium ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
-                  {step.title}
-                </span>
-              </div>
-              {index < STEPS.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-2 ${currentStep > index ? 'bg-primary' : 'bg-muted'}`} />
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
+      <Card>
+        <div style={{ padding: '0.75rem' }}>
+          <FlexBox direction={FlexBoxDirection.Row} wrap style={{ gap: '0.75rem' }}>
+            {STEPS.map((step, index) => {
+              const isActive = currentStep === index;
+              const isCompleted = currentStep > index;
+              const state = isActive ? ValueState.Information : isCompleted ? ValueState.Success : ValueState.None;
+
+              return (
+                <ObjectStatus key={step.id} state={state}>
+                  {index + 1}. {step.title}
+                </ObjectStatus>
+              );
+            })}
+          </FlexBox>
+        </div>
+      </Card>
 
       {/* Step Content */}
       <Card>
-        <CardContent className="pt-6">
+        <div style={{ padding: '0.75rem' }}>
           {/* Step 1: Sales Order Selection */}
           {currentStep === 0 && (
             <div className="space-y-4">
-              <CardTitle className="text-lg mb-4">Selecione a Sales Order</CardTitle>
+              <Title level="H5">Selecione a Sales Order</Title>
               
               {salesOrders.length === 0 ? (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Nenhuma Sales Order disponível. Crie uma SO primeiro.
-                  </AlertDescription>
-                </Alert>
+                <MessageStrip design="Information">Nenhuma Sales Order disponível.</MessageStrip>
               ) : (
-                <div className="space-y-2">
-                  {salesOrders.map(so => (
-                    <div
-                      key={so.id}
-                      onClick={() => handleSelectSO(so)}
-                      className={`p-4 rounded-lg border cursor-pointer transition-colors ${
-                        selectedSO?.id === so.id 
-                          ? 'border-primary bg-primary/5' 
-                          : 'hover:bg-muted/50'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
+                <List>
+                  {salesOrders.map((so) => (
+                    <CustomListItem key={so.id} type="Active" onClick={() => handleSelectSO(so)}>
+                      <FlexBox direction={FlexBoxDirection.Row} justifyContent="SpaceBetween" alignItems="Center" style={{ width: '100%' }}>
                         <div>
-                          <p className="font-medium">{so.code}</p>
-                          <p className="text-sm text-muted-foreground">{so.customer}</p>
+                          <div style={{ fontWeight: 600 }}>{so.code}</div>
+                          <Text>{so.customer}</Text>
                         </div>
-                        <div className="text-right">
-                          <p className="font-medium">{so.quantity} MT</p>
-                          <p className="text-sm text-muted-foreground">Entrega: {so.deliveryDate}</p>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: 600 }}>{so.quantity} MT</div>
+                          <Text>Entrega: {so.deliveryDate}</Text>
                         </div>
-                      </div>
-                    </div>
+                      </FlexBox>
+                    </CustomListItem>
                   ))}
-                </div>
+                </List>
               )}
             </div>
           )}
@@ -330,25 +306,15 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
           {/* Step 2: Trade Configuration */}
           {currentStep === 1 && (
             <div className="space-y-6">
-              <CardTitle className="text-lg">Configuração do Trade</CardTitle>
+              <Title level="H5">Configuração do Trade</Title>
               
               {/* Trade Type */}
               <div className="space-y-2">
-                <Label>Tipo de Trade</Label>
-                <div className="flex gap-2">
-                  <Button
-                    variant={tradeType === RfqTradeType.SWAP ? 'default' : 'outline'}
-                    onClick={() => setTradeType(RfqTradeType.SWAP)}
-                  >
-                    Swap
-                  </Button>
-                  <Button
-                    variant={tradeType === RfqTradeType.FORWARD ? 'default' : 'outline'}
-                    onClick={() => setTradeType(RfqTradeType.FORWARD)}
-                  >
-                    Forward
-                  </Button>
-                </div>
+                <Text>Tipo de Trade</Text>
+                <Select value={tradeType} onChange={(e) => setTradeType(String((e.target as any).value || RfqTradeType.SWAP) as RfqTradeType)}>
+                  <Option value={RfqTradeType.SWAP}>Swap</Option>
+                  <Option value={RfqTradeType.FORWARD}>Forward</Option>
+                </Select>
               </div>
 
               {/* Legs */}
@@ -366,8 +332,7 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
 
                 {/* Add Leg Button */}
                 {tradeType === RfqTradeType.SWAP && legs.length < 2 && (
-                  <Button variant="outline" onClick={handleAddLeg} className="w-full">
-                    <Plus className="h-4 w-4 mr-2" />
+                  <Button design="Transparent" icon="add" onClick={handleAddLeg}>
                     Adicionar Leg
                   </Button>
                 )}
@@ -378,47 +343,32 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
           {/* Step 3: Counterparty Selection */}
           {currentStep === 2 && (
             <div className="space-y-4">
-              <CardTitle className="text-lg">Selecione as Contrapartes</CardTitle>
+              <Title level="H5">Selecione as Contrapartes</Title>
               
               {counterparties.length === 0 ? (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Nenhuma contraparte cadastrada.
-                  </AlertDescription>
-                </Alert>
+                <MessageStrip design="Information">Nenhuma contraparte cadastrada.</MessageStrip>
               ) : (
                 <>
-                  <p className="text-sm text-muted-foreground">
-                    Selecione as contrapartes que receberão a RFQ:
-                  </p>
-                  <div className="space-y-2">
-                    {counterparties.map(cp => (
-                      <div
-                        key={cp.id}
-                        className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-colors ${
-                          selectedCounterparties.has(cp.id)
-                            ? 'border-primary bg-primary/5'
-                            : 'hover:bg-muted/50'
-                        }`}
-                        onClick={() => handleToggleCounterparty(cp.id)}
-                      >
-                        <Checkbox
-                          checked={selectedCounterparties.has(cp.id)}
-                          onCheckedChange={() => handleToggleCounterparty(cp.id)}
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium">{cp.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Canais: {cp.channels.map(c => c.toUpperCase()).join(', ')}
-                          </p>
-                        </div>
-                      </div>
+                  <Text>{selectedCounterparties.size} contraparte(s) selecionada(s)</Text>
+
+                  <List>
+                    {counterparties.map((cp) => (
+                      <CustomListItem key={cp.id} type="Active" onClick={() => handleToggleCounterparty(cp.id)}>
+                        <FlexBox direction={FlexBoxDirection.Row} alignItems="Center" justifyContent="SpaceBetween" style={{ width: '100%' }}>
+                          <FlexBox direction={FlexBoxDirection.Row} alignItems="Center" style={{ gap: '0.75rem' }}>
+                            <CheckBox
+                              checked={selectedCounterparties.has(cp.id)}
+                              onChange={() => handleToggleCounterparty(cp.id)}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{cp.name}</div>
+                              <Text>Canais: {cp.channels.map((c) => c.toUpperCase()).join(', ')}</Text>
+                            </div>
+                          </FlexBox>
+                        </FlexBox>
+                      </CustomListItem>
                     ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedCounterparties.size} contraparte(s) selecionada(s)
-                  </p>
+                  </List>
                 </>
               )}
             </div>
@@ -445,44 +395,28 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
               )}
 
               {createRfq.isError && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {getInstitutionalErrorMessage(createRfq.error || null)}
-                  </AlertDescription>
-                </Alert>
+                <MessageStrip design="Negative">{getInstitutionalErrorMessage(createRfq.error || null)}</MessageStrip>
               )}
 
               {sendRfq.isError && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {getInstitutionalErrorMessage(sendRfq.error || null)}
-                  </AlertDescription>
-                </Alert>
+                <MessageStrip design="Negative">{getInstitutionalErrorMessage(sendRfq.error || null)}</MessageStrip>
               )}
 
               {sendRfq.isSuccess && (
-                <Alert>
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription>
-                    RFQ enviada com sucesso!
-                  </AlertDescription>
-                </Alert>
+                <MessageStrip design="Positive">RFQ enviada com sucesso.</MessageStrip>
               )}
             </div>
           )}
-        </CardContent>
+        </div>
       </Card>
 
       {/* Navigation Buttons */}
       <div className="flex justify-between">
         <Button
-          variant="outline"
+          design="Transparent"
           onClick={goToPrevStep}
           disabled={currentStep === 0 || createRfq.isLoading || sendRfq.isLoading}
         >
-          <ChevronLeft className="h-4 w-4 mr-2" />
           Voltar
         </Button>
         
@@ -490,9 +424,9 @@ export const RFQWizard: React.FC<RFQWizardProps> = ({
           <Button
             onClick={goToNextStep}
             disabled={!canProceed()}
+            design="Emphasized"
           >
             Próximo
-            <ChevronRight className="h-4 w-4 ml-2" />
           </Button>
         )}
       </div>

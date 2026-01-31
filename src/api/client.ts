@@ -549,6 +549,11 @@ export const endpoints = {
     humanAttachmentDownload: (eventId: number) => `/timeline/human/attachments/${eventId}/download`,
   },
 
+  // Governance (read-only observability)
+  governance: {
+    health: '/governance/health',
+  },
+
   // Exports (jobs + manifest + download)
   exports: {
     create: '/exports',

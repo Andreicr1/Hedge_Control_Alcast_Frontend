@@ -9,13 +9,15 @@
 import { useMemo, useState } from 'react';
 import { useAuthContext } from '../components/AuthProvider';
 import { ErrorState, LoadingState } from '../components/ui';
+import { Icon } from '@ui5/webcomponents-react';
 import { FioriButton } from '../components/fiori/FioriButton';
 import { FioriInput } from '../components/fiori/FioriInput';
 import { FioriSelect } from '../components/fiori/FioriSelect';
-import { RefreshCw, Download, FileText, Search, Copy, Check } from 'lucide-react';
 import type { ExportJobCreate } from '../../types';
 import { useCreateExportJob, useExportDownload, useExportJob, useExportManifest } from '../../hooks/useExports';
 import { UX_COPY, formatRoleLabel } from '../ux/copy';
+import { formatNumberFixedNoGrouping } from '../ux/format';
+import { canCreateExportJob } from '../auth/accessPolicy';
 
 function formatReportStatus(status: string | null | undefined): string {
   const s = String(status || '').toLowerCase();
@@ -55,14 +57,13 @@ async function copyToClipboard(text: string) {
 function formatBytes(bytes: number | null | undefined): string {
   if (typeof bytes !== 'number' || Number.isNaN(bytes)) return '—';
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${formatNumberFixedNoGrouping(bytes / 1024, 1, 'en-US')} KB`;
+  return `${formatNumberFixedNoGrouping(bytes / (1024 * 1024), 1, 'en-US')} MB`;
 }
 
 export function ExportsPageIntegrated() {
   const { user } = useAuthContext();
-  const role = (user?.role || '').toLowerCase();
-  const canCreate = role === 'financeiro' || role === 'admin';
+  const canCreate = canCreateExportJob(user?.role);
 
   const [exportType, setExportType] = useState('chain_export');
   const [asOf, setAsOf] = useState<string>('');
@@ -186,7 +187,7 @@ export function ExportsPageIntegrated() {
             <h1 className="font-['72:Bold',sans-serif] text-xl text-[var(--sapTextColor,#131e29)]">{UX_COPY.pages.reports.title}</h1>
             <p className="text-sm text-[var(--sapContent_LabelColor,#556b82)] mt-1">{UX_COPY.pages.reports.subtitle}</p>
           </div>
-          <FioriButton variant="ghost" icon={<RefreshCw className="w-4 h-4" />} onClick={() => {
+          <FioriButton variant="ghost" icon="refresh" onClick={() => {
             manifest.refetch();
             job.refetch();
           }}>
@@ -198,7 +199,7 @@ export function ExportsPageIntegrated() {
       {/* Configuração do relatório */}
       <div className="bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4 mb-4">
         <div className="flex items-center gap-2 mb-3">
-          <Search className="w-4 h-4 text-[var(--sapContent_LabelColor,#556b82)]" />
+          <Icon name="search" style={{ width: '1rem', height: '1rem', color: 'var(--sapContent_LabelColor,#556b82)' }} />
           <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">{UX_COPY.pages.reports.sections.configuration}</div>
         </div>
 
@@ -219,7 +220,7 @@ export function ExportsPageIntegrated() {
           <FioriInput label="Código de referência" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} fullWidth />
 
           <div className="flex items-end gap-2">
-            <FioriButton variant="emphasized" icon={<FileText className="w-4 h-4" />} onClick={handleApply}>
+            <FioriButton variant="emphasized" icon="document" onClick={handleApply}>
               {UX_COPY.pages.reports.buttons.viewScope}
             </FioriButton>
             {canCreate && (
@@ -240,7 +241,7 @@ export function ExportsPageIntegrated() {
       {/* Acompanhar relatório */}
       <div className="bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4 mb-4">
         <div className="flex items-center gap-2 mb-3">
-          <Search className="w-4 h-4 text-[var(--sapContent_LabelColor,#556b82)]" />
+          <Icon name="search" style={{ width: '1rem', height: '1rem', color: 'var(--sapContent_LabelColor,#556b82)' }} />
           <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">{UX_COPY.pages.reports.sections.tracking}</div>
         </div>
 
@@ -254,7 +255,7 @@ export function ExportsPageIntegrated() {
           <FioriButton variant="default" onClick={() => job.refetch()}>{UX_COPY.pages.reports.buttons.viewStatus}</FioriButton>
           <FioriButton
             variant="emphasized"
-            icon={<Download className="w-4 h-4" />}
+            icon="download"
             onClick={handleDownload}
             disabled={!effectiveExportId || job.job?.status !== 'done' || dl.isLoading}
           >
@@ -326,12 +327,12 @@ export function ExportsPageIntegrated() {
         <div className="bg-[var(--sapGroup_ContentBackground)] border border-[var(--sapGroup_ContentBorderColor)] rounded p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-[var(--sapContent_LabelColor,#556b82)]" />
+              <Icon name="document" style={{ width: '1rem', height: '1rem', color: 'var(--sapContent_LabelColor,#556b82)' }} />
               <div className="font-['72:Bold',sans-serif] text-sm text-[var(--sapTextColor,#131e29)]">{UX_COPY.pages.reports.buttons.viewScope}</div>
             </div>
             <FioriButton
               variant="ghost"
-              icon={copiedKey === 'report_code' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              icon={copiedKey === 'report_code' ? 'accept' : 'copy'}
               onClick={() => handleCopy('report_code', String(manifest.manifest?.export_id ?? ''))}
             >
               Copiar código
@@ -345,7 +346,7 @@ export function ExportsPageIntegrated() {
                 <div className="font-['72:Bold',sans-serif] text-sm break-all">{manifest.manifest.export_id}</div>
                 <FioriButton
                   variant="ghost"
-                  icon={copiedKey === 'export_id' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  icon={copiedKey === 'export_id' ? 'accept' : 'copy'}
                   onClick={() => handleCopy('export_id', String(manifest.manifest?.export_id ?? ''))}
                 />
               </div>
