@@ -33,6 +33,9 @@ Thumbs.db
 # Copilot Playwright MCP artifacts
 .playwright-mcp/
 
+# Continue.dev local configs (do not commit)
+.continue/
+
 # Keep SWA routing config under /public so it is copied to /dist by Vite
 /staticwebapp.config.json
 
@@ -41,6 +44,9 @@ Thumbs.db
 
 # Optional
 *.local
+
+# API folder lockfiles (API has no deps; keep repo clean)
+/api/package-lock.json
 
 # Docs (ignore all markdown except README)
 *.md
