@@ -22,9 +22,8 @@ export function ErrorState({
   title = UX_COPY.errors.title,
   fullPage = false,
 }: ErrorStateProps) {
-  void error;
-
   const messageLines = UX_COPY.errors.message.split('\n');
+  const detail = (error?.detail || '').trim();
 
   const content = (
     <div className="flex flex-col items-center justify-center gap-4 p-6 text-center">
@@ -47,6 +46,12 @@ export function ErrorState({
             </span>
           ))}
         </p>
+
+        {detail ? (
+          <div className="mt-3 text-sm text-[var(--sapTextColor)] max-w-md break-words">
+            {detail}
+          </div>
+        ) : null}
       </div>
       
       {onRetry && (

@@ -149,6 +149,14 @@ function sanitizeBackendDetail(detail: string): string | null {
   return text;
 }
 
+function extractSafeBackendMessage(detailObj: unknown): string | null {
+  if (!detailObj || typeof detailObj !== 'object') return null;
+  const anyObj = detailObj as Record<string, unknown>;
+  const msg = anyObj?.message;
+  if (typeof msg !== 'string') return null;
+  return sanitizeBackendDetail(msg);
+}
+
 async function handleErrorResponse(response: Response): Promise<never> {
   let errorDetail = 'Não foi possível concluir a operação';
   let validationErrors = undefined;
@@ -170,10 +178,15 @@ async function handleErrorResponse(response: Response): Promise<never> {
       validationErrors = detail as any;
       errorDetail = 'Verifique os dados informados.';
     } else if (detail && typeof detail === 'object') {
-      // Structured errors (e.g., KYC gate returns {code, counterparty_id, details})
+      // Structured errors (e.g., domain errors like {code, message, ...})
       detailObj = detail;
-      // Keep a generic public message; pages can branch using detail_obj/response_body.
-      errorDetail = 'Não foi possível concluir a operação';
+      const safeMsg = extractSafeBackendMessage(detail);
+      if (safeMsg && response.status >= 400 && response.status < 500) {
+        errorDetail = safeMsg;
+      } else {
+        // Keep a generic public message; pages can branch using detail_obj/response_body.
+        errorDetail = 'Não foi possível concluir a operação';
+      }
     } else if (detail !== undefined) {
       errorDetail = 'Não foi possível concluir a operação';
     }
@@ -186,7 +199,7 @@ async function handleErrorResponse(response: Response): Promise<never> {
   if (response.status === 403) errorDetail = 'Acesso não autorizado para esta ação.';
   if (response.status === 404) errorDetail = 'Registro não encontrado.';
   if (response.status === 408) errorDetail = 'Tempo limite excedido. Tente novamente.';
-  if (response.status === 422) errorDetail = 'Verifique os dados informados.';
+  if (response.status === 422 && errorDetail === 'Não foi possível concluir a operação') errorDetail = 'Verifique os dados informados.';
   if (response.status >= 500) errorDetail = 'Não foi possível concluir a operação.';
 
   const error: ApiError = {

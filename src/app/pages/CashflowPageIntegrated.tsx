@@ -345,11 +345,18 @@ function groupDealsByCompany(deals: Deal[]): Array<{ company: string; deals: Dea
 }
 
 function useCashflowAnalyticMulti(paramsBase: CashflowAnalyticQueryParams, dealIds: number[]) {
-  const [state, setState] = useState<{ data: CashFlowLine[] | null; isLoading: boolean; isError: boolean; error: ApiError | null }>({
+  const [state, setState] = useState<{
+    data: CashFlowLine[] | null;
+    isLoading: boolean;
+    isError: boolean;
+    error: ApiError | null;
+    partialErrors: Array<{ deal_id: number; error: ApiError }>;
+  }>({
     data: null,
     isLoading: false,
     isError: false,
     error: null,
+    partialErrors: [],
   });
 
   const queryKey = useMemo(() => {
@@ -359,15 +366,40 @@ function useCashflowAnalyticMulti(paramsBase: CashflowAnalyticQueryParams, dealI
 
   const fetchLines = useCallback(async () => {
     if (dealIds.length === 0) {
-      setState({ data: null, isLoading: false, isError: false, error: null });
+      setState({ data: null, isLoading: false, isError: false, error: null, partialErrors: [] });
       return;
     }
 
-    setState((prev) => ({ ...prev, isLoading: true, isError: false, error: null }));
+    setState((prev) => ({ ...prev, isLoading: true, isError: false, error: null, partialErrors: [] }));
     try {
       const ids = dealIds.slice().sort((a, b) => a - b);
-      const results = await Promise.all(ids.map((deal_id) => getCashflowAnalytic({ ...paramsBase, deal_id })));
-      setState({ data: results.flat(), isLoading: false, isError: false, error: null });
+      const settled = await Promise.allSettled(ids.map((deal_id) => getCashflowAnalytic({ ...paramsBase, deal_id })));
+
+      const ok: CashFlowLine[][] = [];
+      const partialErrors: Array<{ deal_id: number; error: ApiError }> = [];
+
+      settled.forEach((r, idx) => {
+        const deal_id = ids[idx];
+        if (r.status === 'fulfilled') {
+          ok.push(r.value);
+          return;
+        }
+        partialErrors.push({ deal_id, error: r.reason as ApiError });
+      });
+
+      const data = ok.flat();
+      if (data.length > 0) {
+        setState({ data, isLoading: false, isError: false, error: null, partialErrors });
+        return;
+      }
+
+      setState({
+        data: null,
+        isLoading: false,
+        isError: true,
+        error: partialErrors.length ? partialErrors[0].error : null,
+        partialErrors,
+      });
     } catch (err) {
       setState((prev) => ({ ...prev, isLoading: false, isError: true, error: err as ApiError }));
     }
@@ -1012,6 +1044,7 @@ export function CashflowPageIntegrated() {
               <div className="text-sm font-['72:Bold',sans-serif] text-[var(--sapList_HeaderTextColor)]">Escopo</div>
               <div className="text-xs text-[var(--sapContent_LabelColor)] mt-1">Seleção e consolidação por hierarquia</div>
             </div>
+
             <div className="p-3">
               {roots.length === 0 ? (
                 <EmptyState title="Sem dados" description="Nenhuma entidade/deal disponível." />
@@ -1138,6 +1171,20 @@ export function CashflowPageIntegrated() {
               </div>
 
               <div className="p-3">
+                {cashflow.partialErrors.length > 0 ? (
+                  <div className="mb-3 border border-[var(--sapWarningBorderColor,#f5c400)] bg-[var(--sapWarningBackground,#fff8d6)] rounded px-3 py-2">
+                    <div className="text-sm text-[var(--sapTextColor)]">
+                      Alguns itens não puderam ser calculados para o período/seleção atual.
+                    </div>
+                    <div className="mt-1 text-xs text-[var(--sapContent_LabelColor)] break-words">
+                      {cashflow.partialErrors
+                        .slice(0, 5)
+                        .map((e) => `Deal ${e.deal_id}: ${String(e.error?.detail || 'Falha ao calcular')}`)
+                        .join(' · ')}
+                      {cashflow.partialErrors.length > 5 ? ` · +${cashflow.partialErrors.length - 5} outros` : ''}
+                    </div>
+                  </div>
+                ) : null}
                 {showInitialLoading ? (
                   <LoadingState message="Carregando fluxo de caixa..." />
                 ) : cashflow.isError ? (
