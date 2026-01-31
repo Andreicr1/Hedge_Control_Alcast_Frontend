@@ -1,8 +1,9 @@
-import { List, ListItemStandard, Title } from '@ui5/webcomponents-react';
+// UI5 navigation uses web components directly here.
 
 export interface FioriSideNavigationProps {
   currentPath: string;
   isAdmin: boolean;
+  collapsed?: boolean;
   onNavigate: (path: string) => void;
 }
 
@@ -17,42 +18,59 @@ const FINANCE_ITEMS_BASE: NavigationItem[] = [
   { label: 'Contrapartes', path: '/financeiro/contrapartes' },
 ];
 
-export function FioriSideNavigation({ currentPath, isAdmin, onNavigate }: FioriSideNavigationProps) {
+function iconForPath(path: string): string {
+  if (path === '/') return 'home';
+  if (path.includes('pendencias')) return 'pending';
+  if (path.includes('aprovacoes')) return 'approvals';
+  if (path.includes('exposicoes')) return 'risk';
+  if (path.includes('rfqs')) return 'request';
+  if (path.includes('cotacoes')) return 'lead';
+  if (path.includes('contratos')) return 'document';
+  if (path.includes('cashflow')) return 'future';
+  if (path.includes('relatorios')) return 'bar-chart';
+  if (path.includes('contrapartes')) return 'group';
+  if (path.includes('governanca')) return 'shield';
+  return 'navigation-right-arrow';
+}
+
+export function FioriSideNavigation({ currentPath, isAdmin, collapsed = false, onNavigate }: FioriSideNavigationProps) {
   const financeItems: NavigationItem[] = isAdmin
     ? [...FINANCE_ITEMS_BASE, { label: 'Governança • Saúde', path: '/financeiro/governanca/saude' }]
     : FINANCE_ITEMS_BASE;
 
-  const handleItemClick = (event: any) => {
-    const path = event?.detail?.item?.dataset?.path;
-    if (typeof path === 'string' && path.length > 0) {
-      onNavigate(path);
-    }
-  };
-
   return (
-    <div style={{ padding: 8 }}>
-      <List onItemClick={handleItemClick}>
-        <ListItemStandard type="Navigation" data-path="/" selected={currentPath === '/'}>
-          Dashboard
-        </ListItemStandard>
-      </List>
+    <div
+      style={{
+        width: collapsed ? 56 : 256,
+        transition: 'width 120ms ease',
+        background: 'var(--sapList_Background)',
+        borderRight: '1px solid var(--sapGroup_ContentBorderColor)',
+        padding: 8,
+        overflow: 'hidden',
+      }}
+    >
+      <ui5-side-navigation collapsed={collapsed}>
+        <ui5-side-navigation-item
+          text="Visão Geral"
+          icon="home"
+          data-path="/"
+          selected={currentPath === '/'}
+          onClick={() => onNavigate('/')}
+        />
 
-      <div style={{ marginTop: 12, marginBottom: 6, paddingLeft: 8 }}>
-        <Title level="H6">Financeiro</Title>
-      </div>
-
-      <List onItemClick={handleItemClick}>
-        {financeItems.map((item) => (
-          <ListItemStandard
-            key={item.path}
-            type="Navigation"
-            data-path={item.path}
-            selected={currentPath === item.path}
-          >
-            {item.label}
-          </ListItemStandard>
-        ))}
-      </List>
+        <ui5-side-navigation-group text="Financeiro" expanded icon="accounting-document-verification">
+          {financeItems.map((item) => (
+            <ui5-side-navigation-item
+              key={item.path}
+              text={item.label}
+              icon={iconForPath(item.path)}
+              data-path={item.path}
+              selected={currentPath === item.path}
+              onClick={() => onNavigate(item.path)}
+            />
+          ))}
+        </ui5-side-navigation-group>
+      </ui5-side-navigation>
     </div>
   );
 }
