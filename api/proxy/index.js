@@ -105,7 +105,7 @@ function proxyRequest(targetUrl, { method, headers, body }) {
     )
 
     req.on('error', reject)
-    req.setTimeout(30_000, () => {
+    req.setTimeout(30000, () => {
       req.destroy(new Error('Upstream timeout'))
     })
 
