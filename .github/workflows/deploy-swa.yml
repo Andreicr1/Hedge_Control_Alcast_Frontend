@@ -52,3 +52,4 @@ jobs:
           app_location: .
           api_location: api
           output_location: dist
+          skip_app_build: true
