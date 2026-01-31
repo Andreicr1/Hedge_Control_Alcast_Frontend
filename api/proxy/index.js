@@ -1,3 +1,6 @@
+const http = require('http')
+const https = require('https')
+
 function sanitizeHeaders(headers) {
   const hopByHop = new Set([
     'connection',
@@ -59,6 +62,43 @@ function sanitizeResponseHeaders(headers) {
   return out
 }
 
+function proxyRequest(targetUrl, { method, headers, body }) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(targetUrl)
+    const lib = url.protocol === 'https:' ? https : http
+
+    const req = lib.request(
+      {
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port: url.port,
+        path: `${url.pathname}${url.search}`,
+        method,
+        headers,
+      },
+      (res) => {
+        const chunks = []
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode || 502,
+            headers: res.headers || {},
+            body: Buffer.concat(chunks),
+          })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.setTimeout(30_000, () => {
+      req.destroy(new Error('Upstream timeout'))
+    })
+
+    if (body !== undefined) req.write(body)
+    req.end()
+  })
+}
+
 module.exports = async function (context, req) {
   const backendBase = process.env.BACKEND_BASE_URL
   if (!backendBase) {
@@ -66,7 +106,9 @@ module.exports = async function (context, req) {
     return
   }
 
-  const path = (req.params && req.params.path) ? req.params.path : ''
+  const path =
+    (context && context.bindingData && context.bindingData.path) ??
+    ((req.params && req.params.path) ? req.params.path : '')
 
   // Governance hard-stop: legacy surfaces must not be reachable from the frontend origin.
   // If a client calls /api/market/*, /api/prices/*, /api/live, or any live/LME/spot legacy path,
@@ -131,14 +173,20 @@ module.exports = async function (context, req) {
 
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : pickBody(req)
 
-  const resp = await fetch(targetUrl, { method: req.method, headers, body, redirect: 'manual' })
-  const responseHeaders = sanitizeResponseHeaders(resp.headers)
-  const arrayBuffer = await resp.arrayBuffer()
+  try {
+    const resp = await proxyRequest(targetUrl, { method: req.method, headers, body })
 
-  context.res = {
-    status: resp.status,
-    headers: responseHeaders,
-    body: Buffer.from(arrayBuffer),
-    isRaw: true,
+    context.res = {
+      status: resp.statusCode,
+      headers: sanitizeResponseHeaders(new Map(Object.entries(resp.headers || {}))),
+      body: resp.body,
+      isRaw: true,
+    }
+  } catch (err) {
+    context.res = {
+      status: 502,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ detail: 'Bad Gateway' }),
+    }
   }
 }
